@@ -37,5 +37,12 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.27",
+    "init": "^0.1.2",
+    "npx": "^10.2.2",
+    "postcss": "^8.5.9",
+    "tailwindcss": "^4.2.2"
   }
 }
