@@ -4,109 +4,89 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
-    <!-- ── Primary Meta ─────────────────────────────────────── -->
+    <!-- Primary -->
     <title>D&amp;W Operations Hub</title>
-    <meta name="description" content="Field operations management for Dust &amp; Wipes Limited — jobs, contracts, requisitions, GPS check-in, and more." />
-    <meta name="author" content="Dust &amp; Wipes Limited" />
+    <meta name="description" content="Internal operations management for Dust &amp; Wipes Limited field teams." />
     <meta name="robots" content="noindex, nofollow" />
 
-    <!-- ── PWA / Theme ──────────────────────────────────────── -->
+    <!-- PWA / Theme -->
     <meta name="theme-color" content="#1B6B2F" />
-    <meta name="background-color" content="#0B3518" />
     <link rel="manifest" href="/manifest.json" />
 
-    <!-- ── Favicon ──────────────────────────────────────────── -->
+    <!-- Favicons -->
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48x48.png" />
 
-    <!-- ── Apple / iOS PWA ──────────────────────────────────── -->
+    <!-- Apple / iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="D&amp;W Hub" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152x152.png" />
 
-    <!-- iOS Splash Screens -->
+    <!-- iOS Splash Screen -->
     <link rel="apple-touch-startup-image"
           href="/icons/splash-1170x2532.png"
           media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
 
-    <!-- ── Android / Chrome ─────────────────────────────────── -->
+    <!-- Android / Chrome -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="D&amp;W Hub" />
 
-    <!-- ── Microsoft Tiles (Windows PWA) ────────────────────── -->
+    <!-- Windows Tile -->
     <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
     <meta name="msapplication-TileColor" content="#0B3518" />
 
-    <!-- ── Open Graph (if link is ever shared) ──────────────── -->
+    <!-- Open Graph -->
     <meta property="og:type"        content="website" />
     <meta property="og:title"       content="Dust &amp; Wipes Operations Hub" />
-    <meta property="og:description" content="Internal operations management app for Dust &amp; Wipes Limited field teams." />
+    <meta property="og:description" content="Internal operations app for Dust &amp; Wipes Limited." />
     <meta property="og:image"       content="/icons/icon-512x512.png" />
     <meta property="og:url"         content="https://app.dustandwipes.com" />
-
-    <!-- ── Performance hints ────────────────────────────────── -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="dns-prefetch" href="https://YOUR_PROJECT.supabase.co" />
   </head>
 
   <body>
     <noscript>
       <div style="font-family:sans-serif;text-align:center;padding:40px;color:#0B3518;">
         <h2>JavaScript Required</h2>
-        <p>The Dust &amp; Wipes Operations Hub requires JavaScript to run.<br />
-        Please enable JavaScript in your browser settings.</p>
+        <p>Please enable JavaScript to use the Dust &amp; Wipes Operations Hub.</p>
       </div>
     </noscript>
 
-    <!-- React mounts here -->
     <div id="root"></div>
 
-    <!-- ── Service Worker Registration ──────────────────────── -->
+    <!-- Service Worker Registration -->
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
           navigator.serviceWorker
             .register("/sw.js", { scope: "/" })
-            .then(function (registration) {
-              console.log("[App] Service Worker registered:", registration.scope);
-
-              // Notify user when a new version is available
-              registration.addEventListener("updatefound", function () {
-                const newWorker = registration.installing;
-                newWorker.addEventListener("statechange", function () {
-                  if (
-                    newWorker.state === "installed" &&
-                    navigator.serviceWorker.controller
-                  ) {
-                    // Optional: show a "New version available — refresh" banner
-                    console.log("[App] New app version available. Refresh to update.");
-                    if (window.__showUpdateBanner) window.__showUpdateBanner();
+            .then(function (reg) {
+              console.log("[App] SW registered:", reg.scope);
+              reg.addEventListener("updatefound", function () {
+                const nw = reg.installing;
+                nw.addEventListener("statechange", function () {
+                  if (nw.state === "installed" && navigator.serviceWorker.controller) {
+                    console.log("[App] New version available — refresh to update.");
                   }
                 });
               });
             })
-            .catch(function (error) {
-              console.error("[App] Service Worker registration failed:", error);
+            .catch(function (err) {
+              console.error("[App] SW registration failed:", err);
             });
         });
       }
     </script>
 
-    <!-- ── "Add to Home Screen" prompt helper ───────────────── -->
+    <!-- Install prompt capture -->
     <script>
-      // Capture the beforeinstallprompt event so we can trigger it
-      // from inside the React app at a better moment (e.g. after login)
       window.addEventListener("beforeinstallprompt", function (e) {
         e.preventDefault();
         window.__installPrompt = e;
-        console.log("[App] Install prompt captured and ready.");
       });
-
       window.addEventListener("appinstalled", function () {
-        console.log("[App] App installed to home screen.");
         window.__installPrompt = null;
       });
     </script>
