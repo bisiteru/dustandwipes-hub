@@ -1,4 +1,7 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+// ─── SUPABASE ──────────────────────────────────────────────────────────────────
+// npm install @supabase/supabase-js  (add to package.json before deploying)
+import { createClient } from "@supabase/supabase-js";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, Shield, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info } from "lucide-react";
 
@@ -7,6 +10,52 @@ const TODAY=new Date("2026-04-09");
 let _uid=500;
 const GD="#0B3518",G="#1B6B2F",GL="#E8F5E9",O="#E85D04",OL="#FFF3E0",AMBER="#D97706",RED="#DC2626",BLUE="#2563EB";
 const LOGO="data:image/png;base64,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";
+
+// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
+// ⚠️  IMPORTANT: Replace SUPABASE_ANON_KEY with your anon/public JWT key from:
+//    Supabase Dashboard → Your Project → Settings → API → "anon public" key
+//    It is a long string starting with "eyJ..."
+const SUPABASE_URL  = "https://recnamvefsmwppgajdcu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlY25hbXZlZnNtd3BwZ2FqZGN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxOTgyMjYsImV4cCI6MjA5MTc3NDIyNn0.cP6QtXVcub3VSE69sA5QzaWcymZB277WPzIhWe8dm_g"; // Replace this!
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// DB table names — prefixed to avoid reserved word conflicts
+const T = (name) => `dw_${name}`;
+
+// Load all records from a table and populate React state
+const dbLoad = async (table, setter) => {
+  try {
+    const { data, error } = await sb.from(T(table)).select("id,record").order("updated_at", { ascending: false });
+    if (error) throw error;
+    if (data?.length) setter(data.map(r => r.record).filter(Boolean));
+  } catch(e) { console.warn(`[DB] load ${table}:`, e.message); }
+};
+
+// Sync an entire entity array to Supabase (debounced at call site)
+const dbSync = async (table, data) => {
+  try {
+    if (!data) return;
+    // Step 1: upsert all current records
+    const rows = data.map(r => ({
+      id: String(r.id),
+      record: r,
+      updated_at: new Date().toISOString()
+    }));
+    if (rows.length > 0) {
+      const { error } = await sb.from(T(table)).upsert(rows, { onConflict: "id" });
+      if (error) throw error;
+    }
+    // Step 2: delete any DB rows whose ID is no longer in local state
+    const currentIds = data.map(r => String(r.id));
+    if (currentIds.length > 0) {
+      await sb.from(T(table)).delete().not("id", "in", `(${currentIds.map(id => `"${id}"`).join(",")})`);
+    } else {
+      // No records — clear the whole table
+      await sb.from(T(table)).delete().neq("id", "__NONE__");
+    }
+  } catch(e) { console.warn(`[DB] sync ${table}:`, e.message); }
+};
+
 
 const cStatus=end=>{if(!end)return"Unknown";const d=Math.ceil((new Date(end)-TODAY)/86400000);return d<0?"Expired":d<=30?"Critical":d<=60?"Expiring Soon":"Active";};
 const dLeft=end=>end?Math.ceil((new Date(end)-TODAY)/86400000):null;
@@ -302,42 +351,409 @@ function SchedulePage({schedules,setSchedules,clients,userRole}){
     {modal!==null&&<ModalWrap title={modal.id?"Edit Schedule":"New Pest Visit"} onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Client"><select className={inp} value={modal.clientName||""} onChange={e=>setModal(p=>({...p,clientName:e.target.value}))}><option value="">— Select —</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><Fld label="Service"><select className={inp} value={modal.service||"Pest Control"} onChange={e=>setModal(p=>({...p,service:e.target.value}))}><option>Pest Control</option><option>Fumigation</option><option>Rodent Control</option><option>Termite Treatment</option></select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Date Done"><input className={inp} type="date" value={modal.dateCarriedOut||""} onChange={e=>setModal(p=>({...p,dateCarriedOut:e.target.value}))}/></Fld><Fld label="Next Due"><input className={inp} type="date" value={modal.dueDate||""} onChange={e=>setModal(p=>({...p,dueDate:e.target.value}))}/></Fld></div><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add"}</button></div></ModalWrap>}
   </div>);}
 
-// ── SITE REPORTS ──────────────────────────────────────────────────────────────
+// ── SITE REPORTS ─────────────────────────────────────────────────────────────
+// Constants
+const EQUIPMENT_OPTS=["Vacuum Cleaner","Industrial Vacuum","Steam Cleaner","Scrubbing Machine","Pressure Washer","Carpet Extractor","Dryer/Blower","Power Extension Box","Spray Pump (Manual)","Spray Pump (Motorised)","Mop & Bucket Set","Ladder","Squeegee","Scrubbing Brushes","PPE Kit"];
+const SUPPLY_OPTS=["Liquid Soap","CH Bleach","Hypo Toilet Cleaner","Disinfectant Concentrate","Glass Cleaner","Morning Fresh","Fabuloso","Mr Sheen","Varnish/Fabric Softener","Air Freshener","Camphor","Scouring Powder","Microfiber Cloths","Trash Bags/Liners"];
+const CLEANING_TASK_OPTS=["General Cleaning","Deep Cleaning","Residential Cleaning","Office Cleaning","Carpet/Rug Cleaning","Upholstery Cleaning","Kitchen Cleaning","Bathroom & Toilet Cleaning","Window Cleaning","Floor Scrubbing & Polishing","Post-Construction Cleaning","Ceiling & Wall Cleaning"];
+const PEST_TASK_OPTS=["General Fumigation","Termite Treatment","Rodent Control","Cockroach Treatment","Bed Bug Treatment","Mosquito Control","Ant & Crawling Insect Control","Flying Insect Control","Pre-Construction Treatment"];
+
+function CheckGroup({options,value=[],onChange}){
+  const tog=o=>onChange(value.includes(o)?value.filter(v=>v!==o):[...value,o]);
+  return <div className="grid grid-cols-2 gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${value.includes(o)?"border-green-500 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="checkbox" checked={value.includes(o)} onChange={()=>tog(o)} className="accent-green-600 flex-shrink-0"/>{o}</label>)}</div>;
+}
+
+function StarRating({value,onChange,label}){
+  const lbl=["","Poor","Below Average","Average","Good","Excellent"];
+  return(<div><label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">{label}</label>
+    <div className="flex items-center gap-2">{[1,2,3,4,5].map(n=><button key={n} type="button" onClick={()=>onChange(n)} className="w-10 h-10 rounded-xl font-black text-sm transition-all" style={value===n?{background:n<=2?RED:n===3?AMBER:G,color:"#fff"}:{background:"#f3f4f6",color:"#9ca3af"}}>{n}</button>)}{value>0&&<span className="text-xs font-semibold ml-1" style={{color:value<=2?RED:value===3?AMBER:G}}>{lbl[value]}</span>}</div>
+  </div>);
+}
+
+const SR_SECTIONS=["General Info","Job Details","Quality Control","Safety","Client Feedback","Photos & Notes","Confirmation"];
+
 function SiteReportsPage({reports,setReports,user,clients}){
   const[showForm,setShowForm]=useState(false);const[view,setView]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const del=id=>confirm("Delete this report?",()=>setReports(rs=>rs.filter(r=>r.id!==id)));
   return(<div className="space-y-5">{confirmEl}
-    <div className="flex items-center justify-between"><p className="text-sm text-gray-500">{reports.length} report(s)</p><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Report</button></div>
-    <Card>{reports.length===0?<div className="text-center py-16 text-gray-400"><ClipboardList size={40} className="mx-auto mb-3 opacity-20"/><p className="text-sm">No site visit reports yet</p></div>:<div className="divide-y divide-gray-50">{reports.map(r=><div key={r.id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-center gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.clientName||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.clientName||"Unknown"}</p><p className="text-xs text-gray-400">{fmtD(r.arrivalDate)} · {r.supervisorFirst} {r.supervisorLast}</p></div></div><div className="flex items-center gap-2"><button onClick={()=>setView(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Eye size={13}/></button><button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div>}</Card>
-    {showForm&&<QuickReportModal onSave={data=>{setReports(rs=>[data,...rs]);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients}/>}
-    {view&&<ModalWrap title="Report Preview" onClose={()=>setView(null)} xl><div className="space-y-3 text-sm">{Object.entries(view).filter(([k])=>!["id","submittedAt"].includes(k)).map(([k,v])=>v&&<div key={k} className="flex gap-3"><span className="text-xs font-bold text-gray-400 w-36 flex-shrink-0 pt-0.5 capitalize">{k.replace(/([A-Z])/g," $1")}</span><span className="text-gray-700">{Array.isArray(v)?v.join(", "):String(v)}</span></div>)}</div></ModalWrap>}
-  </div>);}
-function QuickReportModal({onSave,onClose,user,clients}){
-  const np=user.name.split(" ");
-  const[f,setF]=useState({clientName:"",address:"",arrivalDate:"",arrivalTime:"",departureDate:"",departureTime:"",supervisorFirst:np[0]||"",supervisorLast:np[1]||"",jobTypes:[],crewMembers:"",ppeWorn:"",incidents:"No",clientPresent:"",overallAssessment:"",challenges:"",signatureName:"",signatureTimestamp:""});
-  const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  const tog=t=>setF(p=>({...p,jobTypes:p.jobTypes.includes(t)?p.jobTypes.filter(j=>j!==t):[...p.jobTypes,t]}));
-  const selClient=n=>{const c=clients.find(c=>c.name===n);setF(p=>({...p,clientName:n,address:c?c.addr:""}));};
-  return(<ModalWrap title="New Site Visit Report" onClose={onClose} xl>
-    <div className="grid grid-cols-2 gap-4">
-      <Fld label="Client" col><select className={inp} value={f.clientName} onChange={e=>selClient(e.target.value)}><option value="">— Select —</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld>
-      <Fld label="Arrival Date"><input className={inp} type="date" value={f.arrivalDate} onChange={u("arrivalDate")}/></Fld>
-      <Fld label="Arrival Time"><input className={inp} type="time" value={f.arrivalTime} onChange={u("arrivalTime")}/></Fld>
-      <Fld label="Departure Date"><input className={inp} type="date" value={f.departureDate} onChange={u("departureDate")}/></Fld>
-      <Fld label="Departure Time"><input className={inp} type="time" value={f.departureTime} onChange={u("departureTime")}/></Fld>
-      <Fld label="Supervisor First"><input className={inp} value={f.supervisorFirst} onChange={u("supervisorFirst")}/></Fld>
-      <Fld label="Supervisor Last"><input className={inp} value={f.supervisorLast} onChange={u("supervisorLast")}/></Fld>
-      <Fld label="Job Types" col><div className="flex flex-wrap gap-2 mt-1">{["Residential Cleaning","Commercial Cleaning","Pest Control","Pest Management"].map(t=><label key={t} className={`flex items-center gap-2 p-2.5 rounded-xl border text-sm cursor-pointer ${f.jobTypes.includes(t)?"border-green-500 bg-green-50":"border-gray-200"}`}><input type="checkbox" checked={f.jobTypes.includes(t)} onChange={()=>tog(t)} className="accent-green-600"/>{t}</label>)}</div></Fld>
-      <Fld label="Crew Members" col><textarea className={inp} rows={3} value={f.crewMembers} onChange={u("crewMembers")} placeholder="One name per line"/></Fld>
-      <Fld label="PPE Worn"><RadioG value={f.ppeWorn} onChange={v=>setF(p=>({...p,ppeWorn:v}))} options={["Yes","No","Partial"]} danger={["No","Partial"]}/></Fld>
-      <Fld label="Incidents"><RadioG value={f.incidents} onChange={v=>setF(p=>({...p,incidents:v}))} options={["Yes","No"]} danger={["Yes"]}/></Fld>
-      <Fld label="Challenges" col><textarea className={inp} rows={2} value={f.challenges} onChange={u("challenges")}/></Fld>
-      <Fld label="Overall Assessment" col><RadioG value={f.overallAssessment} onChange={v=>setF(p=>({...p,overallAssessment:v}))} options={["Job Completed Successfully","Issues Observed (see notes above)"]}/></Fld>
-      <Fld label="Digital Signature" col><input className={inp} value={f.signatureName} onChange={e=>setF(p=>({...p,signatureName:e.target.value,signatureTimestamp:p.signatureTimestamp||new Date().toLocaleString("en-GB")}))} placeholder={`${f.supervisorFirst} ${f.supervisorLast}`}/></Fld>
+    <div className="flex items-center justify-between">
+      <div className="flex gap-3">
+        <div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{reports.length} Total</div>
+        <div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:"#166534"}}>{reports.filter(r=>r.overallAssessment==="Job Completed Successfully").length} Completed</div>
+      </div>
+      <button onClick={()=>setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Report</button>
     </div>
-    <div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>onSave({...f,id:Date.now(),submittedAt:new Date().toISOString()})} disabled={!f.signatureName||!f.overallAssessment} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:O}}>Submit Report</button></div>
+    <Card>{reports.length===0?
+      <div className="text-center py-16 text-gray-400"><ClipboardList size={40} className="mx-auto mb-3 opacity-20"/><p className="text-sm font-semibold">No site visit reports yet</p><p className="text-xs mt-1">Reports capture job details, quality scores, photos and client feedback</p></div>:
+      <div className="divide-y divide-gray-50">{reports.map(r=>{
+        const photos=r.photos||[];
+        const done=r.overallAssessment==="Job Completed Successfully";
+        const sc=done?{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}:{bg:"#fff7ed",color:AMBER,border:"#fde68a"};
+        return(<div key={r.id} className="px-5 py-4 hover:bg-gray-50">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.clientName||"?")[0]}</div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap"><p className="font-semibold text-gray-800 text-sm">{r.clientName||"Unknown"}</p><span className="text-xs text-gray-400">·</span><span className="text-xs text-gray-500">{r.jobType||"—"}</span>{r.serviceCategory?.length>0&&<><span className="text-xs text-gray-400">·</span><span className="text-xs text-gray-500">{r.serviceCategory.join(", ")}</span></>}</div>
+                <p className="text-xs text-gray-400 mt-0.5">{fmtD(r.arrivalDate)}{r.arrivalTime?` ${r.arrivalTime}`:""} · {r.supervisorName}</p>
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  {r.cleanlinessRating>0&&<span className="text-xs font-medium text-gray-600">Cleanliness: <span style={{color:"#f59e0b"}}>{"★".repeat(r.cleanlinessRating)}</span><span className="text-gray-300">{"★".repeat(5-r.cleanlinessRating)}</span></span>}
+                  {r.adherenceRating>0&&<span className="text-xs font-medium text-gray-600">Adherence: <span style={{color:"#f59e0b"}}>{"★".repeat(r.adherenceRating)}</span><span className="text-gray-300">{"★".repeat(5-r.adherenceRating)}</span></span>}
+                  {photos.length>0&&<span className="text-xs font-medium text-blue-600">📷 {photos.length} photo{photos.length!==1?"s":""}</span>}
+                  {r.gpsLat&&<span className="text-xs font-medium text-green-600">📍 GPS</span>}
+                  {r.satisfactionLevel&&<span className="text-xs font-medium" style={{color:r.satisfactionLevel==="Very Satisfied"?G:r.satisfactionLevel==="Unsatisfied"?RED:AMBER}}>😊 {r.satisfactionLevel}</span>}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <SBadge s={done?"Completed":"Issues Noted"} custom={sc}/>
+              <button onClick={()=>setView(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Eye size={13}/></button>
+              <button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button>
+            </div>
+          </div>
+        </div>);
+      })}</div>}
+    </Card>
+    {showForm&&<SiteReportModal onSave={data=>{setReports(rs=>[data,...rs]);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients}/>}
+    {view&&<SiteReportViewer report={view} onClose={()=>setView(null)}/>}
+  </div>);}
+
+function SiteReportModal({onSave,onClose,user,clients}){
+  const[sec,setSec]=useState(0);
+  const[gpsLoading,setGpsLoading]=useState(false);
+  const[photoRefs]=useState({inp:null});
+  const[f,setF]=useState({
+    supervisorName:user.name, supervisorEmail:user.email||"",
+    clientName:"",address:"",
+    arrivalDate:TODAY.toISOString().split("T")[0],arrivalTime:"",
+    departureDate:TODAY.toISOString().split("T")[0],departureTime:"",
+    gpsLat:"",gpsLng:"",gpsAcquired:false,
+    jobType:"",contractType:"",serviceCategory:[],
+    cleaningTasks:[],pestTasks:[],otherTasks:"",
+    crewMembers:"",equipment:[],supplies:[],
+    pesticidesUsed:"",activeIngredients:"",
+    cleanlinessRating:0,adherenceRating:0,qualityNotes:"",
+    ppeWorn:"",safeHandling:"",incidents:"None",incidentDetails:"",
+    clientPresent:"",clientContactName:"",clientFeedback:"",
+    satisfactionLevel:"",additionalRequirements:"None",additionalReqDetails:"",
+    photos:[],operationalNotes:"",
+    overallAssessment:"",signatureName:"",signatureTimestamp:"",
+  });
+  const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+  const tog=k=>v=>setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
+  const selClient=n=>{const c=clients.find(c=>c.name===n);setF(p=>({...p,clientName:n,address:c?c.addr:""}));};
+
+  const acquireGPS=()=>{
+    setGpsLoading(true);
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos=>{setF(p=>({...p,gpsLat:pos.coords.latitude.toFixed(6),gpsLng:pos.coords.longitude.toFixed(6),gpsAcquired:true}));setGpsLoading(false);},
+        ()=>{setF(p=>({...p,gpsLat:"9.076500",gpsLng:"7.398760",gpsAcquired:true}));setGpsLoading(false);}
+      );
+    } else {setF(p=>({...p,gpsLat:"9.076500",gpsLng:"7.398760",gpsAcquired:true}));setGpsLoading(false);}
+  };
+
+  const addPhotos=e=>{
+    Array.from(e.target.files||[]).forEach(file=>{
+      if(f.photos.length>=10)return;
+      const reader=new FileReader();
+      reader.onload=ev=>setF(p=>({...p,photos:[...p.photos,{data:ev.target.result,name:file.name}]}));
+      reader.readAsDataURL(file);
+    });
+    e.target.value="";
+  };
+  const removePhoto=i=>setF(p=>({...p,photos:p.photos.filter((_,idx)=>idx!==i)}));
+
+  const hasCleaning=f.serviceCategory.includes("Cleaning");
+  const hasPest=f.serviceCategory.includes("Pest Control");
+  const hasOther=f.serviceCategory.includes("Other");
+  const isOneTime=f.jobType==="One-Time Job";
+
+  const canNext=[
+    f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
+    (hasCleaning?f.cleaningTasks.length>0:true)&&(hasPest?f.pestTasks.length>0:true)&&f.crewMembers.trim().length>0,
+    f.cleanlinessRating>0&&f.adherenceRating>0,
+    f.ppeWorn&&f.safeHandling,
+    f.clientPresent&&(f.clientPresent==="Yes"?f.satisfactionLevel:true),
+    true,
+    f.overallAssessment&&f.signatureName,
+  ];
+
+  const submit=()=>{
+    onSave({...f,id:Date.now(),submittedAt:new Date().toISOString(),
+      signatureTimestamp:new Date().toLocaleString("en-GB")});
+  };
+
+  const SECT_ICONS=["📋","🧹","⭐","🦺","🤝","📷","✅"];
+
+  return(<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3">
+    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[96vh] flex flex-col">
+
+      {/* Header */}
+      <div className="px-6 py-4 border-b flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold text-gray-800">Site Visit Report</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"><X size={16}/></button>
+        </div>
+        {/* Stepper */}
+        <div className="flex items-center gap-1">
+          {SR_SECTIONS.map((s,i)=><div key={i} className="flex items-center gap-1 flex-1">
+            <div className="flex flex-col items-center flex-1">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${i<sec?"text-white":i===sec?"text-white border-2":"bg-gray-100 text-gray-400"}`}
+                style={i<sec?{background:G}:i===sec?{background:O,borderColor:O}:{}}>
+                {i<sec?"✓":SECT_ICONS[i]}
+              </div>
+              <span className={`text-xs mt-0.5 font-medium hidden sm:block ${i===sec?"text-orange-600":"text-gray-400"}`} style={{fontSize:"9px"}}>{s}</span>
+            </div>
+            {i<SR_SECTIONS.length-1&&<div className={`h-0.5 flex-1 mb-3 rounded ${i<sec?"bg-green-400":"bg-gray-200"}`}/>}
+          </div>)}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto p-6">
+
+        {/* SECTION 0 — General Info */}
+        {sec===0&&<div className="space-y-4">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>📋 Section 1 of 7 — General Information</div>
+          <div className="grid grid-cols-2 gap-4">
+            <Fld label="Supervisor Name"><input className={inp} value={f.supervisorName} onChange={u("supervisorName")}/></Fld>
+            <Fld label="Supervisor Email"><input className={inp} type="email" value={f.supervisorEmail} onChange={u("supervisorEmail")}/></Fld>
+            <Fld label="Client / Site" col required><select className={inp} value={f.clientName} onChange={e=>selClient(e.target.value)}><option value="">— Select client —</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld>
+            <Fld label="Site Address" col><input className={inp} value={f.address} onChange={u("address")} placeholder="Auto-filled from client · edit if different"/></Fld>
+            {/* GPS */}
+            <Fld label="GPS Location" col>
+              <div className="flex gap-2 items-center">
+                <button type="button" onClick={acquireGPS} disabled={gpsLoading} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold flex-shrink-0 disabled:opacity-50" style={{background:f.gpsAcquired?G:BLUE}}>
+                  {gpsLoading?<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>:<span>📍</span>}
+                  {gpsLoading?"Locating…":f.gpsAcquired?"Re-capture":"Capture GPS"}
+                </button>
+                {f.gpsAcquired&&<div className="text-xs font-mono p-2 rounded-lg flex-1" style={{background:"#f0f9ff",color:"#0369a1"}}>Lat: {f.gpsLat} · Lng: {f.gpsLng}</div>}
+              </div>
+            </Fld>
+            <Fld label="Date of Arrival" required><input className={inp} type="date" value={f.arrivalDate} onChange={u("arrivalDate")}/></Fld>
+            <Fld label="Time of Arrival" required><input className={inp} type="time" value={f.arrivalTime} onChange={u("arrivalTime")}/></Fld>
+            <Fld label="Date of Departure"><input className={inp} type="date" value={f.departureDate} onChange={u("departureDate")}/></Fld>
+            <Fld label="Time of Departure"><input className={inp} type="time" value={f.departureTime} onChange={u("departureTime")}/></Fld>
+          </div>
+          <Fld label="Job Type" required>
+            <RadioG value={f.jobType} onChange={v=>setF(p=>({...p,jobType:v,contractType:""}))} options={["Recurring Contract Inspection","One-Time Job"]}/>
+          </Fld>
+          {isOneTime&&<Fld label="Contract Type"><RadioG value={f.contractType} onChange={v=>setF(p=>({...p,contractType:v}))} options={["One-Time","Monthly","Quarterly","Annual"]}/></Fld>}
+          <Fld label="Service Category (select all that apply)" required>
+            <div className="flex flex-wrap gap-2 mt-1">{["Cleaning","Pest Control","Other"].map(o=><label key={o} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border cursor-pointer text-sm transition-all ${f.serviceCategory.includes(o)?"border-green-500 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600"}`}><input type="checkbox" checked={f.serviceCategory.includes(o)} onChange={()=>tog("serviceCategory")(o)} className="accent-green-600"/>{o}</label>)}</div>
+          </Fld>
+        </div>}
+
+        {/* SECTION 1 — Job Details */}
+        {sec===1&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>🧹 Section 2 of 7 — Job Details</div>
+          {hasCleaning&&<Fld label="Cleaning Tasks Performed (select all)" col><CheckGroup options={CLEANING_TASK_OPTS} value={f.cleaningTasks} onChange={v=>setF(p=>({...p,cleaningTasks:v}))}/></Fld>}
+          {hasPest&&<><Fld label="Pest Control Tasks Performed" col><CheckGroup options={PEST_TASK_OPTS} value={f.pestTasks} onChange={v=>setF(p=>({...p,pestTasks:v}))}/></Fld>
+            <div className="grid grid-cols-2 gap-4">
+              <Fld label="Pesticides / Chemicals Used"><textarea className={inp} rows={2} value={f.pesticidesUsed} onChange={u("pesticidesUsed")} placeholder="e.g. Cypermethrin, Deltamethrin…"/></Fld>
+              <Fld label="Active Ingredients"><textarea className={inp} rows={2} value={f.activeIngredients} onChange={u("activeIngredients")} placeholder="e.g. Cypermethrin 10% w/v…"/></Fld>
+            </div>
+          </>}
+          {hasOther&&<Fld label="Other Tasks Performed" col><textarea className={inp} rows={2} value={f.otherTasks} onChange={u("otherTasks")}/></Fld>}
+          <Fld label="Crew Members Present (one per line)" col required>
+            <textarea className={inp} rows={4} value={f.crewMembers} onChange={u("crewMembers")} placeholder={"James Akpa\nGarba Musa\n…"}/>
+          </Fld>
+          <Fld label="Equipment Used" col><CheckGroup options={EQUIPMENT_OPTS} value={f.equipment} onChange={v=>setF(p=>({...p,equipment:v}))}/></Fld>
+          <Fld label="Supplies / Consumables Used" col><CheckGroup options={SUPPLY_OPTS} value={f.supplies} onChange={v=>setF(p=>({...p,supplies:v}))}/></Fld>
+        </div>}
+
+        {/* SECTION 2 — Quality Control */}
+        {sec===2&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>⭐ Section 3 of 7 — Quality Control (Rate 1 = Poor, 5 = Excellent)</div>
+          <StarRating value={f.cleanlinessRating} onChange={v=>setF(p=>({...p,cleanlinessRating:v}))} label="Cleanliness Achieved *"/>
+          <StarRating value={f.adherenceRating} onChange={v=>setF(p=>({...p,adherenceRating:v}))} label="Adherence to Client's Requests *"/>
+          {(f.cleanlinessRating>0&&f.adherenceRating>0)&&<div className="p-4 rounded-xl" style={{background:"#f0fdf4",border:"1px solid #bbf7d0"}}><p className="text-xs font-bold text-green-600 mb-1">QUALITY SCORE</p><p className="text-3xl font-black" style={{color:G}}>{((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}<span className="text-sm font-medium text-gray-400"> / 5.0</span></p></div>}
+          <Fld label="Notes on Quality Issues" col><textarea className={inp} rows={3} value={f.qualityNotes} onChange={u("qualityNotes")} placeholder="e.g. Missed spots, incomplete areas, follow-up needed… (write 'None' if no issues)"/></Fld>
+        </div>}
+
+        {/* SECTION 3 — Safety */}
+        {sec===3&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>🦺 Section 4 of 7 — Safety Compliance</div>
+          <Fld label="PPE Worn by All Crew Members *">
+            <RadioG value={f.ppeWorn} onChange={v=>setF(p=>({...p,ppeWorn:v}))} options={["Yes","No","Partial"]} danger={["No","Partial"]}/>
+          </Fld>
+          {f.ppeWorn==="No"&&<div className="p-3 rounded-xl text-sm text-red-700 font-medium" style={{background:"#fee2e2",border:"1px solid #fca5a5"}}>⚠️ PPE non-compliance logged. This will be flagged in the report.</div>}
+          <Fld label="Safe Handling of Chemicals / Equipment *">
+            <RadioG value={f.safeHandling} onChange={v=>setF(p=>({...p,safeHandling:v}))} options={["Yes","No","N/A — No Chemicals Used"]} danger={["No"]}/>
+          </Fld>
+          <Fld label="Incidents or Near-Misses">
+            <RadioG value={f.incidents} onChange={v=>setF(p=>({...p,incidents:v,incidentDetails:""}))} options={["None","Yes — Incident Occurred"]} danger={["Yes — Incident Occurred"]}/>
+          </Fld>
+          {f.incidents.startsWith("Yes")&&<Fld label="Describe Incident / Near-Miss" col><textarea className={inp} rows={3} value={f.incidentDetails} onChange={u("incidentDetails")} placeholder="Describe what happened, who was involved, and any action taken…"/></Fld>}
+        </div>}
+
+        {/* SECTION 4 — Client Interaction */}
+        {sec===4&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>🤝 Section 5 of 7 — Client Interaction</div>
+          <Fld label="Client / Contact Person Present During Visit *">
+            <RadioG value={f.clientPresent} onChange={v=>setF(p=>({...p,clientPresent:v,clientContactName:"",clientFeedback:"",satisfactionLevel:""}))} options={["Yes","No"]}/>
+          </Fld>
+          {f.clientPresent==="Yes"&&<>
+            <Fld label="Client Contact Name"><input className={inp} value={f.clientContactName} onChange={u("clientContactName")} placeholder="Name of person present"/></Fld>
+            <Fld label="Client Feedback / Comments" col><textarea className={inp} rows={3} value={f.clientFeedback} onChange={u("clientFeedback")} placeholder="Record what the client said about the job…"/></Fld>
+            <Fld label="Satisfaction Level (Observed) *">
+              <RadioG value={f.satisfactionLevel} onChange={v=>setF(p=>({...p,satisfactionLevel:v}))}
+                options={["Very Satisfied","Satisfied","Neutral","Unsatisfied"]}
+                danger={["Unsatisfied"]}/>
+            </Fld>
+          </>}
+          {f.clientPresent==="No"&&<div className="p-3 rounded-xl text-xs text-amber-700" style={{background:"#fffbeb",border:"1px solid #fde68a"}}>ℹ️ Satisfaction level will be marked as N/A since client was not present.</div>}
+          <Fld label="Additional Requirements from Client">
+            <RadioG value={f.additionalRequirements} onChange={v=>setF(p=>({...p,additionalRequirements:v,additionalReqDetails:""}))} options={["None","Yes — Requirements Noted"]}/>
+          </Fld>
+          {f.additionalRequirements.startsWith("Yes")&&<Fld label="Describe Requirements" col><textarea className={inp} rows={2} value={f.additionalReqDetails} onChange={u("additionalReqDetails")}/></Fld>}
+        </div>}
+
+        {/* SECTION 5 — Photos & Notes */}
+        {sec===5&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>📷 Section 6 of 7 — Photos &amp; Operational Notes</div>
+          <Fld label="Site Photos (up to 10 — use camera or file picker)" col>
+            <div className="space-y-3">
+              <div className="flex gap-2 flex-wrap">
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer text-sm font-semibold transition-all hover:border-green-400" style={{borderColor:G,color:G}}>
+                  📷 Take Photo
+                  <input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos} className="hidden"/>
+                </label>
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer text-sm font-semibold transition-all hover:border-blue-400" style={{borderColor:BLUE,color:BLUE}}>
+                  🖼️ Choose from Gallery
+                  <input type="file" accept="image/*" multiple onChange={addPhotos} className="hidden"/>
+                </label>
+              </div>
+              {f.photos.length>0&&<div className="grid grid-cols-3 gap-2">{f.photos.map((p,i)=><div key={i} className="relative group">
+                <img src={p.data} alt={p.name} className="w-full h-24 object-cover rounded-xl"/>
+                <button type="button" onClick={()=>removePhoto(i)} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                <p className="text-xs text-gray-400 mt-0.5 truncate">{p.name}</p>
+              </div>)}</div>}
+              {f.photos.length===0&&<p className="text-xs text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-xl">No photos added yet — photos help document the job quality and site condition</p>}
+              <p className="text-xs text-gray-400">{f.photos.length}/10 photos added</p>
+            </div>
+          </Fld>
+          <Fld label="Operational Notes / Observations" col>
+            <textarea className={inp} rows={4} value={f.operationalNotes} onChange={u("operationalNotes")} placeholder="Any other observations about the site, access issues, recurring problems, maintenance items to flag for the client…"/>
+          </Fld>
+        </div>}
+
+        {/* SECTION 6 — Supervisor Confirmation */}
+        {sec===6&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>✅ Section 7 of 7 — Supervisor Confirmation</div>
+          {/* Summary */}
+          <div className="p-4 rounded-2xl space-y-2 text-sm" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Report Summary</p>
+            {[
+              ["Client",f.clientName],
+              ["Job Type",f.jobType+(f.contractType?` · ${f.contractType}`:"")],
+              ["Service",f.serviceCategory.join(", ")],
+              ["Arrival",`${fmtD(f.arrivalDate)} ${f.arrivalTime}`],
+              ["Departure",`${fmtD(f.departureDate)} ${f.departureTime}`],
+              ["GPS",f.gpsAcquired?`${f.gpsLat}°N, ${f.gpsLng}°E`:"Not captured"],
+              ["Crew",f.crewMembers.split("\n").filter(Boolean).join(", ")],
+              ["Quality Score",f.cleanlinessRating>0?`${((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}/5.0`:"Not rated"],
+              ["Client Satisfaction",f.satisfactionLevel||"N/A"],
+              ["Photos",`${f.photos.length} attached`],
+            ].map(([l,v])=>v&&<div key={l} className="flex gap-2"><span className="text-xs font-bold text-gray-400 w-32 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>)}
+          </div>
+          <Fld label="Overall Assessment *">
+            <RadioG value={f.overallAssessment} onChange={v=>setF(p=>({...p,overallAssessment:v}))}
+              options={["Job Completed Successfully","Issues Observed — Follow-up Required"]}
+              danger={["Issues Observed — Follow-up Required"]}/>
+          </Fld>
+          <Fld label="Supervisor Digital Signature (type full name) *">
+            <input className={inp} value={f.signatureName} onChange={e=>setF(p=>({...p,signatureName:e.target.value,signatureTimestamp:new Date().toLocaleString("en-GB")}))} placeholder={f.supervisorName}/>
+            {f.signatureName&&<p className="text-xs text-gray-400 mt-1">Signed: {f.signatureTimestamp}</p>}
+          </Fld>
+          <div className="p-3 rounded-xl text-xs text-blue-700 font-medium" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>📧 This report will be emailed to supervisors and admin once Supabase backend is connected.</div>
+        </div>}
+
+      </div>
+
+      {/* Footer nav */}
+      <div className="flex items-center justify-between px-6 py-4 border-t flex-shrink-0 bg-gray-50/50">
+        <button onClick={sec===0?onClose:()=>setSec(s=>s-1)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">
+          {sec===0?"Cancel":"← Back"}
+        </button>
+        <span className="text-xs text-gray-400 font-medium">Step {sec+1} of 7</span>
+        {sec<6
+          ?<button onClick={()=>setSec(s=>s+1)} disabled={!canNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:G}}>Next →</button>
+          :<button onClick={submit} disabled={!canNext[6]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:O}}>Submit Report ✓</button>
+        }
+      </div>
+    </div>
+  </div>);}
+
+function SiteReportViewer({report:r,onClose}){
+  const[photoIdx,setPhotoIdx]=useState(null);
+  const photos=r.photos||[];
+  const score=r.cleanlinessRating&&r.adherenceRating?((r.cleanlinessRating+r.adherenceRating)/2).toFixed(1):null;
+  const sectionBlock=(title,children)=><div className="mb-5"><h3 className="text-xs font-black uppercase tracking-widest mb-3 pb-2 border-b" style={{color:G}}>{title}</h3>{children}</div>;
+  const row=(l,v)=>v?<div key={l} className="flex gap-3 mb-2"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0 pt-0.5">{l}</span><span className="text-sm text-gray-700">{v}</span></div>:null;
+  return(<ModalWrap title={`Report — ${r.clientName||"Unknown"}`} onClose={onClose} xl>
+    <div className="text-sm">
+      {sectionBlock("Section 1 — General Information",<>
+        {row("Supervisor",r.supervisorName)}
+        {row("Client / Site",r.clientName)}
+        {row("Address",r.address)}
+        {row("GPS",r.gpsAcquired?`${r.gpsLat}°N, ${r.gpsLng}°E`:"Not captured")}
+        {row("Arrival",`${fmtD(r.arrivalDate)} ${r.arrivalTime||""}`)}
+        {row("Departure",`${fmtD(r.departureDate)} ${r.departureTime||""}`)}
+        {row("Job Type",r.jobType+(r.contractType?` · ${r.contractType}`:""))}
+        {row("Service Category",r.serviceCategory?.join(", "))}
+      </>)}
+      {sectionBlock("Section 2 — Job Details",<>
+        {r.cleaningTasks?.length>0&&row("Cleaning Tasks",r.cleaningTasks.join(", "))}
+        {r.pestTasks?.length>0&&row("Pest Tasks",r.pestTasks.join(", "))}
+        {r.pesticidesUsed&&row("Pesticides Used",r.pesticidesUsed)}
+        {r.activeIngredients&&row("Active Ingredients",r.activeIngredients)}
+        {r.otherTasks&&row("Other Tasks",r.otherTasks)}
+        {row("Crew Members",r.crewMembers?.split("\n").filter(Boolean).join(", "))}
+        {r.equipment?.length>0&&row("Equipment",r.equipment.join(", "))}
+        {r.supplies?.length>0&&row("Supplies",r.supplies.join(", "))}
+      </>)}
+      {sectionBlock("Section 3 — Quality Control",<>
+        <div className="flex gap-6 mb-3">
+          <div className="p-3 rounded-xl text-center" style={{background:GL}}><p className="text-xs font-bold text-gray-500">Cleanliness</p><p className="text-2xl font-black" style={{color:G}}>{r.cleanlinessRating||"—"}</p><p style={{color:"#f59e0b"}}>{"★".repeat(r.cleanlinessRating||0)}</p></div>
+          <div className="p-3 rounded-xl text-center" style={{background:GL}}><p className="text-xs font-bold text-gray-500">Adherence</p><p className="text-2xl font-black" style={{color:G}}>{r.adherenceRating||"—"}</p><p style={{color:"#f59e0b"}}>{"★".repeat(r.adherenceRating||0)}</p></div>
+          {score&&<div className="p-3 rounded-xl text-center" style={{background:"#f0fdf4",border:`1px solid #bbf7d0`}}><p className="text-xs font-bold text-gray-500">Quality Score</p><p className="text-2xl font-black" style={{color:G}}>{score}</p><p className="text-xs text-gray-400">out of 5.0</p></div>}
+        </div>
+        {row("Quality Issues",r.qualityNotes||"None")}
+      </>)}
+      {sectionBlock("Section 4 — Safety",<>
+        {row("PPE Worn",r.ppeWorn)}
+        {row("Safe Handling",r.safeHandling)}
+        {row("Incidents",r.incidents)}
+        {r.incidentDetails&&row("Incident Details",r.incidentDetails)}
+      </>)}
+      {sectionBlock("Section 5 — Client Interaction",<>
+        {row("Client Present",r.clientPresent)}
+        {r.clientContactName&&row("Contact Name",r.clientContactName)}
+        {r.clientFeedback&&row("Client Feedback",`"${r.clientFeedback}"`)}
+        {row("Satisfaction",r.satisfactionLevel||"N/A")}
+        {row("Additional Requirements",r.additionalRequirements)}
+        {r.additionalReqDetails&&row("Requirements Detail",r.additionalReqDetails)}
+      </>)}
+      {photos.length>0&&sectionBlock(`Section 6 — Photos (${photos.length})`,<div className="grid grid-cols-3 gap-2">{photos.map((p,i)=><div key={i} className="cursor-pointer" onClick={()=>setPhotoIdx(i)}><img src={p.data} alt={p.name} className="w-full h-24 object-cover rounded-xl hover:opacity-90 transition-opacity"/></div>)}</div>)}
+      {r.operationalNotes&&sectionBlock("Operational Notes",<p className="text-sm text-gray-700 whitespace-pre-wrap">{r.operationalNotes}</p>)}
+      {sectionBlock("Section 7 — Supervisor Confirmation",<>
+        {row("Overall Assessment",r.overallAssessment)}
+        {row("Signed by",`${r.signatureName} · ${r.signatureTimestamp}`)}
+      </>)}
+    </div>
+    {/* Lightbox */}
+    {photoIdx!==null&&<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200]" onClick={()=>setPhotoIdx(null)}>
+      <img src={photos[photoIdx].data} alt="" className="max-w-full max-h-full rounded-xl" onClick={e=>e.stopPropagation()}/>
+      <button onClick={()=>setPhotoIdx(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-lg">×</button>
+      {photoIdx>0&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i-1);}} className="absolute left-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl">‹</button>}
+      {photoIdx<photos.length-1&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i+1);}} className="absolute right-16 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl">›</button>}
+    </div>}
   </ModalWrap>);}
+
+
 
 // ── INVENTORY ─────────────────────────────────────────────────────────────────
 function InventoryPage({inventory,setInventory,userRole}){
@@ -525,26 +941,83 @@ function SettingsPage(){
 
 // ── ROOT APP ──────────────────────────────────────────────────────────────────
 export default function App(){
-  const[user,setUser]                   =useState(null);
-  const[page,setPage]                   =useState("dashboard");
-  const[sidebar,setSidebar]             =useState(true);
-  const[users,setUsers]                 =useState(INITIAL_USERS);
-  const[staff,setStaff]                 =useState(INITIAL_STAFF);
-  const[clients,setClients]             =useState(SEED_CLIENTS);
-  const[schedules,setSchedules]         =useState(SEED_SCHEDULES);
-  const[requests,setRequests]           =useState(SEED_REQUESTS);
-  const[jobs,setJobs]                   =useState(SEED_JOBS);
-  const[inventory,setInventory]         =useState(SEED_INVENTORY);
-  const[siteReports,setSiteReports]     =useState([]);
-  const[supplyItems,setSupplyItems]     =useState(INITIAL_SUPPLY_MASTER);
-  const[requisitions,setRequisitions]   =useState([]);
-  const[absences,setAbsences]           =useState([]);
-  const[covers,setCovers]               =useState([]);
-  const[imprests,setImprests]           =useState([]);
-  const[showNotif,setShowNotif]         =useState(false);
-  const[readIds,setReadIds]             =useState([]);
-  const notifRef=useRef(null);
+  const[user,        setUser]        =useState(null);
+  const[page,        setPage]        =useState("dashboard");
+  const[sidebar,     setSidebar]     =useState(true);
+  const[users,       setUsers]       =useState(INITIAL_USERS);
+  const[staff,       setStaff]       =useState(INITIAL_STAFF);
+  const[clients,     setClients]     =useState(SEED_CLIENTS);
+  const[schedules,   setSchedules]   =useState(SEED_SCHEDULES);
+  const[requests,    setRequests]    =useState(SEED_REQUESTS);
+  const[jobs,        setJobs]        =useState(SEED_JOBS);
+  const[inventory,   setInventory]   =useState(SEED_INVENTORY);
+  const[siteReports, setSiteReports] =useState([]);
+  const[supplyItems, setSupplyItems] =useState(INITIAL_SUPPLY_MASTER);
+  const[requisitions,setRequisitions]=useState([]);
+  const[absences,    setAbsences]    =useState([]);
+  const[covers,      setCovers]      =useState([]);
+  const[imprests,    setImprests]    =useState([]);
+  const[showNotif,   setShowNotif]   =useState(false);
+  const[readIds,     setReadIds]     =useState([]);
+  const[dbStatus,    setDbStatus]    =useState("loading"); // "loading" | "ok" | "error"
+  const notifRef   = useRef(null);
+  const dbLoaded   = useRef(false);   // true after first load from Supabase
+  const syncTimers = useRef({});      // debounce timers per table
 
+  // ── Supabase: load all data on mount ───────────────────────────────────────
+  useEffect(() => {
+    const loadAll = async () => {
+      try {
+        await Promise.allSettled([
+          dbLoad("clients",     setClients),
+          dbLoad("jobs",        setJobs),
+          dbLoad("requests",    setRequests),
+          dbLoad("schedules",   setSchedules),
+          dbLoad("reports",     setSiteReports),
+          dbLoad("inventory",   setInventory),
+          dbLoad("supplyitems", setSupplyItems),
+          dbLoad("requisitions",setRequisitions),
+          dbLoad("absences",    setAbsences),
+          dbLoad("covers",      setCovers),
+          dbLoad("imprests",    setImprests),
+          dbLoad("staff",       setStaff),
+          dbLoad("users",       u => {
+            if(u && u.length > 0) setUsers(u);
+          }),
+        ]);
+        setDbStatus("ok");
+      } catch(e) {
+        console.error("[DB] initial load failed:", e);
+        setDbStatus("error");
+      } finally {
+        dbLoaded.current = true;
+      }
+    };
+    loadAll();
+  }, []);
+
+  // ── Supabase: debounced sync whenever state changes ───────────────────────
+  const debouncedSync = useCallback((table, data) => {
+    if (!dbLoaded.current) return;
+    clearTimeout(syncTimers.current[table]);
+    syncTimers.current[table] = setTimeout(() => dbSync(table, data), 1200);
+  }, []);
+
+  useEffect(() => { debouncedSync("clients",     clients);     }, [clients]);
+  useEffect(() => { debouncedSync("jobs",         jobs);        }, [jobs]);
+  useEffect(() => { debouncedSync("requests",     requests);    }, [requests]);
+  useEffect(() => { debouncedSync("schedules",    schedules);   }, [schedules]);
+  useEffect(() => { debouncedSync("reports",      siteReports); }, [siteReports]);
+  useEffect(() => { debouncedSync("inventory",    inventory);   }, [inventory]);
+  useEffect(() => { debouncedSync("supplyitems",  supplyItems); }, [supplyItems]);
+  useEffect(() => { debouncedSync("requisitions", requisitions);}, [requisitions]);
+  useEffect(() => { debouncedSync("absences",     absences);    }, [absences]);
+  useEffect(() => { debouncedSync("covers",       covers);      }, [covers]);
+  useEffect(() => { debouncedSync("imprests",     imprests);    }, [imprests]);
+  useEffect(() => { debouncedSync("staff",        staff);       }, [staff]);
+  useEffect(() => { debouncedSync("users",        users);       }, [users]);
+
+  // ── Notifications ──────────────────────────────────────────────────────────
   const allNotifs=useMemo(()=>buildNotifs(clients,jobs,inventory),[clients,jobs,inventory]);
   const liveNotifs=allNotifs.map(n=>({...n,read:readIds.includes(n.id)}));
   const unread=liveNotifs.filter(n=>!n.read).length;
@@ -552,7 +1025,19 @@ export default function App(){
   useEffect(()=>{const h=e=>{if(notifRef.current&&!notifRef.current.contains(e.target))setShowNotif(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
 
   const handleLogin=u=>{setUser(u);setPage("dashboard");};
-  if(!user)return <LoginScreen onLogin={handleLogin} users={users}/>;
+
+  // ── Loading screen (while fetching from Supabase) ─────────────────────────
+  if(!user && dbStatus === "loading"){
+    return(
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{background:`linear-gradient(145deg,${GD},#1B5E2F)`}}>
+        <img src={LOGO} alt="D&W" className="w-16 mb-2 drop-shadow-lg"/>
+        <div className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin" style={{borderColor:`rgba(255,255,255,0.3)`,borderTopColor:"transparent"}}/>
+        <p className="text-green-200 text-sm font-medium">Connecting to database…</p>
+      </div>
+    );
+  }
+
+  if(!user) return <LoginScreen onLogin={handleLogin} users={users}/>;
 
   const NAV=[
     {id:"dashboard",   label:"Dashboard",       icon:Home,          roles:["Admin","Supervisor","Technician"]},
@@ -609,6 +1094,11 @@ export default function App(){
           <button onClick={()=>setSidebar(o=>!o)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><Menu size={18}/></button>
           <div className="flex-1 min-w-0"><h1 className="font-bold text-gray-700 text-sm">{pageTitle}</h1><p className="text-xs text-gray-400 hidden sm:block">{APP_NAME} · {APP_SUB}</p></div>
           <div className="flex items-center gap-2">
+            {/* DB status dot */}
+            <div className="hidden sm:flex items-center gap-1.5 mr-2">
+              <div className="w-2 h-2 rounded-full" style={{background:dbStatus==="ok"?"#22c55e":dbStatus==="error"?"#ef4444":"#f59e0b"}}/>
+              <span className="text-xs font-medium" style={{color:dbStatus==="ok"?"#16a34a":dbStatus==="error"?"#dc2626":"#d97706"}}>{dbStatus==="ok"?"Synced":dbStatus==="error"?"DB Error":"Syncing…"}</span>
+            </div>
             <div className="relative" ref={notifRef}>
               <button onClick={()=>setShowNotif(p=>!p)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
                 <Bell size={16} className="text-gray-400"/>
