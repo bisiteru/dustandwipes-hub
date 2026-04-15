@@ -422,7 +422,6 @@ function SiteReportsPage({reports,setReports,user,clients}){
 function SiteReportModal({onSave,onClose,user,clients}){
   const[sec,setSec]=useState(0);
   const[gpsLoading,setGpsLoading]=useState(false);
-  const[photoRefs]=useState({inp:null});
   const[f,setF]=useState({
     supervisorName:user.name, supervisorEmail:user.email||"",
     clientName:"",address:"",
@@ -1003,19 +1002,19 @@ export default function App(){
     syncTimers.current[table] = setTimeout(() => dbSync(table, data), 1200);
   }, []);
 
-  useEffect(() => { debouncedSync("clients",     clients);     }, [clients]);
-  useEffect(() => { debouncedSync("jobs",         jobs);        }, [jobs]);
-  useEffect(() => { debouncedSync("requests",     requests);    }, [requests]);
-  useEffect(() => { debouncedSync("schedules",    schedules);   }, [schedules]);
-  useEffect(() => { debouncedSync("reports",      siteReports); }, [siteReports]);
-  useEffect(() => { debouncedSync("inventory",    inventory);   }, [inventory]);
-  useEffect(() => { debouncedSync("supplyitems",  supplyItems); }, [supplyItems]);
-  useEffect(() => { debouncedSync("requisitions", requisitions);}, [requisitions]);
-  useEffect(() => { debouncedSync("absences",     absences);    }, [absences]);
-  useEffect(() => { debouncedSync("covers",       covers);      }, [covers]);
-  useEffect(() => { debouncedSync("imprests",     imprests);    }, [imprests]);
-  useEffect(() => { debouncedSync("staff",        staff);       }, [staff]);
-  useEffect(() => { debouncedSync("users",        users);       }, [users]);
+  useEffect(() => { debouncedSync("clients",     clients);     }, [clients,     debouncedSync]);
+  useEffect(() => { debouncedSync("jobs",         jobs);        }, [jobs,        debouncedSync]);
+  useEffect(() => { debouncedSync("requests",     requests);    }, [requests,    debouncedSync]);
+  useEffect(() => { debouncedSync("schedules",    schedules);   }, [schedules,   debouncedSync]);
+  useEffect(() => { debouncedSync("reports",      siteReports); }, [siteReports, debouncedSync]);
+  useEffect(() => { debouncedSync("inventory",    inventory);   }, [inventory,   debouncedSync]);
+  useEffect(() => { debouncedSync("supplyitems",  supplyItems); }, [supplyItems, debouncedSync]);
+  useEffect(() => { debouncedSync("requisitions", requisitions);}, [requisitions,debouncedSync]);
+  useEffect(() => { debouncedSync("absences",     absences);    }, [absences,    debouncedSync]);
+  useEffect(() => { debouncedSync("covers",       covers);      }, [covers,      debouncedSync]);
+  useEffect(() => { debouncedSync("imprests",     imprests);    }, [imprests,    debouncedSync]);
+  useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
+  useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
 
   // ── Notifications ──────────────────────────────────────────────────────────
   const allNotifs=useMemo(()=>buildNotifs(clients,jobs,inventory),[clients,jobs,inventory]);
