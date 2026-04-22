@@ -7,7 +7,7 @@ const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const TODAY=new Date(); // always uses current date
 let _uid=500;
 const GD="#0B3518",G="#1B6B2F",GL="#E8F5E9",O="#E85D04",OL="#FFF3E0",AMBER="#D97706",RED="#DC2626",BLUE="#2563EB";
-const LOGO="/icons/logo.png"; // logo file must be in public/icons/logo.png
+const LOGO=process.env.PUBLIC_URL+"/icons/logo.png"; // place logo.png in public/icons/
 
 // --- SUPABASE CLIENT ----------------------------------------------------------
 //   IMPORTANT: Replace SUPABASE_ANON_KEY with your anon/public JWT key from:
@@ -19,6 +19,76 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // DB table names -- prefixed to avoid reserved word conflicts
 const T = (name) => `dw_${name}`;
+
+// Load all contacts from dw_contacts table
+const loadContacts = async (setter) => {
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/dw_contacts?select=id,name,phone,email,address&order=name.asc&limit=1000`;
+    const r = await fetch(url, {
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (Array.isArray(data)) {
+      // Make it available globally for ContactSearchSelect
+      window.__DW_CONTACTS__ = data;
+      if (setter) setter(data);
+    }
+  } catch(e) { console.warn('[DB] load contacts:', e.message); }
+};
+
+// Load recent activity log entries
+const loadActivityLog = async (setter) => {
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/dw_activity_log?select=*&order=created_at.desc&limit=200`;
+    const r = await fetch(url, {
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+      }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (Array.isArray(data) && setter) setter(data);
+  } catch(e) { console.warn("[DB] load activity log:", e.message); }
+};
+
+// Save a new contact to dw_contacts (called on requisition approval)
+const saveContact = async (contact) => {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/dw_contacts`, {
+      method: 'POST',
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({
+        name: contact.name,
+        phone: contact.phone || '',
+        email: contact.email || '',
+        address: contact.address || '',
+        source: 'auto_requisition'
+      })
+    });
+  } catch(e) { console.warn('[DB] save contact:', e.message); }
+};
+
+// Log an activity to dw_activity_log (fire-and-forget, never blocks UI)
+const logActivity = async ({userName="",userRole="",action,module,recordId="",description=""}) => {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/dw_activity_log`,{
+      method:"POST",
+      headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+      body:JSON.stringify({user_name:userName,user_role:userRole,action,module,record_id:recordId,description,created_at:new Date().toISOString()})
+    });
+  } catch(e){console.warn("[DB] activity log:",e.message);}
+};
+
 
 // Load all records from a table and populate React state
 const dbLoad = async (table, setter) => {
@@ -151,657 +221,8 @@ const INITIAL_STAFF=[
   {id:"st10",name:"Jennifer Ogah",   role:"Cleaner",category:"Cleaning Staff",site:"Ms. Angela",     dob:"1992-09-12",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
 ];
 
-const CONTACTS_DB=[
-  {id:"ct1",name:"Mrs. Olufunke Femi Ojo",phone:"08025835383",email:"",address:"Plot 60, 52 Road, Off Tai Solarin Ave., Abuja"},
-  {id:"ct2",name:"Ms. Hadiza Umar",phone:"08036640955",email:"",address:"No. 3 Sani S Ameh Close, Abuja, FCT"},
-  {id:"ct3",name:"Abdullahi Babandede",phone:"",email:"",address:""},
-  {id:"ct4",name:"Aerial Project Analytics Africa.",phone:"",email:"",address:""},
-  {id:"ct5",name:"AGENCE FRAN AISE DE D VELOPPEMENT",phone:"07063773988",email:"djorsur@afd.fr",address:""},
-  {id:"ct6",name:"Ahmed 0. Ahmed",phone:"",email:"",address:""},
-  {id:"ct7",name:"Aisha Modibo",phone:"08022446622",email:"",address:""},
-  {id:"ct8",name:"aladeolayinka",phone:"",email:"",address:""},
-  {id:"ct9",name:"Alhaja Olumoh",phone:"08037144824",email:"",address:""},
-  {id:"ct10",name:"Alhaji. A. A. Sayi",phone:"08023030171",email:"",address:""},
-  {id:"ct11",name:"Al Hassan Abubakar Khalifa",phone:"08037486118",email:"",address:""},
-  {id:"ct12",name:"Alh Waziri",phone:"08055041211",email:"",address:""},
-  {id:"ct13",name:"Althea Specialty Clinics",phone:"",email:"",address:""},
-  {id:"ct14",name:"Amos Musa",phone:"",email:"",address:""},
-  {id:"ct15",name:"Anadolu global",phone:"",email:"",address:""},
-  {id:"ct16",name:"Anadolu global office Nigeria Ltd",phone:"",email:"",address:""},
-  {id:"ct17",name:"Antarn nig ltd",phone:"",email:"",address:""},
-  {id:"ct18",name:"Architect Rufai",phone:"08036316472",email:"",address:""},
-  {id:"ct19",name:"Arch Ozavukonga",phone:"08035893799",email:"",address:""},
-  {id:"ct20",name:"Aremo Yusuf",phone:"08053031592",email:"",address:""},
-  {id:"ct21",name:"Aso drive",phone:"",email:"",address:""},
-  {id:"ct22",name:"Azikel Group",phone:"",email:"",address:""},
-  {id:"ct23",name:"Azura Power West Africa Limited",phone:"08023903599",email:"",address:""},
-  {id:"ct24",name:"Barbados Gate Ltd",phone:"09021681061",email:"",address:""},
-  {id:"ct25",name:"Barr. Isaac",phone:"08068478299",email:"",address:""},
-  {id:"ct26",name:"Barrister Tony",phone:"08035406365",email:"",address:""},
-  {id:"ct27",name:"Barr O. Obigbesan",phone:"07064183258",email:"",address:""},
-  {id:"ct28",name:"Bedmate Funiture Abuja",phone:"",email:"",address:""},
-  {id:"ct29",name:"Benson Skincare",phone:"09080970721",email:"",address:""},
-  {id:"ct30",name:"Betty@theparadiseabuja.com",phone:"",email:"",address:""},
-  {id:"ct31",name:"Bimbo Kila",phone:"07032630456",email:"",address:""},
-  {id:"ct32",name:"Bishop Mrs Charity Vedelago",phone:"07030000302",email:"",address:""},
-  {id:"ct33",name:"bizyjingles@yahoo.com",phone:"",email:"",address:""},
-  {id:"ct34",name:"Blessing Jegede",phone:"09038465604",email:"",address:""},
-  {id:"ct35",name:"Block A, CBN Quarters Wuse2",phone:"",email:"",address:""},
-  {id:"ct36",name:"Block C3, PTF Estate, Adetokunbo Ademola Crescent, Wuse 2.",phone:"",email:"",address:""},
-  {id:"ct37",name:"Block C3, PTF Estate, Adetokunbo Ademola Crescent, Wuse 2, Enter by FCMB Junction",phone:"",email:"",address:""},
-  {id:"ct38",name:"Bomaco@hotmail.com",phone:"",email:"",address:""},
-  {id:"ct39",name:"Brains and Harmers Estate",phone:"",email:"",address:""},
-  {id:"ct40",name:"British Council",phone:"",email:"",address:""},
-  {id:"ct41",name:"Bymara confectioneries",phone:"",email:"",address:""},
-  {id:"ct42",name:"Carlos Franji",phone:"07030000603",email:"",address:""},
-  {id:"ct43",name:"Casa De Los Reyes Luxury Apartments",phone:"",email:"",address:""},
-  {id:"ct44",name:"Cedacrest hospital",phone:"",email:"",address:""},
-  {id:"ct45",name:"Cedarmed Nigeria Limited",phone:"08036307968",email:"",address:""},
-  {id:"ct46",name:"Cellulant Nigeria",phone:"",email:"",address:""},
-  {id:"ct47",name:"Charles Arua",phone:"08064329918",email:"",address:""},
-  {id:"ct48",name:"Chayim Diagnostics Services Limited",phone:"07031326535",email:"oluwabusayo.Adetona@chayimds.com",address:""},
-  {id:"ct49",name:"Chidera Okolie",phone:"08169119111",email:"",address:""},
-  {id:"ct50",name:"Chidozie",phone:"08155661404",email:"",address:""},
-  {id:"ct51",name:"Chrome Group",phone:"09091711438",email:"",address:""},
-  {id:"ct52",name:"Cincinnati Homes Limited",phone:"08136563553",email:"",address:""},
-  {id:"ct53",name:"Citypot Restaurant",phone:"08065143620",email:"",address:""},
-  {id:"ct54",name:"Client",phone:"",email:"",address:""},
-  {id:"ct55",name:"Client katampe",phone:"",email:"",address:""},
-  {id:"ct56",name:"Concordia Luxury Apartment",phone:"",email:"",address:""},
-  {id:"ct57",name:"Coral Trade Investment",phone:"",email:"",address:""},
-  {id:"ct58",name:"Core Group Polio Project Nigeria",phone:"08104475606",email:"",address:""},
-  {id:"ct59",name:"Country Coordinating Office Nigeria CBM International",phone:"",email:"",address:""},
-  {id:"ct60",name:"Crumbles",phone:"08036425454",email:"",address:"No. 32, 1st Avenue,, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct61",name:"Customer",phone:"",email:"",address:""},
-  {id:"ct62",name:"Dada Monday",phone:"08124892269",email:"",address:""},
-  {id:"ct63",name:"David Igoniwari",phone:"08146984303",email:"",address:""},
-  {id:"ct64",name:"Deloitte",phone:"",email:"",address:""},
-  {id:"ct65",name:"Deloitte Consulting",phone:"",email:"",address:""},
-  {id:"ct66",name:"DevTech Systems, Inc.",phone:"",email:"",address:""},
-  {id:"ct67",name:"DIA",phone:"",email:"",address:""},
-  {id:"ct68",name:"Director",phone:"",email:"",address:""},
-  {id:"ct69",name:"Director Center for Women Development",phone:"",email:"",address:""},
-  {id:"ct70",name:"Director-General",phone:"",email:"",address:""},
-  {id:"ct71",name:"Dr. Hilda Titiloye",phone:"08037017103",email:"",address:"Palm Court Ganges, House 2, Abuja"},
-  {id:"ct72",name:"Dr Linus Ikpaahindi",phone:"08037879593",email:"",address:""},
-  {id:"ct73",name:"Dr & Mrs Mangete",phone:"08133283961",email:"",address:""},
-  {id:"ct74",name:"Dr. Ochuko",phone:"07030859971",email:"",address:""},
-  {id:"ct75",name:"Dr Samuel Usman",phone:"08037031310",email:"",address:""},
-  {id:"ct76",name:"Dr. Tapfuma",phone:"07034089707",email:"",address:""},
-  {id:"ct77",name:"Dr Uhaa",phone:"07048744288",email:"",address:""},
-  {id:"ct78",name:"Duke Global Energy Investment Limited (NNPC TRADING)",phone:"",email:"",address:""},
-  {id:"ct79",name:"E-Clinic & Diagnostic ltd",phone:"",email:"",address:""},
-  {id:"ct80",name:"Economic and Financial Crimes Commission",phone:"",email:"",address:""},
-  {id:"ct81",name:"Efab Queens Estate, Gwarimpa,",phone:"08034499260",email:"",address:""},
-  {id:"ct82",name:"Efetobore",phone:"",email:"",address:""},
-  {id:"ct83",name:"ehealth4everyone",phone:"07019511836",email:"",address:""},
-  {id:"ct84",name:"Embassy of Belgium",phone:"",email:"",address:""},
-  {id:"ct85",name:"Embassy of Denmark",phone:"",email:"",address:""},
-  {id:"ct86",name:"Embassy of Japan",phone:"",email:"",address:""},
-  {id:"ct87",name:"Embassy of Switzerland",phone:"00922004002",email:"",address:""},
-  {id:"ct88",name:"Emeka",phone:"",email:"",address:""},
-  {id:"ct89",name:"Emokiniovo Dafe-Akpedeye",phone:"08057164742",email:"",address:""},
-  {id:"ct90",name:"Enchanted Event",phone:"",email:"",address:""},
-  {id:"ct91",name:"Engineer Patrick",phone:"07066081130",email:"",address:""},
-  {id:"ct92",name:"Engr Adams",phone:"08058674842",email:"",address:""},
-  {id:"ct93",name:"Engr. Pius",phone:"08037874206",email:"",address:""},
-  {id:"ct94",name:"Engr. Yunusa",phone:"",email:"",address:""},
-  {id:"ct95",name:"Eng. Sam",phone:"",email:"",address:""},
-  {id:"ct96",name:"Fama Islamic International School",phone:"07034707015",email:"",address:""},
-  {id:"ct97",name:"Fawazalli",phone:"",email:"",address:""},
-  {id:"ct98",name:"Febson mall",phone:"",email:"",address:""},
-  {id:"ct99",name:"fed4mail@yahoo.com",phone:"",email:"",address:""},
-  {id:"ct100",name:"FIRST ALLY ASSET MANAGEMENT LTD",phone:"07038444887",email:"lydia.oko@first-ally.com",address:""},
-  {id:"ct101",name:"Flawless Skin by Abby Medspa",phone:"07041987428",email:"",address:""},
-  {id:"ct102",name:"FRASER SUITES",phone:"09095614691",email:"",address:""},
-  {id:"ct103",name:"Gaduwa",phone:"",email:"",address:""},
-  {id:"ct104",name:"Games Village Estate",phone:"",email:"",address:""},
-  {id:"ct105",name:"Georgina Kennedy",phone:"",email:"",address:""},
-  {id:"ct106",name:"Geycci collezioni Nig.Ltd",phone:"",email:"",address:""},
-  {id:"ct107",name:"GHSC-PSM",phone:"09087382833",email:"",address:""},
-  {id:"ct108",name:"GHSC-PSM project",phone:"",email:"",address:""},
-  {id:"ct109",name:"Glamour Secret Home",phone:"",email:"",address:""},
-  {id:"ct110",name:"Granny Murray Schools",phone:"08056011874",email:"",address:""},
-  {id:"ct111",name:"Grant Ukaegbu",phone:"08166041539",email:"",address:""},
-  {id:"ct112",name:"Gwarimpa",phone:"",email:"",address:""},
-  {id:"ct113",name:"Hajia",phone:"",email:"",address:""},
-  {id:"ct114",name:"Hajia Aisha Ismaila",phone:"",email:"",address:""},
-  {id:"ct115",name:"Hajia Amina",phone:"09071479143",email:"",address:""},
-  {id:"ct116",name:"Hajia Asabe",phone:"",email:"",address:""},
-  {id:"ct117",name:"Hajia Bala",phone:"",email:"",address:""},
-  {id:"ct118",name:"Hajia Bilkis",phone:"08033337517",email:"",address:""},
-  {id:"ct119",name:"Hajia. Maryam",phone:"08161621303",email:"",address:""},
-  {id:"ct120",name:"Hajiya Fatima",phone:"",email:"",address:""},
-  {id:"ct121",name:"Hajiya Umma",phone:"08033033693",email:"",address:""},
-  {id:"ct122",name:"Hajiya Zulaihat Muhammad",phone:"",email:"",address:""},
-  {id:"ct123",name:"Hamid Academy, Gwarimpa",phone:"",email:"",address:""},
-  {id:"ct124",name:"Hamza Abdulahi Close in Asokoro",phone:"",email:"",address:""},
-  {id:"ct125",name:"Hausba Smarthomes Limited",phone:"",email:"",address:""},
-  {id:"ct126",name:"Head People and Culture,",phone:"07033468801",email:"",address:""},
-  {id:"ct127",name:"Health Communication Capacity Collaborative",phone:"",email:"",address:""},
-  {id:"ct128",name:"High Chief Igho Osiebe",phone:"",email:"",address:""},
-  {id:"ct129",name:"House 10, 444 Crescent, citec villas, Gwarinpa",phone:"",email:"",address:""},
-  {id:"ct130",name:"House 29, Aso garden estate, Maitama, Abuja",phone:"",email:"",address:""},
-  {id:"ct131",name:"House 2, no 4 umar abubakar crescent, katampe extension",phone:"",email:"",address:""},
-  {id:"ct132",name:"House A14 unit5 brains and hammers city lifecamp extension.",phone:"",email:"",address:""},
-  {id:"ct133",name:"HSF Foods Limited",phone:"07033468801",email:"",address:""},
-  {id:"ct134",name:"Human resources, Jb",phone:"",email:"",address:""},
-  {id:"ct135",name:"Human resources manager, Jb Nig Ltd",phone:"",email:"",address:""},
-  {id:"ct136",name:"Human resources manager, Jubailibros Ng Ltd",phone:"",email:"",address:""},
-  {id:"ct137",name:"IMZA Nigeria",phone:"",email:"",address:""},
-  {id:"ct138",name:"Inabeto22@gmail.com",phone:"",email:"",address:""},
-  {id:"ct139",name:"International Federation of Red Cross and Red Crescent Societies (IFRC)",phone:"08173333093",email:"Fatima.ATSENOKHAI@ifrc.org",address:""},
-  {id:"ct140",name:"International Medical Corps",phone:"",email:"",address:""},
-  {id:"ct141",name:"IOM",phone:"",email:"",address:""},
-  {id:"ct142",name:"Iraq Embassy",phone:"",email:"",address:""},
-  {id:"ct143",name:"Isaac Bako",phone:"",email:"",address:""},
-  {id:"ct144",name:"ISN Clinic (ISN MEDICAL LTD)",phone:"",email:"",address:""},
-  {id:"ct145",name:"ISN Medical",phone:"",email:"",address:""},
-  {id:"ct146",name:"ISN MEDICAL LTD",phone:"",email:"",address:""},
-  {id:"ct147",name:"itsupport@izyair.com",phone:"",email:"",address:""},
-  {id:"ct148",name:"Jabi Apartment",phone:"",email:"",address:""},
-  {id:"ct149",name:"Jade",phone:"",email:"",address:""},
-  {id:"ct150",name:"James Kalu",phone:"",email:"",address:""},
-  {id:"ct151",name:"Jamy563",phone:"08096667218",email:"",address:""},
-  {id:"ct152",name:"Janitorial services",phone:"",email:"",address:""},
-  {id:"ct153",name:"Jayne Achea",phone:"09087503533",email:"",address:""},
-  {id:"ct154",name:"Jimaj Energy Services Ltd",phone:"",email:"",address:""},
-  {id:"ct155",name:"Joannajames102@gmail.com",phone:"",email:"",address:""},
-  {id:"ct156",name:"John Apeh",phone:"",email:"",address:""},
-  {id:"ct157",name:"Johnbosco",phone:"",email:"",address:""},
-  {id:"ct158",name:"JSI",phone:"",email:"",address:""},
-  {id:"ct159",name:"Juggernaut industries",phone:"",email:"",address:""},
-  {id:"ct160",name:"Justice Abdulmalik",phone:"08039430004",email:"",address:""},
-  {id:"ct161",name:"Justice Goodluck",phone:"08106359316",email:"",address:""},
-  {id:"ct162",name:"Juwairiyyamangal@yahoo.com",phone:"",email:"",address:""},
-  {id:"ct163",name:"Kachi Ike",phone:"09165232471",email:"",address:""},
-  {id:"ct164",name:"Kado mall",phone:"",email:"",address:""},
-  {id:"ct165",name:"Katampe",phone:"",email:"",address:""},
-  {id:"ct166",name:"Kinderbloom Daycare & Pre-School",phone:"08035006597",email:"",address:""},
-  {id:"ct167",name:"kureen services",phone:"",email:"",address:""},
-  {id:"ct168",name:"Kwik Delivery",phone:"",email:"",address:""},
-  {id:"ct169",name:"Ladi mall",phone:"",email:"",address:""},
-  {id:"ct170",name:"La Famosa",phone:"09031247336",email:"",address:""},
-  {id:"ct171",name:"LEAP Africa",phone:"",email:"",address:""},
-  {id:"ct172",name:"Life camp",phone:"",email:"",address:""},
-  {id:"ct173",name:"Lifestyle at Topp",phone:"",email:"",address:""},
-  {id:"ct174",name:"Lugbe Rest House",phone:"",email:"",address:""},
-  {id:"ct175",name:"LUKMAN OYEBANJI FAGBEMI",phone:"",email:"",address:""},
-  {id:"ct176",name:"LUMOS",phone:"09062275474",email:"",address:""},
-  {id:"ct177",name:"Mabuchi home",phone:"",email:"",address:""},
-  {id:"ct178",name:"Madam Chinic",phone:"08037861143",email:"",address:""},
-  {id:"ct179",name:"Madam Fatima",phone:"08034594888",email:"",address:""},
-  {id:"ct180",name:"Madam Maureen",phone:"07051217081",email:"",address:""},
-  {id:"ct181",name:"mailto:fed4mail@yahoo.com",phone:"",email:"",address:""},
-  {id:"ct182",name:"Maitama",phone:"",email:"",address:""},
-  {id:"ct183",name:"Malaria Consortium",phone:"",email:"",address:""},
-  {id:"ct184",name:"Malaria Consortium Nigeria",phone:"",email:"",address:""},
-  {id:"ct185",name:"Managing Director",phone:"",email:"",address:""},
-  {id:"ct186",name:"Marvis",phone:"09011039271",email:"",address:""},
-  {id:"ct187",name:"Meldaine2004@yahoo.com",phone:"",email:"",address:""},
-  {id:"ct188",name:"MEXAN Nigeria Limited",phone:"",email:"",address:""},
-  {id:"ct189",name:"MGIC",phone:"",email:"",address:""},
-  {id:"ct190",name:"Mini-Mac Limited",phone:"",email:"",address:""},
-  {id:"ct191",name:"Miss Fatima",phone:"",email:"",address:""},
-  {id:"ct192",name:"Miss Oghenero",phone:"",email:"",address:""},
-  {id:"ct193",name:"Miss Stephanie",phone:"",email:"",address:""},
-  {id:"ct194",name:"Miss Victoria",phone:"",email:"",address:""},
-  {id:"ct195",name:"M.O.",phone:"09022130096",email:"",address:""},
-  {id:"ct196",name:"Mobus Property",phone:"",email:"akeem.ibitoye@mobusproperty.com",address:""},
-  {id:"ct197",name:"Mohammed Hayatu",phone:"07033760877",email:"",address:""},
-  {id:"ct198",name:"Mordel primary sch federal housing estate",phone:"",email:"",address:""},
-  {id:"ct199",name:"Mr.",phone:"08091303764",email:"",address:""},
-  {id:"ct200",name:"Mr. Abba",phone:"08033727977",email:"",address:""},
-  {id:"ct201",name:"Mr Abdul",phone:"08023153475",email:"",address:""},
-  {id:"ct202",name:"Mr. Abdulateef",phone:"08137823363",email:"",address:""},
-  {id:"ct203",name:"Mr. Abdulhameed Mohammed",phone:"08035935082",email:"",address:""},
-  {id:"ct204",name:"Mr Abraham",phone:"08131858898",email:"",address:""},
-  {id:"ct205",name:"Mr. Abubakar",phone:"",email:"",address:""},
-  {id:"ct206",name:"Mr. Abubakar Ibrahim",phone:"08181400009",email:"",address:""},
-  {id:"ct207",name:"Mr. Adebayo Agboola",phone:"08179479908",email:"",address:""},
-  {id:"ct208",name:"Mr. Adegbite Oladotun",phone:"07038789278",email:"",address:""},
-  {id:"ct209",name:"Mr Ahmed",phone:"08033579927",email:"",address:""},
-  {id:"ct210",name:"Mr. Ahmed",phone:"08138603403",email:"",address:""},
-  {id:"ct211",name:"Mr Alex",phone:"08032564716",email:"",address:""},
-  {id:"ct212",name:"Mr. Aliyu",phone:"07054352988",email:"",address:""},
-  {id:"ct213",name:"Mr A. Momoh",phone:"08039110701",email:"",address:""},
-  {id:"ct214",name:"Mr. Anaekwe",phone:"08136694588",email:"",address:""},
-  {id:"ct215",name:"Mr. Asuk",phone:"",email:"",address:""},
-  {id:"ct216",name:"Mr. Austin fanus",phone:"",email:"",address:""},
-  {id:"ct217",name:"Mr Awogbemi",phone:"09065634868",email:"",address:""},
-  {id:"ct218",name:"Mr. Azubuike",phone:"08165594778",email:"",address:""},
-  {id:"ct219",name:"Mr. Babatunde Anwo-Ade",phone:"08094206060",email:"",address:""},
-  {id:"ct220",name:"Mr. Bello",phone:"",email:"",address:""},
-  {id:"ct221",name:"Mr. Bigs",phone:"",email:"",address:""},
-  {id:"ct222",name:"Mr Bimbo",phone:"08183133433",email:"",address:""},
-  {id:"ct223",name:"Mr Bisi",phone:"",email:"",address:""},
-  {id:"ct224",name:"Mr. Buhari",phone:"08092000115",email:"",address:""},
-  {id:"ct225",name:"Mr Bukar",phone:"08036365141",email:"",address:""},
-  {id:"ct226",name:"Mr Charles",phone:"",email:"",address:""},
-  {id:"ct227",name:"Mr. Charles",phone:"971567014221",email:"",address:""},
-  {id:"ct228",name:"Mr. Chidi Momah",phone:"08037543051",email:"",address:""},
-  {id:"ct229",name:"Mr Chris",phone:"",email:"",address:""},
-  {id:"ct230",name:"Mr. Chris",phone:"",email:"",address:""},
-  {id:"ct231",name:"Mr Chukwudi",phone:"07035366460",email:"",address:""},
-  {id:"ct232",name:"Mr. Clement Erohubie",phone:"",email:"",address:""},
-  {id:"ct233",name:"Mr Clint",phone:"",email:"",address:""},
-  {id:"ct234",name:"Mr. Dakpokpo",phone:"",email:"",address:""},
-  {id:"ct235",name:"Mr. Daniel",phone:"",email:"",address:""},
-  {id:"ct236",name:"Mr. Dimeji Durojaiye",phone:"",email:"",address:""},
-  {id:"ct237",name:"Mr. Doja",phone:"08036891214",email:"",address:""},
-  {id:"ct238",name:"Mr. Douglas",phone:"08022011518",email:"",address:"Arab Road, Abuja"},
-  {id:"ct239",name:"Mr. Dupe Omotosho",phone:"08093201650",email:"",address:""},
-  {id:"ct240",name:"Mr. Emanuel",phone:"",email:"",address:""},
-  {id:"ct241",name:"Mr Emeka",phone:"07051311239",email:"",address:""},
-  {id:"ct242",name:"Mr. Emeka",phone:"08136694588",email:"",address:""},
-  {id:"ct243",name:"Mr. Emmanuel",phone:"",email:"",address:""},
-  {id:"ct244",name:"Mr Emmanuel Adams",phone:"07089450103",email:"",address:""},
-  {id:"ct245",name:"Mr. Eric",phone:"",email:"",address:""},
-  {id:"ct246",name:"Mr. Everest",phone:"",email:"",address:""},
-  {id:"ct247",name:"Mr. Ezekwesiri Imo",phone:"",email:"",address:""},
-  {id:"ct248",name:"Mr Fadipe Oluwafemi",phone:"",email:"",address:""},
-  {id:"ct249",name:"Mr. Falujo",phone:"",email:"",address:""},
-  {id:"ct250",name:"Mr. Farouk",phone:"",email:"",address:""},
-  {id:"ct251",name:"Mr. Femi",phone:"",email:"",address:""},
-  {id:"ct252",name:"Mr. Frank",phone:"",email:"",address:""},
-  {id:"ct253",name:"Mr. Gabriel Adetula",phone:"09165065795",email:"",address:""},
-  {id:"ct254",name:"Mr. Godson",phone:"08033729675",email:"",address:""},
-  {id:"ct255",name:"Mr. Handel",phone:"07018197952",email:"",address:""},
-  {id:"ct256",name:"Mr Hassan",phone:"08060652844",email:"",address:""},
-  {id:"ct257",name:"Mr Henry",phone:"08186024347",email:"",address:""},
-  {id:"ct258",name:"Mr. Henry",phone:"08146637580",email:"",address:""},
-  {id:"ct259",name:"Mr Henry Emembolu",phone:"08138264048",email:"",address:""},
-  {id:"ct260",name:"Mr. Hope Edobor",phone:"09030001393",email:"",address:""},
-  {id:"ct261",name:"Mr. Ibe Osonwa",phone:"",email:"",address:""},
-  {id:"ct262",name:"Mr Idris",phone:"08035349090",email:"",address:""},
-  {id:"ct263",name:"Mr Ifeanyi",phone:"09071504450",email:"",address:""},
-  {id:"ct264",name:"Mr. Ikenna",phone:"",email:"",address:""},
-  {id:"ct265",name:"Mr. James",phone:"",email:"",address:""},
-  {id:"ct266",name:"Mr. John",phone:"",email:"",address:""},
-  {id:"ct267",name:"Mr. Johnbosco",phone:"",email:"",address:""},
-  {id:"ct268",name:"Mr. Joshua",phone:"",email:"",address:""},
-  {id:"ct269",name:"Mr. Justin",phone:"07062213830",email:"",address:""},
-  {id:"ct270",name:"Mr. Kabiru Usman",phone:"08036734428",email:"",address:""},
-  {id:"ct271",name:"Mr. Ken",phone:"",email:"",address:""},
-  {id:"ct272",name:"Mr. Kolawole",phone:"",email:"",address:""},
-  {id:"ct273",name:"Mr Lawal",phone:"08032031867",email:"",address:""},
-  {id:"ct274",name:"Mr. Lawrence",phone:"08094546479",email:"",address:""},
-  {id:"ct275",name:"Mr. Leslie",phone:"",email:"",address:""},
-  {id:"ct276",name:"Mr. Machinizzy",phone:"",email:"",address:""},
-  {id:"ct277",name:"Mr. Madichie",phone:"",email:"",address:""},
-  {id:"ct278",name:"Mr Malik",phone:"09090512400",email:"",address:""},
-  {id:"ct279",name:"Mr. Mark",phone:"08052726240",email:"",address:""},
-  {id:"ct280",name:"Mr. Melvin",phone:"08174623265",email:"",address:""},
-  {id:"ct281",name:"Mr. Mohammad",phone:"",email:"",address:""},
-  {id:"ct282",name:"Mr. Mohammed Babandede",phone:"08095043470",email:"",address:""},
-  {id:"ct283",name:"Mr. Moses",phone:"",email:"",address:""},
-  {id:"ct284",name:"Mr. Moyo",phone:"08069153347",email:"",address:""},
-  {id:"ct285",name:"Mr. & Mrs. Adams",phone:"",email:"",address:""},
-  {id:"ct286",name:"Mr & Mrs Idemudia",phone:"08037036334",email:"",address:""},
-  {id:"ct287",name:"Mr. Muhammed",phone:"09039711162",email:"",address:""},
-  {id:"ct288",name:"Mr. Musa",phone:"",email:"",address:""},
-  {id:"ct289",name:"Mr. Mustapha",phone:"08183468638",email:"",address:""},
-  {id:"ct290",name:"Mr. Niyi",phone:"08133330699",email:"",address:""},
-  {id:"ct291",name:"Mr. Niyi Afolabi",phone:"",email:"",address:""},
-  {id:"ct292",name:"Mr. Noel",phone:"08026116113",email:"",address:""},
-  {id:"ct293",name:"Mr. Nwokolo",phone:"",email:"",address:""},
-  {id:"ct294",name:"Mr Nwokoro",phone:"",email:"",address:""},
-  {id:"ct295",name:"Mr. Obum",phone:"08033547085",email:"",address:""},
-  {id:"ct296",name:"Mr. Oche Gabriel",phone:"08142796764",email:"",address:""},
-  {id:"ct297",name:"Mr. Odimegwu",phone:"",email:"",address:""},
-  {id:"ct298",name:"Mr. Oko Justin Odama",phone:"07062213830",email:"okojustin@aol.com",address:""},
-  {id:"ct299",name:"Mr. Okpara Elvis",phone:"",email:"",address:""},
-  {id:"ct300",name:"Mr.Olajide Sunday",phone:"",email:"",address:""},
-  {id:"ct301",name:"Mr.onafalujo",phone:"",email:"",address:""},
-  {id:"ct302",name:"Mr Onafalujo",phone:"",email:"",address:""},
-  {id:"ct303",name:"Mr Onoja",phone:"",email:"",address:""},
-  {id:"ct304",name:"Mr. Onyekachi",phone:"",email:"",address:""},
-  {id:"ct305",name:"Mr. Onyenweaku",phone:"09031744849",email:"",address:""},
-  {id:"ct306",name:"Mr. Ovie",phone:"",email:"",address:""},
-  {id:"ct307",name:"Mr Owen",phone:"08099066988",email:"",address:""},
-  {id:"ct308",name:"Mr Oyetunji",phone:"08053031592",email:"",address:""},
-  {id:"ct309",name:"Mr Peter",phone:"08063841691",email:"",address:""},
-  {id:"ct310",name:"Mr. Prudence",phone:"08180851471",email:"",address:""},
-  {id:"ct311",name:"Mrs Abiri",phone:"08033101199",email:"",address:""},
-  {id:"ct312",name:"Mrs. Aboki Fatima",phone:"08034795456",email:"",address:""},
-  {id:"ct313",name:"Mrs. Afolabi",phone:"08032865909",email:"",address:""},
-  {id:"ct314",name:"Mrs Ajayi",phone:"07041212351",email:"",address:""},
-  {id:"ct315",name:"Mr. Sam",phone:"",email:"",address:""},
-  {id:"ct316",name:"Mrs. Ameerah Umar K.",phone:"08133603709",email:"",address:""},
-  {id:"ct317",name:"Mr. Samuel Akinola",phone:"",email:"",address:""},
-  {id:"ct318",name:"Mr. Sani",phone:"08031824088",email:"",address:""},
-  {id:"ct319",name:"Mr. Sanumy",phone:"",email:"",address:""},
-  {id:"ct320",name:"Mrs. Asuk",phone:"",email:"",address:""},
-  {id:"ct321",name:"Mrs Awunah",phone:"08035336027",email:"",address:""},
-  {id:"ct322",name:"Mrs. Ayesha",phone:"",email:"",address:""},
-  {id:"ct323",name:"Mrs Bello",phone:"08036226657",email:"",address:""},
-  {id:"ct324",name:"Mrs Bibogha",phone:"",email:"",address:""},
-  {id:"ct325",name:"Mrs Ebika",phone:"",email:"",address:""},
-  {id:"ct326",name:"Mrs.Ebika",phone:"",email:"",address:""},
-  {id:"ct327",name:"Mrs Eboh",phone:"09027000077",email:"",address:""},
-  {id:"ct328",name:"Mr. Segun Salami",phone:"08035899562",email:"",address:""},
-  {id:"ct329",name:"Mrs. Elisabeth",phone:"",email:"",address:""},
-  {id:"ct330",name:"Mr. Seun",phone:"",email:"",address:""},
-  {id:"ct331",name:"Mrs. Evbuomwan",phone:"08033761999",email:"",address:""},
-  {id:"ct332",name:"Mr. Seyi",phone:"08180974245",email:"",address:""},
-  {id:"ct333",name:"Mrs. Ezeh",phone:"",email:"",address:""},
-  {id:"ct334",name:"Mrs. Fatima",phone:"",email:"",address:""},
-  {id:"ct335",name:"Mrs. Fauziah Tukur",phone:"",email:"",address:""},
-  {id:"ct336",name:"Mrs. Francis",phone:"08035311130",email:"",address:""},
-  {id:"ct337",name:"Mrs Garba",phone:"",email:"",address:""},
-  {id:"ct338",name:"Mr Sharon",phone:"07089432537",email:"",address:""},
-  {id:"ct339",name:"Mr. Sheriff",phone:"",email:"",address:""},
-  {id:"ct340",name:"Mr. Shuaibu",phone:"08065305090",email:"",address:""},
-  {id:"ct341",name:"Mrs Hurera H",phone:"",email:"",address:""},
-  {id:"ct342",name:"Mrs Ijeoma Ohiembor",phone:"08038775985",email:"",address:""},
-  {id:"ct343",name:"Mr. Simon",phone:"",email:"",address:""},
-  {id:"ct344",name:"Mrs. Isaac",phone:"",email:"",address:""},
-  {id:"ct345",name:"Mrs. Jemila",phone:"08091926888",email:"",address:""},
-  {id:"ct346",name:"Mrs Josephine",phone:"",email:"",address:""},
-  {id:"ct347",name:"Mrs Josephine Ikem Kwalli",phone:"",email:"",address:""},
-  {id:"ct348",name:"Mrs. Lamar",phone:"",email:"",address:""},
-  {id:"ct349",name:"Mrs. Linda Cyril",phone:"08092957295",email:"",address:""},
-  {id:"ct350",name:"Mrs. Makonjola",phone:"",email:"",address:""},
-  {id:"ct351",name:"Mrs Martina Oko",phone:"08032111311",email:"",address:""},
-  {id:"ct352",name:"Mrs. Moji",phone:"",email:"",address:""},
-  {id:"ct353",name:"Mrs. Musa",phone:"",email:"",address:""},
-  {id:"ct354",name:"Mrs Ngozi",phone:"07034172922",email:"",address:"T4016 phase 2, Brains and Hammers Estate,, Abuja, FCT"},
-  {id:"ct355",name:"Mrs Nnam. E. C.",phone:"08066777046",email:"",address:""},
-  {id:"ct356",name:"Mrs Nneka Obiamalu",phone:"08080880501",email:"",address:""},
-  {id:"ct357",name:"Mrs Obasi",phone:"08034172464",email:"",address:""},
-  {id:"ct358",name:"Mrs Odia",phone:"08182851237",email:"",address:""},
-  {id:"ct359",name:"Mrs. Ogirima",phone:"",email:"",address:""},
-  {id:"ct360",name:"Mrs Ogundipe",phone:"",email:"",address:""},
-  {id:"ct361",name:"Mrs Ohakwe",phone:"07031034067",email:"",address:""},
-  {id:"ct362",name:"Mrs. Olere",phone:"",email:"",address:""},
-  {id:"ct363",name:"Mrs Olu",phone:"09064439477",email:"",address:""},
-  {id:"ct364",name:"Mr. Som",phone:"",email:"",address:""},
-  {id:"ct365",name:"Mrs Osuagwu",phone:"08035006597",email:"",address:""},
-  {id:"ct366",name:"Mrs. Peters",phone:"08101484270",email:"",address:""},
-  {id:"ct367",name:"Mrs Rukiyat",phone:"",email:"",address:""},
-  {id:"ct368",name:"Mrs Uchenna-Festus",phone:"08036671878",email:"",address:""},
-  {id:"ct369",name:"Mr. Suleiman",phone:"08069323139",email:"",address:""},
-  {id:"ct370",name:"Mrs. Uzan",phone:"",email:"",address:""},
-  {id:"ct371",name:"Mrs. Zainab",phone:"",email:"",address:""},
-  {id:"ct372",name:"Mr. Teru",phone:"",email:"",address:""},
-  {id:"ct373",name:"Mr. Theophilus Apere",phone:"",email:"",address:""},
-  {id:"ct374",name:"Mr Tijjani",phone:"07051032866",email:"",address:""},
-  {id:"ct375",name:"Mr Tijjani Abdullahi",phone:"09138888511",email:"",address:""},
-  {id:"ct376",name:"Mr. Timothy",phone:"",email:"",address:""},
-  {id:"ct377",name:"Mr. Tobi .O",phone:"",email:"",address:""},
-  {id:"ct378",name:"Mr. Tommy",phone:"08033896862",email:"",address:""},
-  {id:"ct379",name:"Mr. Tony",phone:"08102770777",email:"",address:""},
-  {id:"ct380",name:"Mr. Tope",phone:"08183752078",email:"",address:""},
-  {id:"ct381",name:"Mr. Tunde",phone:"",email:"",address:""},
-  {id:"ct382",name:"Mr. Tundea",phone:"08070984309",email:"",address:""},
-  {id:"ct383",name:"Mr. Umar",phone:"08088954347",email:"",address:""},
-  {id:"ct384",name:"Mr. Valentine",phone:"",email:"",address:""},
-  {id:"ct385",name:"Mr. Waziri",phone:"09066923692",email:"",address:""},
-  {id:"ct386",name:"Mr. Wills",phone:"09096717000",email:"",address:""},
-  {id:"ct387",name:"Mr Willy",phone:"08033057698",email:"",address:""},
-  {id:"ct388",name:"Mr Wilson",phone:"08035799339",email:"",address:""},
-  {id:"ct389",name:"Mr. Yomi",phone:"08107709971",email:"",address:""},
-  {id:"ct390",name:"Ms. Adana",phone:"08127392222",email:"",address:""},
-  {id:"ct391",name:"Ms Adaobi",phone:"08037767443",email:"",address:""},
-  {id:"ct392",name:"Ms. Adaora Ikenze.",phone:"09037753089",email:"",address:""},
-  {id:"ct393",name:"Ms Adebola",phone:"09068490709",email:"",address:""},
-  {id:"ct394",name:"Ms Adedami",phone:"08023616681",email:"",address:""},
-  {id:"ct395",name:"Ms Adepeju",phone:"",email:"",address:""},
-  {id:"ct396",name:"Ms Aisha",phone:"08099889926",email:"",address:""},
-  {id:"ct397",name:"Ms. Amaka",phone:"07069997026",email:"",address:""},
-  {id:"ct398",name:"Ms. Amarachi",phone:"",email:"",address:""},
-  {id:"ct399",name:"Ms. Angela",phone:"08076054625",email:"angieobaseki@gmail.com",address:""},
-  {id:"ct400",name:"Ms. Annabelle",phone:"09011126821",email:"",address:""},
-  {id:"ct401",name:"Ms Atongo",phone:"08036064458",email:"",address:""},
-  {id:"ct402",name:"Ms. Blessing",phone:"",email:"",address:""},
-  {id:"ct403",name:"Ms. Bolu Awesu",phone:"08127230649",email:"",address:""},
-  {id:"ct404",name:"Ms. Boma",phone:"",email:"",address:""},
-  {id:"ct405",name:"Ms.Bridget",phone:"",email:"",address:""},
-  {id:"ct406",name:"Ms. Bridget",phone:"",email:"",address:""},
-  {id:"ct407",name:"Ms Campbell",phone:"",email:"",address:""},
-  {id:"ct408",name:"Ms Charity Mene",phone:"08033419519",email:"",address:""},
-  {id:"ct409",name:"Ms. Chinemerem",phone:"08163932584",email:"",address:""},
-  {id:"ct410",name:"Ms Chioma",phone:"08177922838",email:"",address:""},
-  {id:"ct411",name:"Ms. Chioma",phone:"08038386610",email:"",address:""},
-  {id:"ct412",name:"Ms. Comfort Lamptey",phone:"",email:"",address:""},
-  {id:"ct413",name:"Ms. Dayo Akinmoyo",phone:"07064184034",email:"",address:""},
-  {id:"ct414",name:"Ms Didun Hassan-Odukale",phone:"09083003415",email:"",address:""},
-  {id:"ct415",name:"Ms Ekeyo",phone:"",email:"",address:""},
-  {id:"ct416",name:"Ms. Elohor",phone:"08036512890",email:"",address:""},
-  {id:"ct417",name:"Ms Ene",phone:"08066189718",email:"",address:""},
-  {id:"ct418",name:"Ms. Farida",phone:"07032098960",email:"",address:""},
-  {id:"ct419",name:"Ms. Fatima Atsenokhai",phone:"08173333093",email:"",address:""},
-  {id:"ct420",name:"Ms. Genevive",phone:"",email:"",address:""},
-  {id:"ct421",name:"Ms Gift Nwanna",phone:"07056881075",email:"",address:""},
-  {id:"ct422",name:"Ms. Goodness",phone:"09075200034",email:"",address:""},
-  {id:"ct423",name:"Ms. Hadiza",phone:"08088805801",email:"",address:""},
-  {id:"ct424",name:"Ms. Hafsah",phone:"",email:"",address:""},
-  {id:"ct425",name:"Ms Hassah",phone:"",email:"",address:""},
-  {id:"ct426",name:"Ms Hauwa",phone:"",email:"",address:""},
-  {id:"ct427",name:"Ms. Hauwa",phone:"07019554923",email:"",address:""},
-  {id:"ct428",name:"Ms. Ibrahim",phone:"08037329428",email:"",address:""},
-  {id:"ct429",name:"Ms Ifeoma",phone:"",email:"",address:""},
-  {id:"ct430",name:"Ms Ima",phone:"",email:"",address:""},
-  {id:"ct431",name:"Ms. Itari Turner",phone:"08090980380",email:"",address:""},
-  {id:"ct432",name:"Ms Ivie Bare",phone:"07081920799",email:"",address:""},
-  {id:"ct433",name:"Ms. Jackie",phone:"",email:"",address:""},
-  {id:"ct434",name:"Ms. Jane Ameh",phone:"07068216434",email:"",address:""},
-  {id:"ct435",name:"Ms. Jennifer",phone:"08092957295",email:"",address:""},
-  {id:"ct436",name:"Ms Jessica",phone:"09080338170",email:"",address:""},
-  {id:"ct437",name:"Ms. Joan",phone:"08032543738",email:"",address:""},
-  {id:"ct438",name:"Ms Josephine",phone:"",email:"",address:""},
-  {id:"ct439",name:"Ms. Josephine",phone:"",email:"",address:""},
-  {id:"ct440",name:"Ms. Juliet",phone:"",email:"",address:""},
-  {id:"ct441",name:"Ms. Konye",phone:"08132538402",email:"",address:""},
-  {id:"ct442",name:"Ms Lawal",phone:"",email:"",address:""},
-  {id:"ct443",name:"Ms Lolia Wilcox",phone:"08090240188",email:"",address:""},
-  {id:"ct444",name:"Ms. Lotenne",phone:"",email:"",address:""},
-  {id:"ct445",name:"Ms. Love",phone:"",email:"",address:""},
-  {id:"ct446",name:"Ms. Maimouna Tall",phone:"",email:"",address:""},
-  {id:"ct447",name:"Ms. Martha",phone:"",email:"",address:""},
-  {id:"ct448",name:"Ms Marvelous",phone:"",email:"",address:""},
-  {id:"ct449",name:"Ms. Muneerah",phone:"447511465885",email:"",address:""},
-  {id:"ct450",name:"Ms. Naima",phone:"",email:"",address:""},
-  {id:"ct451",name:"Ms Nnedinma",phone:"",email:"",address:""},
-  {id:"ct452",name:"Ms Onyinye",phone:"",email:"",address:""},
-  {id:"ct453",name:"Ms Patience",phone:"08056271299",email:"",address:""},
-  {id:"ct454",name:"Ms Precious Adigwe",phone:"08168551708",email:"",address:""},
-  {id:"ct455",name:"Ms. Priscilla G",phone:"",email:"",address:""},
-  {id:"ct456",name:"Ms. Priscilla",phone:"",email:"",address:""},
-  {id:"ct457",name:"Ms. Rachael Pindar",phone:"08104775606",email:"",address:""},
-  {id:"ct458",name:"Ms. Sakina",phone:"",email:"",address:""},
-  {id:"ct459",name:"Ms Sana",phone:"",email:"",address:""},
-  {id:"ct460",name:"Ms. Sara .O",phone:"",email:"",address:""},
-  {id:"ct461",name:"Ms. Sharon Dada",phone:"",email:"",address:""},
-  {id:"ct462",name:"Ms Shehu",phone:"",email:"",address:""},
-  {id:"ct463",name:"Ms Sheila",phone:"08064866387",email:"",address:""},
-  {id:"ct464",name:"Ms. Sonia Agu",phone:"09165080531",email:"",address:""},
-  {id:"ct465",name:"Ms Sonnia",phone:"08176501411",email:"",address:""},
-  {id:"ct466",name:"Ms. Stephanie L.E.",phone:"08098333783",email:"",address:""},
-  {id:"ct467",name:"Ms. Stephenie",phone:"",email:"",address:""},
-  {id:"ct468",name:"Ms Temitope",phone:"08055348285",email:"",address:""},
-  {id:"ct469",name:"Ms. Vanessa",phone:"08164145041",email:"",address:""},
-  {id:"ct470",name:"Ms Venessa",phone:"",email:"",address:""},
-  {id:"ct471",name:"Ms. Vivian",phone:"",email:"",address:""},
-  {id:"ct472",name:"Ms. Yvonne",phone:"08073356284",email:"",address:""},
-  {id:"ct473",name:"Ms. Zahra",phone:"07019461900",email:"",address:""},
-  {id:"ct474",name:"Ms zarah",phone:"",email:"",address:""},
-  {id:"ct475",name:"Ms Zinatu Ahmad",phone:"",email:"",address:""},
-  {id:"ct476",name:"Mubarak Aboki",phone:"08035579333",email:"",address:""},
-  {id:"ct477",name:"M.U. Fulani",phone:"08058743429",email:"",address:""},
-  {id:"ct478",name:"Muhammad Salisu Barde",phone:"",email:"",address:""},
-  {id:"ct479",name:"NAF conference Centre",phone:"",email:"",address:""},
-  {id:"ct480",name:"Nengi's Place Restaurant",phone:"09096717000",email:"",address:""},
-  {id:"ct481",name:"Nigeria Security and Civil Defence Corps",phone:"",email:"",address:""},
-  {id:"ct482",name:"Nigeria Sovereign Investment Authority",phone:"099040035",email:"",address:""},
-  {id:"ct483",name:"Nigeria Tennis Federation",phone:"",email:"",address:""},
-  {id:"ct484",name:"Nigeria Tulip international Colleges",phone:"09099150025",email:"",address:""},
-  {id:"ct485",name:"Nikon Grand Hotel",phone:"",email:"",address:""},
-  {id:"ct486",name:"Nippon Grand Hotel",phone:"",email:"",address:""},
-  {id:"ct487",name:"Nixon",phone:"",email:"",address:""},
-  {id:"ct488",name:"No 19, Ebitu Ukiwe Street Jahi.",phone:"",email:"",address:""},
-  {id:"ct489",name:"No 35 burnin kebbi crescent garki",phone:"",email:"",address:""},
-  {id:"ct490",name:"No 3,Teal lane Bilaad estate wuye.",phone:"",email:"",address:""},
-  {id:"ct491",name:"No 4, Teal Lane Bilaad Estate (next to Wuye Police Station) 547, Ameh Ebute Street, Wuye, Abuja",phone:"",email:"",address:""},
-  {id:"ct492",name:"Ntel",phone:"",email:"",address:""},
-  {id:"ct493",name:"Ntel Nig",phone:"",email:"",address:""},
-  {id:"ct494",name:"Obiageli",phone:"",email:"",address:""},
-  {id:"ct495",name:"Ochacho Empire Otukpo",phone:"",email:"",address:""},
-  {id:"ct496",name:"Ochacho Estate",phone:"",email:"",address:""},
-  {id:"ct497",name:"ONEPRO",phone:"08065683084",email:"",address:""},
-  {id:"ct498",name:"Opique center",phone:"",email:"",address:""},
-  {id:"ct499",name:"Otunba Olalekan UHMS",phone:"07048528790",email:"",address:""},
-  {id:"ct500",name:"Oxfam International",phone:"",email:"",address:""},
-  {id:"ct501",name:"PAGMI Office",phone:"",email:"",address:""},
-  {id:"ct502",name:"Park Hill center, Gwarimpa.",phone:"",email:"",address:""},
-  {id:"ct503",name:"Peacock House",phone:"",email:"",address:""},
-  {id:"ct504",name:"Pelta Spa and Beauty Salon",phone:"07062517440",email:"",address:""},
-  {id:"ct505",name:"Pengasin 1 estate road 4 house no 3",phone:"",email:"",address:""},
-  {id:"ct506",name:"Person",phone:"08033117414",email:"",address:""},
-  {id:"ct507",name:"Plot 182, John oyegun-odigie street, off Paul odili street, River park estate",phone:"",email:"",address:""},
-  {id:"ct508",name:"Plot B 847 Lodgiani",phone:"",email:"",address:""},
-  {id:"ct509",name:"Police Service Commission",phone:"",email:"",address:""},
-  {id:"ct510",name:"Project Manager",phone:"",email:"",address:""},
-  {id:"ct511",name:"PYRICH GROUP LTD",phone:"",email:"",address:""},
-  {id:"ct512",name:"Raclyde",phone:"",email:"",address:""},
-  {id:"ct513",name:"Rayan kcc",phone:"",email:"",address:""},
-  {id:"ct514",name:"RCCG Grace Arena",phone:"",email:"",address:""},
-  {id:"ct515",name:"Redeemed Christian Church of God",phone:"",email:"",address:""},
-  {id:"ct516",name:"Regal avenue africa",phone:"",email:"",address:""},
-  {id:"ct517",name:"River Park",phone:"",email:"",address:""},
-  {id:"ct518",name:"River park estate",phone:"",email:"",address:""},
-  {id:"ct519",name:"Rodo",phone:"",email:"",address:""},
-  {id:"ct520",name:"rofasy nigeria ltd",phone:"",email:"",address:""},
-  {id:"ct521",name:"Rolling Bricks Ltd",phone:"07067167383",email:"",address:""},
-  {id:"ct522",name:"Rose Valley Group",phone:"",email:"",address:""},
-  {id:"ct523",name:"RTIE Wash",phone:"",email:"",address:""},
-  {id:"ct524",name:"Ryussi Synergy Limited",phone:"08036359243",email:"",address:""},
-  {id:"ct525",name:"RYUSSI SYNERGY LTD",phone:"08036359243",email:"",address:""},
-  {id:"ct526",name:"Sady Ahmed",phone:"",email:"",address:""},
-  {id:"ct527",name:"Sam and Shade Gara",phone:"08035892150",email:"",address:""},
-  {id:"ct528",name:"SED Ltd",phone:"",email:"",address:""},
-  {id:"ct529",name:"Senator Dada Gbolahan",phone:"08023059905",email:"",address:""},
-  {id:"ct530",name:"Sheikh Hayatuddeen",phone:"",email:"",address:""},
-  {id:"ct531",name:"Sheikh Ibrahim",phone:"08035863915",email:"",address:""},
-  {id:"ct532",name:"SHELTER AFRIQUE",phone:"",email:"",address:""},
-  {id:"ct533",name:"Simba group",phone:"",email:"",address:""},
-  {id:"ct534",name:"Skin 101",phone:"",email:"",address:""},
-  {id:"ct535",name:"SKIN101",phone:"",email:"",address:""},
-  {id:"ct536",name:"Skin 101 Clinics Ltd.",phone:"",email:"",address:""},
-  {id:"ct537",name:"SKINTIVITY SKINCARE & MEDSPA",phone:"",email:"",address:""},
-  {id:"ct538",name:"SLN ltd",phone:"",email:"",address:""},
-  {id:"ct539",name:"South African High Commission",phone:"07031533362",email:"",address:""},
-  {id:"ct540",name:"Sparkles Apartments Limited",phone:"08062332639",email:"sparklesapartments@gmail.com",address:""},
-  {id:"ct541",name:"Specifics Lounge",phone:"09024152061",email:"",address:""},
-  {id:"ct542",name:"st4ifnwachukwu@gmail.com",phone:"",email:"",address:""},
-  {id:"ct543",name:"Stacy",phone:"09099650704",email:"",address:""},
-  {id:"ct544",name:"Stanley Oranika",phone:"07031840000",email:"",address:""},
-  {id:"ct545",name:"Starview Palace Hotel",phone:"",email:"",address:""},
-  {id:"ct546",name:"stefshady@gmail.com",phone:"",email:"",address:""},
-  {id:"ct547",name:"Suncity Estate",phone:"",email:"",address:""},
-  {id:"ct548",name:"Surgical Aid Foundation",phone:"09077172352",email:"",address:""},
-  {id:"ct549",name:"Takumi Towers estate",phone:"",email:"",address:""},
-  {id:"ct550",name:"Tanzania High Commission",phone:"",email:"",address:""},
-  {id:"ct551",name:"Tarylliay",phone:"",email:"",address:""},
-  {id:"ct552",name:"Taslima",phone:"08189316757",email:"",address:""},
-  {id:"ct553",name:"Test Account",phone:"08065683084",email:"",address:""},
-  {id:"ct554",name:"The adGlendale Place Block E4 Plot BO3 Ghali Na'aba Crescent, Wuye, Cadastral Zone, AMAC, Abuja",phone:"",email:"",address:""},
-  {id:"ct555",name:"The Council Restaurant",phone:"",email:"",address:""},
-  {id:"ct556",name:"The Fashion Academy",phone:"",email:"",address:""},
-  {id:"ct557",name:"The name of the companyAerial Project Analytics Africa.",phone:"",email:"",address:""},
-  {id:"ct558",name:"Thrive Agric",phone:"",email:"",address:""},
-  {id:"ct559",name:"Torchmark Group of Company",phone:"",email:"",address:""},
-  {id:"ct560",name:"Transcop",phone:"",email:"",address:""},
-  {id:"ct561",name:"Triple 9 Apartments Spa Pool",phone:"",email:"",address:""},
-  {id:"ct562",name:"Tropic Galleria",phone:"",email:"",address:""},
-  {id:"ct563",name:"Turbham",phone:"07062011450",email:"",address:""},
-  {id:"ct564",name:"Uboh Hotels and Resorts Ltd.",phone:"",email:"",address:""},
-  {id:"ct565",name:"Uchechi Anyanwu",phone:"",email:"",address:""},
-  {id:"ct566",name:"Uchenna Adibe",phone:"",email:"",address:""},
-  {id:"ct567",name:"u.ebu@off-field.com",phone:"",email:"",address:""},
-  {id:"ct568",name:"Ugochuku Ebu",phone:"08050610578",email:"",address:""},
-  {id:"ct569",name:"Unique",phone:"",email:"",address:""},
-  {id:"ct570",name:"Urban Rootz",phone:"09077777277",email:"",address:""},
-  {id:"ct571",name:"VAL DE MAURIS ACADEMY",phone:"",email:"",address:""},
-  {id:"ct572",name:"Vestates Ltd",phone:"",email:"",address:""},
-  {id:"ct573",name:"VG-AMU Nig. Ltd",phone:"09052267280",email:"",address:""},
-  {id:"ct574",name:"Victoria",phone:"",email:"",address:""},
-  {id:"ct575",name:"Vinara Confectionaries Limited",phone:"",email:"",address:""},
-  {id:"ct576",name:"Vinara confectionery",phone:"",email:"",address:""},
-  {id:"ct577",name:"Vinee Gas Ltd",phone:"",email:"",address:""},
-  {id:"ct578",name:"Viviyese Fashion School",phone:"08112034075",email:"",address:""},
-  {id:"ct579",name:"Volunteer Service Organization",phone:"",email:"",address:""},
-  {id:"ct580",name:"Vulcan suite",phone:"",email:"",address:""},
-  {id:"ct581",name:"Wasia Africa Mining Co. Ltd",phone:"",email:"",address:""},
-  {id:"ct582",name:"Wassail Group of Companies Ltd",phone:"",email:"",address:""},
-  {id:"ct583",name:"Wingist restaurant and sports bar",phone:"",email:"",address:""},
-  {id:"ct584",name:"Wragby Business Solutions and Tech Ltd.",phone:"08131301056",email:"",address:""},
-  {id:"ct585",name:"Xplixit Architecture & Integrated Services",phone:"",email:"",address:""},
-  {id:"ct586",name:"zagbonda@yahoo.com",phone:"",email:"",address:""},
-  {id:"ct587",name:"Zayyad Mahmoud",phone:"",email:"",address:""},
-  {id:"ct588",name:"Zuwere Muhammad",phone:"08160192428",email:"",address:""},
-  {id:"ct589",name:"Dr. Linda",phone:"08137889141",email:"",address:"Abuja"},
-  {id:"ct590",name:"Madam Fatima (Justice Abdulmalik)",phone:"08166292701",email:"",address:"Abuja"},
-  {id:"ct591",name:"Mr. Chigboh",phone:"08064084006",email:"",address:"Katampe Extension, Abuja"},
-  {id:"ct592",name:"Mr. Jafar",phone:"08035333050",email:"",address:"Abuja"},
-  {id:"ct593",name:"Mrs Obisan",phone:"08036793087",email:"",address:"Guzape, Abuja"},
-  {id:"ct594",name:"Ms. Angela Obaseki",phone:"08076054625",email:"Angieobaseki@gmail.com",address:"katampe Extension, Abuja"},
-  {id:"ct595",name:"Ms. Nana",phone:"09072289658",email:"",address:"5 Ali A. Rabiu Street, Abuja"},
-  {id:"ct596",name:"Ms. Stella",phone:"07063705214",email:"",address:"A Close, off 692 Road,, Abuja"},
-  {id:"ct597",name:"Dr",phone:"09099140030",email:"",address:""},
-  {id:"ct598",name:"Mr. Joshua Okodugha",phone:"08065672050",email:"j.okodugha@gmail.com",address:"Dawaki, Abuja"},
-  {id:"ct599",name:"SYDANI GROUP",phone:"",email:"marcus.sule@sydani.org",address:"Plot 1422, Independence Avenue, Central Business District,, Abuja"},
-  {id:"ct600",name:"Mr. Brown",phone:"08033107408",email:"",address:"B111 Copacabana Estate (near Doveland school), Abuja"},
-  {id:"ct601",name:"Ultimate Health Management Services",phone:"07048528790",email:"",address:"Plot 1446, Tsukunda House, 4th Floor,, Abuja Federal Capital Territory"},
-  {id:"ct602",name:"Mrs. Obisan",phone:"",email:"",address:""},
-  {id:"ct603",name:"The Aesthetic Clinic, Abuja",phone:"09056304707",email:"",address:"36A Gnassingbe Eyadema Crescent, Asokoro, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct604",name:"BENARC Construction Limited",phone:"08066941728",email:"",address:"Abuja"},
-  {id:"ct605",name:"Embassy of Sweden",phone:"07011979754",email:"",address:"41, T.Y. Danjuma Street, Abuja"},
-  {id:"ct606",name:"Mrs. Nneka Obiamalu",phone:"08080880501",email:"",address:"17 Usan Street, Total Cooperative Estate, Gaduwa, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct607",name:"Mrs. Miracle Okolo",phone:"08033344992",email:"",address:"No. 5, Ibrahim Bomai Street, Guzape, Abuja"},
-  {id:"ct608",name:"Mr. Michael Aboh",phone:"",email:"",address:""},
-  {id:"ct609",name:"Ms. Khareemah Kassim",phone:"",email:"",address:"Flat 6, Darik Homes Apartment, After Prince and Princess second gate. Kaura, Abuja, FCT, Abuja Federal Capital Territory"},
-  {id:"ct610",name:"Mr. Sunday Ikorishor",phone:"09155328905",email:"",address:"Plot 25, Umaru Sanda Nyako street, Hillside Estate, Gwarinpa"},
-  {id:"ct611",name:"Damunde Estate",phone:"00813847639",email:"",address:"33, Damunde Estate, Mabora District, Life-Camp, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct612",name:"Mocoh",phone:"",email:"",address:"24 Anambra crescent, off Nile Street, Maitama, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct613",name:"Mrs Omotosho (Damunde Estate)",phone:"08060584298",email:"",address:""},
-  {id:"ct614",name:"Ms. Ngunan",phone:"08037873118",email:"",address:"Karsana District, Abuja, FCT"},
-  {id:"ct615",name:"INFRACORP",phone:"09038864807",email:"",address:"Bank of Industry Building 12th Floor, Tower 2 Central Business District, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct616",name:"Mrs. Chiadi Inegbu",phone:"08023140501",email:"",address:"2. Ibrahim Tenimu Shehu Close, Gwarimpa"},
-  {id:"ct617",name:"The Showroom",phone:"08036688816",email:"kristina@cosmodesign.net",address:"145,Ademola Adetokunbo Crescent, Wuse 2"},
-  {id:"ct618",name:"Mr. Richard",phone:"",email:"",address:""},
-  {id:"ct619",name:"Barr. Miracle",phone:"",email:"",address:"2. Pitonga Street, Games Village, Abuja Federal Capital Territory"},
-  {id:"ct620",name:"TrustFund Pensions",phone:"",email:"",address:"Plot 820/821, Labour House, Central Area., Abuja"},
-  {id:"ct621",name:"Muzammil Waziri",phone:"08032466795",email:"",address:"154 Sola Adebiyi Crescent House 8, Wuye, Abuja"},
-  {id:"ct622",name:"Mr. A. M Asuku",phone:"08033000280",email:"",address:"No. 4 Abubakar Hashidu Close, Off Pattrick Yakowa Street, Katampe Extension,, Abuja"},
-  {id:"ct623",name:"Mr. Agbo Sunday",phone:"08131935472",email:"sundaylawrence51@gmail.com",address:"No. 96 NEPA Road, Kubwa, Abuja"},
-  {id:"ct624",name:"TLC Apartments",phone:"",email:"",address:"1b Ola Vincent Close, Abuja"},
-  {id:"ct625",name:"YCM CITY CHAPEL",phone:"",email:"",address:"Off Yemi Osinbajo Blvd, Abuja, FCT"},
-  {id:"ct626",name:"IKEA Nigeria, Abuja",phone:"08034511152",email:"",address:"2nd & 3rd Floor, Irrama Plaza, Abuja"},
-  {id:"ct627",name:"Ms. Gloria",phone:"08109394365",email:"",address:"Wuye Extensions, Abuja"},
-  {id:"ct628",name:"Ms. Freda",phone:"08065383446",email:"",address:"SOAR Plaza, Abuja"},
-  {id:"ct629",name:"Arc Maimuna",phone:"08033120024",email:"",address:"Abuja, FCT"},
-  {id:"ct630",name:"Ms. Yetunde Oladapo",phone:"07082968139",email:"yea2ndey@yahoo.com",address:"Tpumpy Phase 20, Lugbe,, Abuja, FCT"},
-  {id:"ct631",name:"Ms. Venassa Patrick",phone:"08063442583",email:"",address:"Maitama, Abuja"},
-  {id:"ct632",name:"Mr. Pedro Agbo",phone:"08162046532",email:"bisiteru@gmail.com",address:"Mabu Court, Abuja"},
-  {id:"ct633",name:"Mr. Kalu",phone:"",email:"",address:"445 Attahiru Jega crescent,, Abuja"},
-  {id:"ct634",name:"Nnadi Munachiso",phone:"08032601409",email:"",address:"Plot 16A, Larix Estate, Apo, Abuja"},
-  {id:"ct635",name:"Joerno. Conceptions Ltd.",phone:"08032896640",email:"belloolufemi@keno.com.ng",address:"2nd Floor, 25 Ndola Crescent,, Abuja"},
-  {id:"ct636",name:"Crux of Care",phone:"08037031310",email:"susman@cruxofcare.com",address:"Suite 308, Wetland Plaza, Abuja"},
-  {id:"ct637",name:"Expertise France",phone:"07072752518",email:"abissiata.ouattara@expertisefrance.fr",address:"12 Charles de Gaulle Street,, Abuja"},
-  {id:"ct638",name:"Casa Bolingo",phone:"08135770041",email:"",address:""},
-  {id:"ct639",name:"Ogiemudia Eghoosa",phone:"08065757880",email:"eghosaogiemudia@gmail.com",address:"Paradise Estate, Abuja"},
-  {id:"ct640",name:"Smart Trust Limited",phone:"",email:"",address:"Abuja"},
-  {id:"ct641",name:"James Akpa",phone:"",email:"",address:""},
-  {id:"ct642",name:"maryam",phone:"",email:"",address:""},
-  {id:"ct643",name:"Pascal Chukwuma Omile",phone:"",email:"",address:"13 Olusegun Soyemi Avenue, Abuja"},
-  {id:"ct644",name:"Mr Eric F.Y",phone:"",email:"",address:""},
-  {id:"ct645",name:"Radiant Wellness Spa",phone:"",email:"",address:"No 1 setiff close wuse 2, Abuja, Abuja Federal Capital Territory"},
-  {id:"ct646",name:"SWIFTLENDS NIGERIA LTD.",phone:"08100994713",email:"",address:"SUITE 445, ROCK OF AGES, MALL, ABUJA"},
-  {id:"ct647",name:"MR Habeeb",phone:"",email:"",address:""},
-  {id:"ct648",name:"Mr Habeeb",phone:"23408028271786",email:"",address:"House B10, 2nd Avenue, Brains and Hammers Estate, Abuja, Nigeria"},
-  {id:"ct649",name:"MARYJANE",phone:"07074644738",email:"",address:"DAWAKI, ABUJA"},
-];
+const CONTACTS_DB=[]; // loaded from dw_contacts table via Supabase
+
 const SEED_CLIENTS=[
   {id:1, name:"AFD",                   cat:"Corporate", svc:"Cleaning",    addr:"12 Charles de Gaule St, Area 11, Abuja",     cp:"Mr. James",    phone:"+234 803 000 0001",email:"info@afd.ng",       cleaners:"Vera, Chafa",               duty:"Mon-Fri",      cs:"2024-03-01",ce:"2026-02-29",sal:150000,con:44650, sc:58395, vat:0,     tot:253045},
   {id:2, name:"IFRC",                  cat:"NGO",       svc:"Both",        addr:"Plot 589 TOS Benson Cres, Utako, Abuja",     cp:"Ms. Fatima",   phone:"+234 803 000 0002",email:"abuja@ifrc.org",    cleaners:"Sani, Peter, Williams",     duty:"Mon-Fri",      cs:"2024-06-26",ce:"2025-06-25",sal:435000,con:0,     sc:130500,vat:0,     tot:565500},
@@ -851,6 +272,7 @@ const SEED_INVENTORY=[
   {id:"i9", item:"Dust Masks (box 50)",           cat:"PPE",         qty:7, reorder:5, cost:1500},
   {id:"i10",item:"Spray Pump 5L",                cat:"Equipment",   qty:5, reorder:2, cost:8500},
 ];
+
 
 // -- SHARED UI ----------------------------------------------------------------
 function SBadge({s,custom}){const st=custom||CONTRACT_COLORS[s]||STATUS_COLORS[s]||{bg:"#f9fafb",color:"#6b7280",border:"#e5e7eb"};return <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold whitespace-nowrap border" style={{background:st.bg,color:st.color,borderColor:st.border}}>{s}</span>;}
@@ -935,7 +357,7 @@ function Dashboard({clients,jobs,requests,inventory,users,staff,onNav}){
   </div>);}
 
 // -- CLIENTS ------------------------------------------------------------------
-function ClientsPage({clients,setClients,userRole,staff}){
+function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
   const[search,setSearch]=useState("");const[ft,setFt]=useState("All");const[fs,setFs]=useState("All");const[modal,setModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
@@ -943,10 +365,58 @@ function ClientsPage({clients,setClients,userRole,staff}){
   const save=data=>{if(data.id)setClients(cs=>cs.map(c=>c.id===data.id?data:c));else setClients(cs=>[...cs,{...data,id:++_uid}]);setModal(null);};
   const del=id=>confirm("Delete this client?",()=>setClients(cs=>cs.filter(c=>c.id!==id)));
   const can=userRole!=="Technician";
+  const filteredContacts=useMemo(()=>{
+    const db=window.__DW_CONTACTS__||contacts||[];
+    const q=contactSearch.toLowerCase().trim();
+    if(!q) return db.slice(0,100);
+    return db.filter(c=>[c.name,c.phone,c.email,c.address].join(" ").toLowerCase().includes(q)).slice(0,100);
+  },[contacts,contactSearch]);
+
   return(<div className="space-y-5">{confirmEl}
-    <div className="flex flex-wrap items-center gap-3"><div className="relative flex-1 min-w-52"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9"} placeholder="Name, address, phone..." value={search} onChange={e=>setSearch(e.target.value)}/></div><select className={inp+" w-auto"} value={ft} onChange={e=>setFt(e.target.value)}><option value="All">All Services</option><option>Cleaning</option><option>Pest Control</option><option>Both</option></select><select className={inp+" w-auto"} value={fs} onChange={e=>setFs(e.target.value)}><option value="All">All Statuses</option><option>Active</option><option>Expiring Soon</option><option>Critical</option><option>Expired</option></select>{can&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Client</button>}</div>
+    {/* Tab Switcher */}
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex gap-1 border border-gray-200 rounded-xl p-1 bg-white">
+        <button onClick={()=>setTab("clients")} className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="clients"?"text-white":"text-gray-500"}`} style={tab==="clients"?{background:G}:{}}> Contracts ({clients.length})</button>
+        <button onClick={()=>setTab("contacts")} className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="contacts"?"text-white":"text-gray-500"}`} style={tab==="contacts"?{background:G}:{}}> All Contacts ({(window.__DW_CONTACTS__||contacts||[]).length})</button>
+      </div>
+    </div>
+
+    {/* CONTACTS DIRECTORY TAB */}
+    {tab==="contacts"&&<div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Search by name, phone, address…" value={contactSearch} onChange={e=>setContactSearch(e.target.value)}/></div>
+        <span className="text-xs text-gray-400 whitespace-nowrap">Showing {filteredContacts.length} of {(window.__DW_CONTACTS__||contacts||[]).length}</span>
+      </div>
+      <Card>
+        <div className="divide-y divide-gray-50">
+          {filteredContacts.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No contacts match your search</div>}
+          {filteredContacts.map((c,i)=>(
+            <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:G}}>{(c.name||"?")[0].toUpperCase()}</div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{c.name}</p>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    {c.phone&&<span className="text-xs text-gray-500">📞 {c.phone}</span>}
+                    {c.email&&<span className="text-xs text-gray-500">✉ {c.email}</span>}
+                    {c.address&&<span className="text-xs text-gray-400 truncate max-w-xs">📍 {c.address}</span>}
+                  </div>
+                </div>
+              </div>
+              {userRole!=="Technician"&&<div className="flex-shrink-0">
+                <button onClick={()=>setClients(cs=>[...cs,{id:"c"+Date.now(),name:c.name,phone:c.phone||"",addr:c.address||"",cp:c.name,cat:"Corporate",svc:"Cleaning",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0,cleaners:[],duty:"Mon-Fri"}])} className="text-xs px-3 py-1.5 rounded-lg font-semibold border" style={{borderColor:G,color:G}}> Add as Client</button>
+              </div>}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>}
+
+    {/* CONTRACTS / CLIENTS TAB */}
+    {tab==="clients"&&<div className="flex flex-wrap items-center gap-3"><div className="relative flex-1 min-w-52"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9"} placeholder="Name, address, phone..." value={search} onChange={e=>setSearch(e.target.value)}/></div><select className={inp+" w-auto"} value={ft} onChange={e=>setFt(e.target.value)}><option value="All">All Services</option><option>Cleaning</option><option>Pest Control</option><option>Both</option></select><select className={inp+" w-auto"} value={fs} onChange={e=>setFs(e.target.value)}><option value="All">All Statuses</option><option>Active</option><option>Expiring Soon</option><option>Critical</option><option>Expired</option></select>{can&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Client</button>}</div>
     <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Category","Contact","Phone","Contract End","Value","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(c=>(<tr key={c.id} className="hover:bg-gray-50/70 transition-colors"><td className="px-4 py-3"><div className="flex items-center gap-2.5"><div className="w-8 h-8 rounded-lg text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:c.svc==="Pest Control"?O:G}}>{c.name[0]}</div><div><p className="font-semibold text-gray-800">{c.name}</p><p className="text-xs text-gray-400 max-w-[140px] truncate">{c.addr}</p></div></div></td><td className="px-4 py-3"><span className="text-xs px-2 py-1 rounded-lg font-medium" style={c.svc==="Pest Control"?{background:OL,color:"#c2410c"}:c.svc==="Both"?{background:"#f3f4f6",color:"#374151"}:{background:GL,color:G}}>{c.svc}</span></td><td className="px-4 py-3 text-xs text-gray-500">{c.cat}</td><td className="px-4 py-3 text-xs text-gray-500">{c.cp}</td><td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{c.phone}</td><td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.ce)}</td><td className="px-4 py-3 font-bold text-gray-700 text-sm whitespace-nowrap">{fmt(c.tot)}</td><td className="px-4 py-3"><SBadge s={c.status}/></td><td className="px-4 py-3">{can&&<div className="flex items-center gap-1.5"><button onClick={()=>setModal(c)} className="w-8 h-8 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(c.id)} className="w-8 h-8 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>))}</tbody></table>{filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No clients match your filters</div>}</div></Card>
     {modal!==null&&<ClientModal data={modal.id?modal:null} onSave={save} onClose={()=>setModal(null)} staff={staff}/>}
+    </div>}
   </div>);}
 function ClientModal({data,onSave,onClose,staff}){
   const blank={name:"",cat:"Corporate",svc:"Cleaning",addr:"",cp:"",phone:"",email:"",cleaners:[],duty:"Mon-Fri",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0};
@@ -1097,16 +567,17 @@ function StarRating({value,onChange,label}){
 
 const SR_SECTIONS=["General Info","Job Details","Quality Control","Safety","Client Feedback","Photos & Notes","Confirmation"];
 
-function ContactSearchSelect({value,onSelect,clients}){
+function ContactSearchSelect({value,onSelect,clients,contacts=[]}){
   const[search,setSearch]=useState(value||"");const[open,setOpen]=useState(false);const ref=useRef(null);
-  // Merge clients from app + CONTACTS_DB, deduplicated by name
+  // Merge live contacts from Supabase + app clients, deduplicated by name
   const allContacts=useMemo(()=>{
     const names=new Set();const list=[];
-    [...clients.map(c=>({name:c.name,phone:c.phone||"",address:c.addr||""})),...CONTACTS_DB].forEach(c=>{
+    const dbContacts=window.__DW_CONTACTS__||contacts||[];
+    [...clients.map(c=>({name:c.name,phone:c.phone||"",address:c.addr||""})),...dbContacts].forEach(c=>{
       if(c.name&&!names.has(c.name)){names.add(c.name);list.push(c);}
     });
     return list.sort((a,b)=>a.name.localeCompare(b.name));
-  },[clients]);
+  },[clients,contacts]);
   const filtered=search.trim()?allContacts.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())).slice(0,30):allContacts.slice(0,30);
   useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
   const select=c=>{setSearch(c.name);onSelect(c.name);setOpen(false);};
@@ -1123,7 +594,7 @@ function ContactSearchSelect({value,onSelect,clients}){
     </div>}
   </div>);}
 
-function SiteReportsPage({reports,setReports,user,clients}){
+function SiteReportsPage({reports,setReports,user,clients,contacts=[]}){
   const[showForm,setShowForm]=useState(false);const[view,setView]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const del=id=>confirm("Delete this report?",()=>setReports(rs=>rs.filter(r=>r.id!==id)));
@@ -1166,11 +637,11 @@ function SiteReportsPage({reports,setReports,user,clients}){
         </div>);
       })}</div>}
     </Card>
-    {showForm&&<SiteReportModal onSave={data=>{setReports(rs=>[data,...rs]);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients}/>}
+    {showForm&&<SiteReportModal onSave={data=>{setReports(rs=>[data,...rs]);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients} contacts={contacts}/>}
     {view&&<SiteReportViewer report={view} onClose={()=>setView(null)}/>}
   </div>);}
 
-function SiteReportModal({onSave,onClose,user,clients}){
+function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
   const[sec,setSec]=useState(0);
   const[gpsLoading,setGpsLoading]=useState(false);
   const[f,setF]=useState({
@@ -1279,7 +750,7 @@ function SiteReportModal({onSave,onClose,user,clients}){
             <Fld label="Supervisor Name"><input className={inp} value={f.supervisorName} onChange={u("supervisorName")}/></Fld>
             <Fld label="Supervisor Email"><input className={inp} type="email" value={f.supervisorEmail} onChange={u("supervisorEmail")}/></Fld>
             <Fld label="Client / Site" col required>
-            <ContactSearchSelect value={f.clientName} onSelect={name=>{const c=clients.find(c=>c.name===name);const ct=CONTACTS_DB.find(c=>c.name===name);setF(p=>({...p,clientName:name,address:c?c.addr:ct?ct.address:""}));}} clients={clients}/>
+            <ContactSearchSelect value={f.clientName} onSelect={name=>{const c=clients.find(c=>c.name===name);const ct=(window.__DW_CONTACTS__||contacts||[]).find(c=>c.name===name);setF(p=>({...p,clientName:name,address:c?c.addr:ct?ct.address:""}));}} clients={clients} contacts={contacts}/>
           </Fld>
             <Fld label="Site Address" col><input className={inp} value={f.address} onChange={u("address")} placeholder="Auto-filled from client  edit if different"/></Fld>
             {/* GPS */}
@@ -1541,10 +1012,15 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
       if(r.id!==id) return r;
       // Auto-add to CONTACTS_DB if newly approved and site not already known
       if(status==="Approved"&&r.site){
-        const alreadyInContacts=CONTACTS_DB.some(c=>c.name.toLowerCase()===r.site.toLowerCase());
+        const alreadyInContacts=(window.__DW_CONTACTS__||[]).some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         const alreadyInClients=clients.some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         if(!alreadyInContacts&&!alreadyInClients){
-          CONTACTS_DB.push({id:"ct"+Date.now(),name:r.site,phone:"",email:"",address:""});
+          // Save to Supabase dw_contacts table
+          saveContact({name:r.site,phone:"",email:"",address:""});
+          // Also add to local window cache
+          if(window.__DW_CONTACTS__){
+            window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});
+          }
         }
       }
       return {...r,status,reviewedBy:user.name,reviewedAt:new Date().toLocaleString("en-GB")};
@@ -1925,7 +1401,7 @@ function StaffPage({staff,setStaff}){
   </div>);}
 
 // -- SETTINGS ------------------------------------------------------------------
-function SettingsPage({users,setUsers}){
+function SettingsPage({users,setUsers,activityLog=[]}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
   const save=data=>{if(data.id)setUsers(us=>us.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u));else setUsers(us=>[...us,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}]);setModal(null);};
@@ -1954,6 +1430,36 @@ function SettingsPage({users,setUsers}){
     </Card>
 
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-3">Role Permissions</h3><div className="space-y-2.5">{[["Admin","#166534","Full access: all modules, staff management, settings, item catalogue"],["Supervisor","#9a3412","Jobs, clients, contracts, reports, requisitions (with costs), cover scheduling, imprest, item catalogue"],["Technician","#1e40af","Assigned jobs, GPS check-in/out, site reports, submit requisitions (no cost visibility)"]].map(([r,c,d])=><div key={r} className="flex gap-3 p-3 rounded-xl" style={{background:"#f9fafb"}}><span className="text-xs font-black w-24 flex-shrink-0 pt-0.5" style={{color:c}}>{r}</span><span className="text-xs text-gray-600">{d}</span></div>)}</div></Card>
+
+    <Card className="p-6">
+      <h3 className="font-bold text-gray-800 mb-4">Activity Log</h3>
+      <p className="text-xs text-gray-400 mb-4">Last 200 actions across all modules. Read-only audit trail.</p>
+      {activityLog.length===0
+        ?<div className="text-center py-8 text-gray-400 text-sm">No activity recorded yet</div>
+        :<div className="border border-gray-100 rounded-xl overflow-hidden">
+          <table className="w-full text-xs">
+            <thead><tr style={{background:"#f9fafb"}} className="border-b">
+              {["Time","User","Role","Action","Module","Description"].map(h=>
+                <th key={h} className="text-left px-3 py-2 font-bold text-gray-400 uppercase tracking-wider">{h}</th>
+              )}
+            </tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {activityLog.map((log,i)=>{
+                const actionColor={create:"#166534",update:"#1e40af",delete:"#991b1b",login:"#7c3aed",logout:"#6b7280"}[log.action]||"#374151";
+                return(<tr key={i} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</td>
+                  <td className="px-3 py-2 font-medium text-gray-700">{log.user_name}</td>
+                  <td className="px-3 py-2 text-gray-500">{log.user_role}</td>
+                  <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{background:actionColor}}>{log.action}</span></td>
+                  <td className="px-3 py-2 text-gray-500 capitalize">{log.module}</td>
+                  <td className="px-3 py-2 text-gray-600 max-w-xs truncate">{log.description}</td>
+                </tr>);
+              })}
+            </tbody>
+          </table>
+        </div>
+      }
+    </Card>
 
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-3">Technology Stack</h3><div className="space-y-2.5">{[["Database","Supabase (PostgreSQL) -- 13 tables, row-level security"],["Auth","Email/password + phone/username login, password reset via email"],["Hosting","Vercel (frontend) + Supabase (backend)  app.dustandwipes.com"],["Email","Resend via Supabase Edge Functions  notifications@mail.dustandwipes.com"],["PWA","Installable on Android & iPhone -- offline cache via Service Worker"],["GPS","Browser Geolocation API + coordinates captured on site reports"]].map(([l,d])=><div key={l} className="flex gap-3 p-3 rounded-xl" style={{background:"#f9fafb"}}><span className="text-xs font-bold text-green-700 w-36 flex-shrink-0">{l}</span><span className="text-xs text-gray-600">{d}</span></div>)}</div></Card>
 
@@ -1986,6 +1492,8 @@ export default function App(){
   const[jobs,        setJobs]        =useState(SEED_JOBS);
   const[inventory,   setInventory]   =useState(SEED_INVENTORY);
   const[siteReports, setSiteReports] =useState([]);
+  const[contacts,    setContacts]    =useState([]); // loaded from dw_contacts
+  const[activityLog, setActivityLog] =useState([]);
   const[supplyItems, setSupplyItems] =useState(INITIAL_SUPPLY_MASTER);
   const[requisitions,setRequisitions]=useState([]);
   const[absences,    setAbsences]    =useState([]);
@@ -2008,6 +1516,8 @@ export default function App(){
           dbLoad("requests",    setRequests),
           dbLoad("schedules",   setSchedules),
           dbLoad("reports",     setSiteReports),
+          loadContacts(setContacts),
+          loadActivityLog(setActivityLog),
           dbLoad("inventory",   setInventory),
           dbLoad("supplyitems", setSupplyItems),
           dbLoad("requisitions",setRequisitions),
@@ -2148,12 +1658,12 @@ export default function App(){
         </header>
         <main className="flex-1 overflow-y-auto p-6">
           {page==="dashboard"   &&<Dashboard clients={clients} jobs={jobs} requests={requests} inventory={inventory} users={users} staff={staff} onNav={setPage}/>}
-          {page==="clients"     &&<ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff}/>}
+          {page==="clients"     &&<ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/>}
           {page==="contracts"   &&<ContractsPage clients={clients}/>}
           {page==="requests"    &&<RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients}/>}
           {page==="jobs"        &&<JobsPage jobs={jobs} setJobs={setJobs} clients={clients} user={user}/>}
           {page==="schedule"    &&<SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/>}
-          {page==="site_reports"&&<SiteReportsPage reports={siteReports} setReports={setSiteReports} user={user} clients={clients}/>}
+          {page==="site_reports"&&<SiteReportsPage reports={siteReports} setReports={setSiteReports} user={user} clients={clients} contacts={contacts}/>}
           {page==="inventory"   &&<InventoryPage inventory={inventory} setInventory={setInventory} userRole={user.role}/>}
           {page==="requisitions"&&<RequisitionsPage requisitions={requisitions} setRequisitions={setRequisitions} supplyItems={supplyItems} setSupplyItems={setSupplyItems} clients={clients} users={users} user={user}/>}
           {page==="absencecover"&&<AbsenceCoverPage absences={absences} setAbsences={setAbsences} covers={covers} setCovers={setCovers} clients={clients} users={users}/>}
@@ -2161,7 +1671,7 @@ export default function App(){
           {page==="imprest"     &&<ImprestPage imprests={imprests} setImprests={setImprests}/>}
           {page==="analytics"   &&<AnalyticsPage clients={clients} siteReports={siteReports} jobs={jobs}/>}
           {page==="staff"       &&<StaffPage staff={staff} setStaff={setStaff}/>}
-          {page==="settings"    &&<SettingsPage users={users} setUsers={setUsers}/>}
+          {page==="settings"    &&<SettingsPage users={users} setUsers={setUsers} activityLog={activityLog}/>}
         </main>
       </div>
     </div>
