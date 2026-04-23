@@ -122,6 +122,7 @@ const saveContact = async (contact) => {
 };
 
 // Log an activity to dw_activity_log (fire-and-forget, never blocks UI)
+// eslint-disable-next-line no-unused-vars
 const logActivity = async ({userName="",userRole="",action,module,recordId="",description=""}) => {
   try {
     await fetch(`${SUPABASE_URL}/rest/v1/dw_activity_log`,{
@@ -264,7 +265,6 @@ const INITIAL_STAFF=[
   {id:"st10",name:"Jennifer Ogah",   role:"Cleaner",category:"Cleaning Staff",site:"Ms. Angela",     dob:"1992-09-12",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
 ];
 
-const CONTACTS_DB=[]; // loaded from dw_contacts table via Supabase
 
 const SEED_CLIENTS=[
   {id:1, name:"AFD",                   cat:"Corporate", svc:"Cleaning",    addr:"12 Charles de Gaule St, Area 11, Abuja",     cp:"Mr. James",    phone:"+234 803 000 0001",email:"info@afd.ng",       cleaners:"Vera, Chafa",               duty:"Mon-Fri",      cs:"2024-03-01",ce:"2026-02-29",sal:150000,con:44650, sc:58395, vat:0,     tot:253045},
@@ -401,7 +401,7 @@ function Dashboard({clients,jobs,requests,inventory,users,staff,onNav}){
 
 // -- CLIENTS ------------------------------------------------------------------
 function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
-  const[search,setSearch]=useState("");const[ft,setFt]=useState("All");const[fs,setFs]=useState("All");const[modal,setModal]=useState(null);
+  const[tab,setTab]=useState("clients");const[contactSearch,setContactSearch]=useState("");const[search,setSearch]=useState("");const[ft,setFt]=useState("All");const[fs,setFs]=useState("All");const[modal,setModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
