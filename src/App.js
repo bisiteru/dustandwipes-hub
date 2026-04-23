@@ -348,7 +348,7 @@ function NotifPanel({notes,onRead,onClose}){
   return(<div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100"><div className="flex items-center gap-2"><Bell size={14} style={{color:G}}/><span className="text-sm font-bold text-gray-800">Notifications</span>{unread>0&&<span className="text-xs px-2 py-0.5 rounded-full text-white font-bold" style={{background:RED}}>{unread}</span>}</div><div className="flex gap-2"><button onClick={()=>notes.forEach(n=>onRead(n.id))} className="text-xs text-green-700 hover:underline">Mark all read</button><button onClick={onClose}><X size={14} className="text-gray-400"/></button></div></div>
     <div className="max-h-80 overflow-y-auto">{notes.length===0?<div className="text-center py-8 text-gray-400 text-sm">All clear!</div>:notes.map(n=>(<div key={n.id} onClick={()=>onRead(n.id)} className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 ${!n.read?"bg-green-50/40":""}`}><span className="text-base flex-shrink-0">{n.icon}</span><div className="flex-1 min-w-0"><p className={`text-xs ${!n.read?"font-bold text-gray-800":"font-medium text-gray-600"}`}>{n.title}</p><p className="text-xs text-gray-400 truncate">{n.body}</p></div>{!n.read&&<div className="w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{background:G}}/>}</div>))}</div>
-  </div></div>);}
+  </div>);}
 
 // -- LOGIN --------------------------------------------------------------------
 function LoginScreen({onLogin,users,clients,jobs,supplyItems}){
@@ -575,7 +575,7 @@ function GpsModal({job,type,onSave,onClose}){
   const[loc,setLoc]=useState(null);const[loading,setLoading]=useState(true);const[note,setNote]=useState(null);
   useEffect(()=>{if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{setLoc({lat:pos.coords.latitude.toFixed(5),lng:pos.coords.longitude.toFixed(5),acc:Math.round(pos.coords.accuracy)});setLoading(false);},()=>{setLoc({lat:"9.07650",lng:"7.39876",acc:15});setLoading(false);setNote("GPS unavailable -- simulated Abuja coords used");});}else{setLoc({lat:"9.07650",lng:"7.39876",acc:15});setLoading(false);setNote("GPS not supported");}},[]);
   const confirm=()=>{const now=new Date().toISOString().slice(0,16);const gs=loc?`${loc.lat}N, ${loc.lng}E (${loc.acc}m)`:"Unavailable";onSave(type==="in"?{...job,status:"In Progress",checkIn:now,gpsIn:gs}:{...job,status:"Awaiting Approval",checkOut:now,gpsOut:gs});};
-  return(<ModalWrap title={type==="in"?" GPS Check-In":" GPS Check-Out"} onClose={onClose}><div className="space-y-4"><div className="p-4 rounded-2xl text-center" style={{background:GL}}><p className="font-bold text-green-800">{job.clientName}</p></div>{loading?<div className="flex flex-col items-center gap-3 py-6"><div className="w-10 h-10 rounded-full border-2 border-green-500 border-t-transparent animate-spin"/><p className="text-sm text-gray-500">Acquiring GPS...</p></div>:<div className="p-4 rounded-xl" style={{background:"#f0f9ff",border:"1px solid #bae6fd"}}><p className="text-xs font-bold text-blue-700 mb-2"> Location Captured</p>{loc&&<><p className="text-sm text-blue-800 font-mono">Lat: {loc.lat}N</p><p className="text-sm text-blue-800 font-mono">Lng: {loc.lng}E</p></>}<p className="text-xs text-blue-500 mt-1">{new Date().toLocaleString("en-GB")}</p>{note&&<p className="text-xs text-amber-600 mt-2"> {note}</p>}</div>}</div><div className="flex justify-end gap-3 pt-4 border-t"><button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={confirm} disabled={loading} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{background:type==="in"?G:O}}>{type==="in"?"Confirm Check-In ":"Confirm Check-Out "}</button></div></div></ModalWrap>);}
+  return(<ModalWrap title={type==="in"?" GPS Check-In":" GPS Check-Out"} onClose={onClose}><div className="space-y-4"><div className="p-4 rounded-2xl text-center" style={{background:GL}}><p className="font-bold text-green-800">{job.clientName}</p></div>{loading?<div className="flex flex-col items-center gap-3 py-6"><div className="w-10 h-10 rounded-full border-2 border-green-500 border-t-transparent animate-spin"/><p className="text-sm text-gray-500">Acquiring GPS...</p></div>:<div className="p-4 rounded-xl" style={{background:"#f0f9ff",border:"1px solid #bae6fd"}}><p className="text-xs font-bold text-blue-700 mb-2"> Location Captured</p>{loc&&<><p className="text-sm text-blue-800 font-mono">Lat: {loc.lat}N</p><p className="text-sm text-blue-800 font-mono">Lng: {loc.lng}E</p></>}<p className="text-xs text-blue-500 mt-1">{new Date().toLocaleString("en-GB")}</p>{note&&<p className="text-xs text-amber-600 mt-2"> {note}</p>}</div>}</div><div className="flex justify-end gap-3 pt-4 border-t"><button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={confirm} disabled={loading} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{background:type==="in"?G:O}}>{type==="in"?"Confirm Check-In ":"Confirm Check-Out "}</button></div></ModalWrap>);}
 
 // -- PEST SCHEDULE -------------------------------------------------------------
 function SchedulePage({schedules,setSchedules,clients,userRole}){
@@ -960,7 +960,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
         }
       </div>
     </div>
-  </div></div></div>);}
+  </div>);}
 
 function SiteReportViewer({report:r,onClose}){
   const[photoIdx,setPhotoIdx]=useState(null);
@@ -1520,7 +1520,7 @@ function SettingsPage({users,setUsers,activityLog=[]}){
         <button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add User"}</button>
       </div>
     </ModalWrap>}
-  </div></div>);}
+  </div>);}
 
 
 // -- ROOT APP ------------------------------------------------------------------
