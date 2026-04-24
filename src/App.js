@@ -252,69 +252,20 @@ const INITIAL_USERS=[
   {id:"u5",username:"08160939949",               password:"Clean123#",   role:"Technician", name:"Veronica Apeh", initial:"V"},
   {id:"u6",username:"08099700001",               password:"Clean123#",   role:"Technician", name:"Info Desk",     initial:"I"},
 ];
-const INITIAL_STAFF=[
-  {id:"st1", name:"Vera Okeke",      role:"Cleaner",category:"Cleaning Staff",site:"AFD",            dob:"1993-03-15",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st2", name:"Chafa Musa",      role:"Cleaner",category:"Cleaning Staff",site:"AFD",            dob:"1990-07-22",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st3", name:"Sani Ibrahim",    role:"Cleaner",category:"Cleaning Staff",site:"IFRC",           dob:"1988-04-09",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st4", name:"Peter Eze",       role:"Cleaner",category:"Cleaning Staff",site:"IFRC",           dob:"1995-11-03",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st5", name:"Mariam Abubakar", role:"Cleaner",category:"Cleaning Staff",site:"First Ally",     dob:"1991-08-18",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st6", name:"Faith Obi",       role:"Cleaner",category:"Cleaning Staff",site:"Chayim",         dob:"1996-04-09",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st7", name:"Joy Nwosu",       role:"Cleaner",category:"Cleaning Staff",site:"Chayim",         dob:"1994-12-25",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st8", name:"Rebecca Adamu",   role:"Cleaner",category:"Cleaning Staff",site:"Mr. Sunday",     dob:"1989-02-14",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st9", name:"Vivian Lawal",    role:"Cleaner",category:"Cleaning Staff",site:"Mrs. Khareemah", dob:"1997-06-30",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-  {id:"st10",name:"Jennifer Ogah",   role:"Cleaner",category:"Cleaning Staff",site:"Ms. Angela",     dob:"1992-09-12",homeAddress:"",phone:"",emergencyContact:"",emergencyPhone:""},
-];
+const INITIAL_STAFF=[]; // demo data removed
 
 
-const SEED_CLIENTS=[
-  {id:1, name:"AFD",                   cat:"Corporate", svc:"Cleaning",    addr:"12 Charles de Gaule St, Area 11, Abuja",     cp:"Mr. James",    phone:"+234 803 000 0001",email:"info@afd.ng",       cleaners:"Vera, Chafa",               duty:"Mon-Fri",      cs:"2024-03-01",ce:"2026-02-29",sal:150000,con:44650, sc:58395, vat:0,     tot:253045},
-  {id:2, name:"IFRC",                  cat:"NGO",       svc:"Both",        addr:"Plot 589 TOS Benson Cres, Utako, Abuja",     cp:"Ms. Fatima",   phone:"+234 803 000 0002",email:"abuja@ifrc.org",    cleaners:"Sani, Peter, Williams",     duty:"Mon-Fri",      cs:"2024-06-26",ce:"2025-06-25",sal:435000,con:0,     sc:130500,vat:0,     tot:565500},
-  {id:3, name:"First Ally Asset Mgt.", cat:"Corporate", svc:"Cleaning",    addr:"5 Tanba Street, Wuse 2, Abuja",              cp:"Mr. Bello",    phone:"+234 803 000 0003",email:"info@firstally.ng", cleaners:"Mariam, Catherine, Elizabeth",duty:"Mon-Fri",     cs:"2024-11-01",ce:"2025-10-31",sal:150000,con:43400,sc:58020, vat:4351.5,tot:255771.5},
-  {id:4, name:"ISN Products",          cat:"Corporate", svc:"Cleaning",    addr:"25 Ndola Crescent, Zone 5, Abuja",           cp:"Mrs. Nwosu",   phone:"+234 803 000 0004",email:"hr@isn.ng",         cleaners:"Dorcas",                    duty:"Mon-Fri",      cs:"2024-08-08",ce:"2025-08-31",sal:40000, con:15200,sc:16560, vat:1242,   tot:73002},
-  {id:5, name:"Sparkles Apartment",    cat:"Real Estate",svc:"Cleaning",   addr:"572 Iduwa Ogenyi St, Mabushi, Abuja",        cp:"Mr. Obi",      phone:"+234 803 000 0005",email:"mgr@sparkles.ng",   cleaners:"Mary, Clement, Ephraim",    duty:"Mon-Sun",      cs:"2024-09-04",ce:"2025-09-03",sal:300000,con:0,     sc:90000, vat:6750,   tot:396750},
-  {id:6, name:"Chayim Diagnostics",    cat:"Healthcare",svc:"Both",        addr:"34 Euphrates Crescent, Maitama, Abuja",      cp:"Dr. Chayim",   phone:"+234 803 000 0006",email:"admin@chayim.ng",   cleaners:"Faith, Joy, Vincent",       duty:"Mon-Sat",      cs:"2024-11-01",ce:"2025-10-31",sal:195000,con:80000,sc:82500, vat:0,     tot:357500},
-  {id:7, name:"Mobus Property Holdings",cat:"Real Estate",svc:"Cleaning",  addr:"Riverpark Estate, Airport Rd, Lugbe",        cp:"Mr. Mobus",    phone:"+234 803 000 0007",email:"info@mobus.ng",     cleaners:"Dooshima, Folashade",       duty:"Mon-Fri",      cs:"2024-11-01",ce:"2025-11-30",sal:140000,con:0,     sc:35000, vat:0,     tot:175000},
-  {id:8, name:"The Showroom",          cat:"Retail",    svc:"Cleaning",    addr:"145 Ademola Adetokunbo, Wuse 2, Abuja",      cp:"Mrs. Show",    phone:"+234 803 000 0008",email:"mgr@showroom.ng",   cleaners:"Godfrey, Samuel, Solomon",  duty:"Mon-Sat",      cs:"2025-05-07",ce:"2026-05-06",sal:240000,con:0,     sc:60000, vat:4500,   tot:304500},
-  {id:9, name:"INFRACORP",             cat:"Corporate", svc:"Cleaning",    addr:"12th Floor BOI Building, CBD, Abuja",        cp:"Mr. Infra",    phone:"+234 803 000 0009",email:"fm@infracorp.ng",   cleaners:"Mariam, Tobi",              duty:"Mon-Fri",      cs:"2025-05-21",ce:"2026-05-20",sal:150000,con:87500,sc:71250, vat:5343.75,tot:314093.75},
-  {id:10,name:"Mr. Grant Ukaegbu",     cat:"Residence", svc:"Cleaning",    addr:"Apo Resettlement, Zone E, Abuja",            cp:"Mr. Grant",    phone:"+234 803 000 0010",email:"grant@email.com",   cleaners:"Peace Agocha",              duty:"Mon,Fri",      cs:"2024-10-01",ce:"2025-09-30",sal:45000, con:0,     sc:13500, vat:1012.5, tot:59512.5},
-  {id:11,name:"Justice Abdulmalik",    cat:"Residence", svc:"Cleaning",    addr:"House 29, Rd 693, Judges Quarters, Gwarinpa",cp:"Justice A.",   phone:"+234 803 000 0011",email:"j.abd@court.ng",    cleaners:"Blessing",                  duty:"Mon,Wed,Sat",  cs:"2024-01-13",ce:"2025-01-12",sal:40000, con:0,     sc:12000, vat:900,    tot:52900},
-  {id:12,name:"Mr. Justin Oko Odama",  cat:"Residence", svc:"Cleaning",    addr:"Plot 857 CAD Zone, Jahi, Abuja",             cp:"Mr. Justin",   phone:"+234 803 000 0012",email:"justin@email.com",  cleaners:"Janet",                     duty:"Mon,Wed,Sat",  cs:"2024-07-29",ce:"2025-07-28",sal:40000, con:0,     sc:12000, vat:900,    tot:52900},
-  {id:13,name:"Mrs. Linda Azuonye",    cat:"Residence", svc:"Cleaning",    addr:"House 3, Fola Daniel Crescent, Jahi",        cp:"Mrs. Linda",   phone:"+234 803 000 0013",email:"linda@email.com",   cleaners:"Linda Tanko",               duty:"Mon,Wed,Fri,Sat",cs:"2024-08-17",ce:"2025-08-16",sal:60000,con:0,sc:18000,vat:1350,tot:79350},
-  {id:14,name:"Mr. Sunday Ikorishor",  cat:"Residence", svc:"Cleaning",    addr:"Plot 25, Hillside Estate, Gwarinpa",         cp:"Mr. Sunday",   phone:"+234 803 000 0014",email:"sunday@email.com",  cleaners:"Rebecca",                   duty:"Wed,Sat",      cs:"2025-03-30",ce:"2026-03-29",sal:40000, con:0,     sc:12000, vat:900,    tot:52900},
-  {id:15,name:"Mrs. Khareemah Kassim", cat:"Residence", svc:"Cleaning",    addr:"Flat 6, Darik Homes, Kaura, Abuja",          cp:"Mrs. Khareemah",phone:"+234 803 000 0015",email:"k.kassim@email.com",cleaners:"Vivian",                    duty:"Wed (Fortnight)",cs:"2025-03-04",ce:"2026-03-03",sal:20000,con:0,sc:6000,vat:450,tot:26450},
-  {id:16,name:"Ms. Angela Obaseki",    cat:"Residence", svc:"Cleaning",    addr:"Katampe Extension, Abuja",                   cp:"Ms. Angela",   phone:"+234 803 000 0016",email:"angela@email.com",  cleaners:"Jennifer Ogah",             duty:"Tue,Sat",      cs:"2024-10-01",ce:"2025-10-31",sal:45000, con:0,     sc:13500, vat:1012.5, tot:59512.5},
-  {id:17,name:"Tripple 9",             cat:"Food & Bev",svc:"Pest Control",addr:"Zone 4, Wuse, Abuja",                        cp:"Manager T9",   phone:"+234 803 000 0017",email:"mgr@triple9.ng",    cleaners:"--",                         duty:"Quarterly",    cs:"2025-03-10",ce:"2026-03-10",sal:0,     con:0,     sc:45000, vat:3375,   tot:48375},
-  {id:18,name:"Crumble Bakery",        cat:"Food & Bev",svc:"Pest Control",addr:"Garki, Abuja",                               cp:"Mr. Crumble",  phone:"+234 803 000 0018",email:"info@crumble.ng",   cleaners:"--",                         duty:"Quarterly",    cs:"2025-04-26",ce:"2026-04-26",sal:0,     con:0,     sc:35000, vat:2625,   tot:37625},
-];
-const SEED_JOBS=[
-  {id:"j1",clientName:"The Showroom",      svc:"Cleaning",    date:"2026-04-10",sup:"James Akpa", techs:"Faith Apeh, Veronica Apeh",status:"In Progress",      notes:"Weekly clean",checkIn:null,checkOut:null},
-  {id:"j2",clientName:"IFRC",              svc:"Pest Control",date:"2026-04-09",sup:"Agnes Dung", techs:"Faith Apeh",               status:"Awaiting Approval",notes:"Quarterly",checkIn:"2026-04-09T08:30",checkOut:"2026-04-09T12:00"},
-  {id:"j3",clientName:"INFRACORP",         svc:"Cleaning",    date:"2026-04-11",sup:"James Akpa", techs:"Veronica Apeh",            status:"Scheduled",        notes:"",checkIn:null,checkOut:null},
-  {id:"j4",clientName:"Chayim Diagnostics",svc:"Both",        date:"2026-04-14",sup:"Agnes Dung", techs:"Faith Apeh, Veronica Apeh",status:"New",              notes:"",checkIn:null,checkOut:null},
-  {id:"j5",clientName:"Crumble Bakery",    svc:"Pest Control",date:"2026-04-08",sup:"James Akpa", techs:"Faith Apeh",               status:"Completed",        notes:"Routine",checkIn:"2026-04-08T09:00",checkOut:"2026-04-08T11:30"},
-];
-const SEED_SCHEDULES=[
-  {id:1,clientName:"IFRC",              service:"Pest Control",dateCarriedOut:"2025-02-07",dueDate:"2025-05-07",notes:"General fumigation"},
-  {id:2,clientName:"Tripple 9",         service:"Pest Control",dateCarriedOut:"2025-03-10",dueDate:"2025-06-10",notes:""},
-  {id:3,clientName:"Chayim Diagnostics",service:"Pest Control",dateCarriedOut:"2025-03-28",dueDate:"2025-06-28",notes:""},
-  {id:4,clientName:"Crumble Bakery",    service:"Pest Control",dateCarriedOut:"2025-04-26",dueDate:"2025-07-26",notes:""},
-];
-const SEED_REQUESTS=[
-  {id:"sr1",clientName:"Chayim Diagnostics",svc:"Pest Control",loc:"34 Euphrates Cres",prefDate:"2026-04-15",src:"WhatsApp",status:"Pending",notes:"Rodent issue in storage",created:"2026-04-01"},
-  {id:"sr2",clientName:"INFRACORP",          svc:"Pest Control",loc:"BOI Building, CBD",prefDate:"2026-04-20",src:"Email",   status:"Pending",notes:"Ants on 12th floor",    created:"2026-04-06"},
-];
-const SEED_INVENTORY=[
-  {id:"i1", item:"Multi-surface Cleaner (5L)",   cat:"Cleaning",    qty:12,reorder:5, cost:3500},
-  {id:"i2", item:"Disinfectant Concentrate (5L)",cat:"Cleaning",    qty:8, reorder:4, cost:4200},
-  {id:"i3", item:"Micro Fiber Towels (pack 10)",  cat:"Equipment",   qty:25,reorder:10,cost:2000},
-  {id:"i4", item:"Mop Heads",                     cat:"Equipment",   qty:14,reorder:5, cost:5000},
-  {id:"i5", item:"Cypermethrin 1L",               cat:"Pest Control",qty:3, reorder:4, cost:6500},
-  {id:"i6", item:"Deltamethrin 500ml",            cat:"Pest Control",qty:2, reorder:3, cost:7800},
-  {id:"i7", item:"Bait Stations (box 12)",        cat:"Pest Control",qty:6, reorder:3, cost:5500},
-  {id:"i8", item:"Hand Gloves (box 100)",         cat:"PPE",         qty:4, reorder:5, cost:2800},
-  {id:"i9", item:"Dust Masks (box 50)",           cat:"PPE",         qty:7, reorder:5, cost:1500},
-  {id:"i10",item:"Spray Pump 5L",                cat:"Equipment",   qty:5, reorder:2, cost:8500},
-];
+
+const SEED_CLIENTS=[]; // demo data removed
+
+const SEED_JOBS=[]; // demo data removed
+
+const SEED_SCHEDULES=[]; // demo data removed
+
+const SEED_REQUESTS=[]; // demo data removed
+
+const SEED_INVENTORY=[]; // demo data removed
+
 
 
 // -- SHARED UI ----------------------------------------------------------------
@@ -1529,12 +1480,12 @@ export default function App(){
   const[page,        setPage]        =useState("dashboard");
   const[sidebar,     setSidebar]     =useState(true);
   const[users,       setUsers]       =useState(INITIAL_USERS);
-  const[staff,       setStaff]       =useState(INITIAL_STAFF);
-  const[clients,     setClients]     =useState(SEED_CLIENTS);
-  const[schedules,   setSchedules]   =useState(SEED_SCHEDULES);
-  const[requests,    setRequests]    =useState(SEED_REQUESTS);
-  const[jobs,        setJobs]        =useState(SEED_JOBS);
-  const[inventory,   setInventory]   =useState(SEED_INVENTORY);
+  const[staff,       setStaff]       =useState([]);
+  const[clients,     setClients]     =useState([]);
+  const[schedules,   setSchedules]   =useState([]);
+  const[requests,    setRequests]    =useState([]);
+  const[jobs,        setJobs]        =useState([]);
+  const[inventory,   setInventory]   =useState([]);
   const[siteReports, setSiteReports] =useState([]);
   const[contacts,    setContacts]    =useState([]); // loaded from dw_contacts
   const[activityLog, setActivityLog] =useState([]);
