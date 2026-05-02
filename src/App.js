@@ -1531,6 +1531,7 @@ export default function App(){
   const[showNotif,   setShowNotif]   =useState(false);
   const[readIds,     setReadIds]     =useState([]);
   const[dbStatus,    setDbStatus]    =useState("ok"); // DB loads in background
+  const[dbLoading,   setDbLoading]   =useState(true);
   const notifRef   = useRef(null);
   const dbLoaded   = useRef(false);   // true after first load from Supabase
   const syncTimers = useRef({});      // debounce timers per table
@@ -1564,6 +1565,7 @@ export default function App(){
         setDbStatus("error");
       } finally {
         dbLoaded.current = true;
+        setDbLoading(false);
       }
     };
     loadAll();
@@ -1609,15 +1611,22 @@ export default function App(){
 
   // -- Notifications ----------------------------------------------------------
   const allNotifs=useMemo(()=>buildNotifs(clients,jobs,inventory),[clients,jobs,inventory]);
-  const liveNotifs=allNotifs.map(n=>({...n,read:readIds.includes(n.id)}));
-  const unread=liveNotifs.filter(n=>!n.read).length;
+  const liveNotifs=useMemo(()=>allNotifs.map(n=>({...n,read:readIds.includes(n.id)})),[allNotifs,readIds]);
+  const unread=useMemo(()=>liveNotifs.filter(n=>!n.read).length,[liveNotifs]);
   const markRead=id=>setReadIds(r=>[...r,id]);
   useEffect(()=>{const h=e=>{if(notifRef.current&&!notifRef.current.contains(e.target))setShowNotif(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
 
   const handleLogin=u=>{setUser(u);setPage("dashboard");};
 
 
-  if(!user) return <LoginScreen onLogin={handleLogin} users={users} clients={clients} jobs={jobs} supplyItems={supplyItems}/>;
+  if(!user) return <LoginScreen onLogin={handleLogin} users={users}/>;
+
+  if(dbLoading) return(
+    <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
+      <img src={LOGO} alt="D&W" className="w-14 rounded-xl bg-white p-1 shadow-md animate-pulse"/>
+      <p className="text-sm font-semibold text-gray-500">Loading Operations Hub…</p>
+    </div>
+  );
 
   const NAV=[
     {id:"dashboard",   label:"Dashboard",       icon:Home,          roles:["Admin","Supervisor"]},
@@ -1647,10 +1656,9 @@ export default function App(){
         </div>
         <nav className="flex-1 py-2 overflow-y-auto overflow-x-hidden">
           {NAV.map(item=>{const Icon=item.icon;const active=page===item.id;return(
-            <button key={item.id} onClick={()=>setPage(item.id)} className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all ${sidebar?"":"justify-center"}`}
-              style={active?{background:"rgba(255,255,255,0.10)",color:"#fff",borderRight:`3px solid ${O}`}:{color:"#6EAD7E"}}
-              onMouseEnter={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#fff";}}}
-              onMouseLeave={e=>{if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color="#6EAD7E";}}}>
+            <button key={item.id} title={item.label} onClick={()=>setPage(item.id)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all ${sidebar?"":"justify-center"} ${active?"":"hover:bg-white/5 hover:!text-white"}`}
+              style={active?{background:"rgba(255,255,255,0.10)",color:"#fff",borderRight:`3px solid ${O}`}:{color:"#6EAD7E"}}>
               <Icon size={15} className="flex-shrink-0"/>
               {sidebar&&<span className="text-sm font-medium whitespace-nowrap">{item.label}</span>}
             </button>
@@ -1661,7 +1669,7 @@ export default function App(){
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{background:O}}>{user.initial}</div>
               <div className="flex-1 min-w-0 overflow-hidden"><div className="text-white text-xs font-semibold truncate">{user.name}</div><div className="text-xs truncate" style={{color:"#6EAD7E"}}>{user.role}</div></div>
-              <button onClick={()=>setUser(null)} style={{color:"#6EAD7E"}} className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0" onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.08)";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#6EAD7E";}}><LogOut size={14}/></button>
+              <button onClick={()=>setUser(null)} style={{color:"#6EAD7E"}} className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 hover:bg-white/10 hover:!text-white transition-colors"><LogOut size={14}/></button>
             </div>
           ):(
             <button onClick={()=>setUser(null)} className="w-full flex justify-center py-1" style={{color:"#6EAD7E"}}><LogOut size={16}/></button>
@@ -1675,9 +1683,9 @@ export default function App(){
           <div className="flex-1 min-w-0"><h1 className="font-bold text-gray-700 text-sm">{pageTitle}</h1><p className="text-xs text-gray-400 hidden sm:block">{APP_NAME}  {APP_SUB}</p></div>
           <div className="flex items-center gap-2">
             {/* DB status dot */}
-            <div className="hidden sm:flex items-center gap-1.5 mr-2">
+            <div className="flex items-center gap-1.5 mr-2">
               <div className="w-2 h-2 rounded-full" style={{background:dbStatus==="ok"?"#22c55e":dbStatus==="error"?"#ef4444":"#f59e0b"}}/>
-              <span className="text-xs font-medium" style={{color:dbStatus==="ok"?"#16a34a":dbStatus==="error"?"#dc2626":"#d97706"}}>{dbStatus==="ok"?"Synced":dbStatus==="error"?"DB Error":"Syncing..."}</span>
+              <span className="hidden sm:inline text-xs font-medium" style={{color:dbStatus==="ok"?"#16a34a":dbStatus==="error"?"#dc2626":"#d97706"}}>{dbStatus==="ok"?"Synced":dbStatus==="error"?"DB Error":"Syncing..."}</span>
             </div>
             <div className="relative" ref={notifRef}>
               <button onClick={()=>setShowNotif(p=>!p)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
