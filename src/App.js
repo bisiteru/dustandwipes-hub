@@ -5,7 +5,6 @@ import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const TODAY=new Date(); // always uses current date
-let _uid=500;
 const GD="#0B3518",G="#1B6B2F",GL="#E8F5E9",O="#E85D04",OL="#FFF3E0",AMBER="#D97706",RED="#DC2626",BLUE="#2563EB";
 const LOGO_B64_PARTS = [
   "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9Y",
@@ -252,19 +251,6 @@ const INITIAL_USERS=[
   {id:"u5",username:"08160939949",               password:"Clean123#",   role:"Technician", name:"Veronica Apeh", initial:"V"},
   {id:"u6",username:"08099700001",               password:"Clean123#",   role:"Technician", name:"Info Desk",     initial:"I"},
 ];
-const INITIAL_STAFF=[]; // demo data removed
-
-
-
-const SEED_CLIENTS=[]; // demo data removed
-
-const SEED_JOBS=[]; // demo data removed
-
-const SEED_SCHEDULES=[]; // demo data removed
-
-const SEED_REQUESTS=[]; // demo data removed
-
-const SEED_INVENTORY=[]; // demo data removed
 
 
 
