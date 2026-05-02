@@ -384,7 +384,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
                 </div>
               </div>
               {userRole!=="Technician"&&<div className="flex-shrink-0">
-                <button onClick={()=>setClients(cs=>[...cs,{id:"c"+Date.now(),name:c.name,phone:c.phone||"",addr:c.address||"",cp:c.name,cat:"Corporate",svc:"Cleaning",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0,cleaners:[],duty:"Mon-Fri"}])} className="text-xs px-3 py-1.5 rounded-lg font-semibold border" style={{borderColor:G,color:G}}> Add as Client</button>
+                <button onClick={()=>setClients(cs=>[...cs,{id:"c"+Date.now()+Math.random().toString(36).slice(2,6),name:c.name,phone:c.phone||"",addr:c.address||"",cp:c.name,cat:"Corporate",svc:"Cleaning",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0,cleaners:[],duty:"Mon-Fri"}])} className="text-xs px-3 py-1.5 rounded-lg font-semibold border" style={{borderColor:G,color:G}}> Add as Client</button>
               </div>}
             </div>
           ))}
@@ -1121,49 +1121,49 @@ function ImprestPage({imprests,setImprests}){
 
   const del=id=>confirm("Delete this imprest account?",()=>setImprests(im=>im.filter(i=>i.id!==id)));
 
-  const addExpense=(id,exp)=>{const updated=imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i);setImprests(updated);dbSync("imprests",updated);};
-  const addTopUp=(id,topup)=>{const updated=imprests.map(i=>i.id===id?{...i,amount:i.amount+(topup.amount||0),topups:[...(i.topups||[]),topup]}:i);setImprests(updated);dbSync("imprests",updated);};
-  const updateStatus=(id,status)=>{const updated=imprests.map(i=>i.id===id?{...i,status}:i);setImprests(updated);dbSync("imprests",updated);};
+  const saveImprests=updated=>{setImprests(updated);dbSync("imprests",updated);};
+  const addExpense=(id,exp)=>saveImprests(imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i));
+  const addTopUp=(id,topup)=>saveImprests(imprests.map(i=>i.id===id?{...i,amount:i.amount+(topup.amount||0),topups:[...(i.topups||[]),topup]}:i));
+  const updateStatus=(id,status)=>saveImprests(imprests.map(i=>i.id===id?{...i,status}:i));
 
   const printMonthReport=()=>{
     const ml=`${MONTHS[thisMonth]} ${thisYear}`;
-    const tIssued=imprests.reduce((s,i)=>s+i.amount,0);
-    const tSpent=imprests.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
-    const tBal=tIssued-tSpent;
-    const accts=imprests.map(imp=>{
+    const{tIssued,tSpent,accts}=imprests.reduce((acc,imp)=>{
       const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
       const bal=imp.amount-spent;
       const expHtml=(imp.expenses||[]).length>0
         ?`<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px"><thead><tr style="background:#f3f4f6"><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Date</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Item</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Category</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Vendor</th><th style="padding:3px 8px;text-align:right;border:1px solid #e5e7eb">Amount (&#x20a6;)</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Notes</th></tr></thead><tbody>${(imp.expenses||[]).map(e=>`<tr><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.date||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.item||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.category||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.vendor||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px;text-align:right">${e.amount.toLocaleString()}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.note||""}</td></tr>`).join("")}</tbody></table>`
         :`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No expenses recorded</p>`;
       const topupHtml=(imp.topups||[]).length>0?`<p style="font-size:10px;color:#2563EB;margin:4px 0">Top-ups: ${(imp.topups||[]).map(t=>`+&#x20a6;${t.amount.toLocaleString()} on ${t.date||""}${t.note?` (${t.note})`:""}`).join("; ")}</p>`:"";
-      return `<div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><div style="background:#1B6B2F;color:white;padding:8px 12px;display:flex;justify-content:space-between"><span style="font-weight:bold">${imp.title}</span><span>Status: ${imp.status}</span></div><div style="background:#f9fafb;padding:6px 12px;display:flex;gap:32px;font-size:11px"><span>Holder: <strong>${imp.holder||"N/A"}</strong></span><span>Issued: <strong style="color:#1B6B2F">&#x20a6;${imp.amount.toLocaleString()}</strong></span><span>Spent: <strong style="color:#E85D04">&#x20a6;${spent.toLocaleString()}</strong></span><span>Balance: <strong style="color:${bal<0?"#DC2626":"#2563EB"}">&#x20a6;${bal.toLocaleString()}</strong></span></div><div style="padding:8px 12px">${topupHtml}${expHtml}</div></div>`;
-    }).join("");
-    const html=`<!DOCTYPE html><html><head><title>Imprest Fund Report &mdash; ${ml}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited &mdash; Imprest Fund Report</h1><h2>Period: ${ml} &nbsp;&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</h2><div style="display:flex;gap:40px;margin-bottom:20px;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL ISSUED</p><p style="font-size:22px;font-weight:bold;color:#1B6B2F;margin:2px 0">&#x20a6;${tIssued.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL SPENT</p><p style="font-size:22px;font-weight:bold;color:#E85D04;margin:2px 0">&#x20a6;${tSpent.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">NET BALANCE</p><p style="font-size:22px;font-weight:bold;color:${tBal<0?"#DC2626":"#2563EB"};margin:2px 0">&#x20a6;${tBal.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">ACCOUNTS</p><p style="font-size:22px;font-weight:bold;color:#374151;margin:2px 0">${imprests.length}</p></div></div><h2 style="margin-bottom:10px;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280">Account Breakdown</h2>${accts}</body></html>`;
+      acc.tIssued+=imp.amount;
+      acc.tSpent+=spent;
+      acc.accts.push(`<div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><div style="background:#1B6B2F;color:white;padding:8px 12px;display:flex;justify-content:space-between"><span style="font-weight:bold">${imp.title}</span><span>Status: ${imp.status}</span></div><div style="background:#f9fafb;padding:6px 12px;display:flex;gap:32px;font-size:11px"><span>Holder: <strong>${imp.holder||"N/A"}</strong></span><span>Issued: <strong style="color:#1B6B2F">&#x20a6;${imp.amount.toLocaleString()}</strong></span><span>Spent: <strong style="color:#E85D04">&#x20a6;${spent.toLocaleString()}</strong></span><span>Balance: <strong style="color:${bal<0?"#DC2626":"#2563EB"}">&#x20a6;${bal.toLocaleString()}</strong></span></div><div style="padding:8px 12px">${topupHtml}${expHtml}</div></div>`);
+      return acc;
+    },{tIssued:0,tSpent:0,accts:[]});
+    const tBal=tIssued-tSpent;
+    const html=`<!DOCTYPE html><html><head><title>Imprest Fund Report &mdash; ${ml}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited &mdash; Imprest Fund Report</h1><h2>Period: ${ml} &nbsp;&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</h2><div style="display:flex;gap:40px;margin-bottom:20px;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL ISSUED</p><p style="font-size:22px;font-weight:bold;color:#1B6B2F;margin:2px 0">&#x20a6;${tIssued.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL SPENT</p><p style="font-size:22px;font-weight:bold;color:#E85D04;margin:2px 0">&#x20a6;${tSpent.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">NET BALANCE</p><p style="font-size:22px;font-weight:bold;color:${tBal<0?"#DC2626":"#2563EB"};margin:2px 0">&#x20a6;${tBal.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">ACCOUNTS</p><p style="font-size:22px;font-weight:bold;color:#374151;margin:2px 0">${imprests.length}</p></div></div><h2 style="margin-bottom:10px;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280">Account Breakdown</h2>${accts.join("")}</body></html>`;
     const w=window.open("","_blank","width=920,height=1000");
     if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);}
   };
 
   const doMonthClose=()=>{
     const ml=`${MONTHS[thisMonth]} ${thisYear}`;
-    const activeList=imprests.filter(i=>i.status==="Active");
-    if(activeList.length===0)return;
-    confirm(`Close all ${activeList.length} active imprest account(s) for ${ml}? Positive balances will be carried forward into the next month.`,()=>{
+    const activeCount=imprests.filter(i=>i.status==="Active").length;
+    if(activeCount===0)return;
+    confirm(`Close all ${activeCount} active imprest account(s) for ${ml}? Positive balances will be carried forward into the next month.`,()=>{
       const nextD=new Date(thisYear,thisMonth+1,1);
       const nextML=`${MONTHS[nextD.getMonth()]} ${nextD.getFullYear()}`;
       const nextDateStr=nextD.toISOString().split("T")[0];
-      const carries=activeList.reduce((acc,i,idx)=>{
+      const ts=Date.now();
+      const{closed,carries}=imprests.reduce((acc,i,idx)=>{
+        if(i.status!=="Active"){acc.closed.push(i);return acc;}
+        acc.closed.push({...i,status:"Closed",closedPeriod:ml});
         const spent=(i.expenses||[]).reduce((s,e)=>s+e.amount,0);
         const bal=i.amount-spent;
-        if(bal<=0)return acc;
-        const baseTitle=i.title.replace(/\s*--\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s*\d{0,4}$/i,"").trim();
-        acc.push({id:"imp"+Date.now()+"_"+idx,title:`${baseTitle} -- ${nextML}`,holder:i.holder,fundType:i.fundType,branch:i.branch,amount:bal,originalAmount:bal,releaseDate:nextDateStr,deadline:"",purpose:`Carried forward from ${ml}. Previous balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:i.id});
+        if(bal>0){const baseTitle=i.title.replace(/\s*--\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s*\d{0,4}$/i,"").trim();acc.carries.push({id:"imp"+ts+"_"+idx,title:`${baseTitle} -- ${nextML}`,holder:i.holder,fundType:i.fundType,branch:i.branch,amount:bal,originalAmount:bal,releaseDate:nextDateStr,deadline:"",purpose:`Carried forward from ${ml}. Previous balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:i.id});}
         return acc;
-      },[]);
-      const closed=imprests.map(i=>i.status==="Active"?{...i,status:"Closed",closedPeriod:ml}:i);
-      const newList=[...closed,...carries];
-      setImprests(newList);
-      dbSync("imprests",newList);
+      },{closed:[],carries:[]});
+      saveImprests([...closed,...carries]);
     });
   };
 
@@ -1596,7 +1596,6 @@ export default function App(){
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
-      // Cancel all pending debounce timers and write immediately
       Object.keys(syncTimers.current).forEach(table => {
         clearTimeout(syncTimers.current[table]);
         delete syncTimers.current[table];
