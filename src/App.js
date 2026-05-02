@@ -288,16 +288,20 @@ function NotifPanel({notes,onRead,onClose}){
   </div>);}
 
 // -- LOGIN --------------------------------------------------------------------
-function LoginScreen({onLogin,users,clients,jobs,supplyItems}){
+function LoginScreen({onLogin,users,clients}){
   const[em,setEm]=useState("");const[pw,setPw]=useState("");const[sp,setSp]=useState(false);const[err,setErr]=useState("");const[forgot,setForgot]=useState(false);const[fpEmail,setFpEmail]=useState("");const[fpSent,setFpSent]=useState(false);
   const go=()=>{const u=users.find(u=>(u.email===em.trim()||u.username===em.trim())&&u.password===pw);u?onLogin(u):setErr("Invalid credentials.");};
+  const totalPortfolio=clients.reduce((s,c)=>s+(c.tot||0),0);
+  const portStr=totalPortfolio>=1e9?`₦${(totalPortfolio/1e9).toFixed(1)}B`:totalPortfolio>=1e6?`₦${(totalPortfolio/1e6).toFixed(1)}M`:totalPortfolio>=1e3?`₦${(totalPortfolio/1e3).toFixed(0)}K`:totalPortfolio>0?`₦${totalPortfolio}`:"--";
+  const roleCount=[...new Set(users.map(u=>u.role))].length||3;
+  const loginStats=[[clients.length||"--","Clients"],["15","Modules"],[portStr,"Portfolio"],[roleCount,"User Roles"]];
   return(<div className="min-h-screen flex" style={{background:`linear-gradient(145deg,${GD} 0%,#1B5E2F 60%,${GD} 100%)`}}>
     <div className="hidden lg:flex flex-1 flex-col justify-center p-16 text-white">
       <img src={LOGO} alt="D&W" className="w-24 mb-4 drop-shadow-lg bg-white rounded-xl p-1"/>
       <h1 className="text-5xl font-black mb-1" style={{fontFamily:"Georgia,serif",letterSpacing:"-1px"}}>Operations Hub</h1>
       <p className="text-green-200 text-lg mt-1">Dust &amp; Wipes Limited</p>
       <p className="text-green-400 italic text-sm mt-1">"Restoring a Clean World"</p>
-      <div className="mt-10 grid grid-cols-2 gap-3 w-72">{[["18","Clients"],["15","Modules"],["3.4M+","Portfolio"],["3","User Roles"]].map(([v,l])=><div key={l} className="rounded-2xl p-4 text-center" style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.1)"}}><div className="text-2xl font-black" style={{color:O}}>{v}</div><div className="text-green-200 text-xs mt-1">{l}</div></div>)}</div>
+      <div className="mt-10 grid grid-cols-2 gap-3 w-72">{loginStats.map(([v,l])=><div key={l} className="rounded-2xl p-4 text-center" style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.1)"}}><div className="text-2xl font-black" style={{color:O}}>{v}</div><div className="text-green-200 text-xs mt-1">{l}</div></div>)}</div>
     </div>
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="bg-white rounded-3xl p-10 w-full max-w-md shadow-2xl">
@@ -499,7 +503,7 @@ function RequestsPage({requests,setRequests,setJobs,clients}){
   </div>);}
 
 // -- JOBS ---------------------------------------------------------------------
-function JobsPage({jobs,setJobs,clients,user}){
+function JobsPage({jobs,setJobs,clients,contacts=[],user}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
@@ -511,7 +515,7 @@ function JobsPage({jobs,setJobs,clients,user}){
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{["All",...JOB_STATUSES].map(s=><button key={s} onClick={()=>setFilter(s)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all border ${filter===s?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===s?{background:s==="All"?GD:(STATUS_COLORS[s]?.color||G)}:{}}>{s} ({s==="All"?jobs.length:jobs.filter(j=>j.status===s).length})</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Job</button>}</div>
     <Card><div className="divide-y divide-gray-50">{filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No jobs match this filter</div>}{filtered.map(j=>{const sc=STATUS_COLORS[j.status]||{};const ns=JOB_STATUSES[JOB_STATUSES.indexOf(j.status)+1];const canCI=isTech&&j.status==="Assigned"&&!j.checkIn;const canCO=isTech&&j.status==="In Progress"&&j.checkIn&&!j.checkOut;return(<div key={j.id} className="px-5 py-4 hover:bg-gray-50/60"><div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5" style={{background:sc.color||G}}>{(j.clientName||"?")[0]}</div><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="font-semibold text-gray-800 text-sm">{j.clientName}</p><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{j.svc}</span><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{fmtD(j.date)}</span></div><p className="text-xs text-gray-400 mt-0.5">Sup: {j.sup||"--"}  Crew: {j.techs||"--"}{j.loc?`  📍 ${j.loc}`:""}{j.sourceRequestId?<span className="ml-1 text-blue-400 font-medium">· From Request</span>:null}</p>{j.checkIn&&<p className="text-xs text-green-600 mt-0.5"> In: {fmtDT(j.checkIn)}{j.checkOut?`  Out: ${fmtDT(j.checkOut)}  ${calcDur(j.checkIn,j.checkOut)}`:""}</p>}
 {j.signOff&&<p className="text-xs mt-0.5">{j.signOff.notPresent?<span style={{color:AMBER}}>⚠ Client not present at checkout</span>:<span style={{color:G}}>★ {j.signOff.rating}/5 — {j.signOff.clientName}{j.signOff.remarks?` · "${j.signOff.remarks}"`:""}</span>}</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0"><SBadge s={j.status}/><div className="flex gap-1">{canCI&&<button onClick={()=>setGpsModal({job:j,type:"in"})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Check In</button>}{canCO&&<button onClick={()=>setGpsModal({job:j,type:"out"})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:O}}>Check Out</button>}{canEdit&&ns&&!["Closed"].includes(j.status)&&<button onClick={()=>advance(j.id,ns)} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>{ns}</button>}{canEdit&&<button onClick={()=>setModal(j)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={12}/></button>}{canEdit&&<button onClick={()=>del(j.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={12}/></button>}</div></div></div></div>);})}</div></Card>
-    {modal!==null&&<ModalWrap title={modal.id?"Edit Job":"Create Job"} onClose={()=>setModal(null)} wide><div className="grid grid-cols-2 gap-4"><Fld label="Client" col><select className={inp} value={modal.clientName||""} onChange={e=>setModal(p=>({...p,clientName:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><Fld label="Service"><select className={inp} value={modal.svc||"Cleaning"} onChange={e=>setModal(p=>({...p,svc:e.target.value}))}><option>Cleaning</option><option>Pest Control</option><option>Both</option><option>Deep Cleaning</option></select></Fld><Fld label="Scheduled Date"><input className={inp} type="date" value={modal.date||""} onChange={e=>setModal(p=>({...p,date:e.target.value}))}/></Fld><Fld label="Status"><select className={inp} value={modal.status||"New"} onChange={e=>setModal(p=>({...p,status:e.target.value}))}>{JOB_STATUSES.map(s=><option key={s}>{s}</option>)}</select></Fld><Fld label="Supervisor"><input className={inp} value={modal.sup||""} onChange={e=>setModal(p=>({...p,sup:e.target.value}))}/></Fld><Fld label="Technicians"><input className={inp} value={modal.techs||""} onChange={e=>setModal(p=>({...p,techs:e.target.value}))}/></Fld><Fld label="Location"><input className={inp} value={modal.loc||""} onChange={e=>setModal(p=>({...p,loc:e.target.value}))} placeholder="Site address or description"/></Fld><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Create"}</button></div></ModalWrap>}
+    {modal!==null&&<ModalWrap title={modal.id?"Edit Job":"Create Job"} onClose={()=>setModal(null)} wide><div className="grid grid-cols-2 gap-4"><Fld label="Client" col><ContactSearchSelect value={modal.clientName||""} onSelect={name=>setModal(p=>({...p,clientName:name}))} clients={clients} contacts={contacts}/></Fld><Fld label="Service"><select className={inp} value={modal.svc||"Cleaning"} onChange={e=>setModal(p=>({...p,svc:e.target.value}))}><option>Cleaning</option><option>Pest Control</option><option>Both</option><option>Deep Cleaning</option></select></Fld><Fld label="Scheduled Date"><input className={inp} type="date" value={modal.date||""} onChange={e=>setModal(p=>({...p,date:e.target.value}))}/></Fld><Fld label="Status"><select className={inp} value={modal.status||"New"} onChange={e=>setModal(p=>({...p,status:e.target.value}))}>{JOB_STATUSES.map(s=><option key={s}>{s}</option>)}</select></Fld><Fld label="Supervisor"><input className={inp} value={modal.sup||""} onChange={e=>setModal(p=>({...p,sup:e.target.value}))}/></Fld><Fld label="Technicians"><input className={inp} value={modal.techs||""} onChange={e=>setModal(p=>({...p,techs:e.target.value}))}/></Fld><Fld label="Location"><input className={inp} value={modal.loc||""} onChange={e=>setModal(p=>({...p,loc:e.target.value}))} placeholder="Site address or description"/></Fld><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Create"}</button></div></ModalWrap>}
     {gpsModal&&<GpsModal job={gpsModal.job} type={gpsModal.type} onSave={data=>{setJobs(js=>js.map(j=>j.id===data.id?data:j));setGpsModal(null);}} onClose={()=>setGpsModal(null)}/>}
   </div>);}
 function GpsModal({job,type,onSave,onClose}){
@@ -685,6 +689,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
     satisfactionLevel:"",additionalRequirements:"None",additionalReqDetails:"",
     photos:[],operationalNotes:"",
     overallAssessment:"",signatureName:"",signatureTimestamp:"",
+    staffChallenges:"",recurringIssues:"",followUpActions:"",supervisorFeedback:"",equipmentCondition:"",
   });
   const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const tog=k=>v=>setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
@@ -714,6 +719,11 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
   const hasPest=f.serviceCategory.includes("Pest Control");
   const hasOther=f.serviceCategory.includes("Other");
   const isOneTime=f.jobType==="One-Time Job";
+  const isInspection=f.jobType==="Recurring Contract Inspection";
+
+  const INSP_SECTIONS=["General Info","Site Condition","Staff & Operations","Client Feedback","Photos & Notes","Supervisor Assessment"];
+  const activeSections=isInspection?INSP_SECTIONS:SR_SECTIONS;
+  const totalSecs=activeSections.length;
 
   const canNext=[
     f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
@@ -724,6 +734,15 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
     true,
     f.overallAssessment&&f.signatureName,
   ];
+  const canNextInspection=[
+    f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
+    f.cleanlinessRating>0&&f.adherenceRating>0,
+    f.crewMembers.trim().length>0,
+    !!f.clientPresent,
+    true,
+    !!(f.overallAssessment&&f.signatureName),
+  ];
+  const activeCanNext=isInspection?canNextInspection:canNext;
 
   const submit=async()=>{
     const reportData={...f,id:Date.now(),submittedAt:new Date().toISOString(),
@@ -752,15 +771,15 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
         </div>
         {/* Stepper */}
         <div className="flex items-center gap-1">
-          {SR_SECTIONS.map((s,i)=><div key={i} className="flex items-center gap-1 flex-1">
+          {activeSections.map((s,i)=><div key={i} className="flex items-center gap-1 flex-1">
             <div className="flex flex-col items-center flex-1">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${i<sec?"text-white":i===sec?"text-white border-2":"bg-gray-100 text-gray-400"}`}
                 style={i<sec?{background:G}:i===sec?{background:O,borderColor:O}:{}}>
-                {i<sec?"":SECT_ICONS[i]}
+                {i<sec?"✓":SECT_ICONS[i]}
               </div>
               <span className={`text-xs mt-0.5 font-medium hidden sm:block ${i===sec?"text-orange-600":"text-gray-400"}`} style={{fontSize:"9px"}}>{s}</span>
             </div>
-            {i<SR_SECTIONS.length-1&&<div className={`h-0.5 flex-1 mb-3 rounded ${i<sec?"bg-green-400":"bg-gray-200"}`}/>}
+            {i<activeSections.length-1&&<div className={`h-0.5 flex-1 mb-3 rounded ${i<sec?"bg-green-400":"bg-gray-200"}`}/>}
           </div>)}
         </div>
       </div>
@@ -794,7 +813,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
             <Fld label="Time of Departure"><input className={inp} type="time" value={f.departureTime} onChange={u("departureTime")}/></Fld>
           </div>
           <Fld label="Job Type" required>
-            <RadioG value={f.jobType} onChange={v=>setF(p=>({...p,jobType:v,contractType:""}))} options={["Recurring Contract Inspection","One-Time Job"]}/>
+            <RadioG value={f.jobType} onChange={v=>{setSec(0);setF(p=>({...p,jobType:v,contractType:""}));}} options={["Recurring Contract Inspection","One-Time Job"]}/>
           </Fld>
           {isOneTime&&<Fld label="Contract Type"><RadioG value={f.contractType} onChange={v=>setF(p=>({...p,contractType:v}))} options={["One-Time","Monthly","Quarterly","Annual"]}/></Fld>}
           <Fld label="Service Category (select all that apply)" required>
@@ -802,8 +821,22 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
           </Fld>
         </div>}
 
+        {/* SECTION 1 -- Inspection: Site Condition */}
+        {sec===1&&isInspection&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 2 of 6 — Site Condition (Rate 1 = Poor, 5 = Excellent)</div>
+          <StarRating value={f.cleanlinessRating} onChange={v=>setF(p=>({...p,cleanlinessRating:v}))} label="Cleanliness of Site *"/>
+          <StarRating value={f.adherenceRating} onChange={v=>setF(p=>({...p,adherenceRating:v}))} label="Adherence to Contract Standards *"/>
+          {(f.cleanlinessRating>0&&f.adherenceRating>0)&&<div className="p-4 rounded-xl" style={{background:"#f0fdf4",border:"1px solid #bbf7d0"}}><p className="text-xs font-bold text-green-600 mb-1">SITE SCORE</p><p className="text-3xl font-black" style={{color:G}}>{((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}<span className="text-sm font-medium text-gray-400"> / 5.0</span></p></div>}
+          <Fld label="Recurring Issues / Problems Observed at Site" col>
+            <textarea className={inp} rows={3} value={f.recurringIssues} onChange={u("recurringIssues")} placeholder="Describe any persistent problems, access issues, or areas of concern noticed on this visit..."/>
+          </Fld>
+          <Fld label="Quality Notes" col>
+            <textarea className={inp} rows={3} value={f.qualityNotes} onChange={u("qualityNotes")} placeholder="Additional notes on site condition, missed areas, or items requiring follow-up..."/>
+          </Fld>
+        </div>}
+
         {/* SECTION 1 -- Job Details */}
-        {sec===1&&<div className="space-y-5">
+        {sec===1&&!isInspection&&<div className="space-y-5">
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 2 of 7 -- Job Details</div>
           {hasCleaning&&<Fld label="Cleaning Tasks Performed (select all)" col><CheckGroup options={CLEANING_TASK_OPTS} value={f.cleaningTasks} onChange={v=>setF(p=>({...p,cleaningTasks:v}))}/></Fld>}
           {hasPest&&<><Fld label="Pest Control Tasks Performed" col><CheckGroup options={PEST_TASK_OPTS} value={f.pestTasks} onChange={v=>setF(p=>({...p,pestTasks:v}))}/></Fld>
@@ -820,8 +853,30 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
           <Fld label="Supplies / Consumables Used" col><CheckGroup options={SUPPLY_OPTS} value={f.supplies} onChange={v=>setF(p=>({...p,supplies:v}))}/></Fld>
         </div>}
 
+        {/* SECTION 2 -- Inspection: Staff & Operations */}
+        {sec===2&&isInspection&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 3 of 6 — Staff & Operations</div>
+          <Fld label="Crew Members Present (one per line)" col required>
+            <textarea className={inp} rows={4} value={f.crewMembers} onChange={u("crewMembers")} placeholder={"James Akpa\nGarba Musa\n..."}/>
+          </Fld>
+          <Fld label="Challenges Faced by Staff" col>
+            <textarea className={inp} rows={3} value={f.staffChallenges} onChange={u("staffChallenges")} placeholder="e.g. access restrictions, inadequate water supply, client interference, understaffing..."/>
+          </Fld>
+          <Fld label="Equipment & Supplies Condition" col>
+            <textarea className={inp} rows={2} value={f.equipmentCondition} onChange={u("equipmentCondition")} placeholder="e.g. All equipment in good condition / Mop heads worn out, vacuum needs servicing..."/>
+          </Fld>
+          <Fld label="PPE Worn by All Crew Members *">
+            <RadioG value={f.ppeWorn} onChange={v=>setF(p=>({...p,ppeWorn:v}))} options={["Yes","No","Partial"]} danger={["No","Partial"]}/>
+          </Fld>
+          {f.ppeWorn==="No"&&<div className="p-3 rounded-xl text-sm text-red-700 font-medium" style={{background:"#fee2e2",border:"1px solid #fca5a5"}}> PPE non-compliance will be flagged in the report.</div>}
+          <Fld label="Incidents or Near-Misses">
+            <RadioG value={f.incidents} onChange={v=>setF(p=>({...p,incidents:v,incidentDetails:""}))} options={["None","Yes — Incident Occurred"]} danger={["Yes — Incident Occurred"]}/>
+          </Fld>
+          {f.incidents.startsWith("Yes")&&<Fld label="Describe Incident / Near-Miss" col><textarea className={inp} rows={3} value={f.incidentDetails} onChange={u("incidentDetails")} placeholder="Describe what happened, who was involved, and any action taken..."/></Fld>}
+        </div>}
+
         {/* SECTION 2 -- Quality Control */}
-        {sec===2&&<div className="space-y-5">
+        {sec===2&&!isInspection&&<div className="space-y-5">
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 3 of 7 -- Quality Control (Rate 1 = Poor, 5 = Excellent)</div>
           <StarRating value={f.cleanlinessRating} onChange={v=>setF(p=>({...p,cleanlinessRating:v}))} label="Cleanliness Achieved *"/>
           <StarRating value={f.adherenceRating} onChange={v=>setF(p=>({...p,adherenceRating:v}))} label="Adherence to Client's Requests *"/>
@@ -829,8 +884,30 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
           <Fld label="Notes on Quality Issues" col><textarea className={inp} rows={3} value={f.qualityNotes} onChange={u("qualityNotes")} placeholder="e.g. Missed spots, incomplete areas, follow-up needed... (write 'None' if no issues)"/></Fld>
         </div>}
 
+        {/* SECTION 3 -- Inspection: Client Feedback */}
+        {sec===3&&isInspection&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 4 of 6 — Client Feedback</div>
+          <Fld label="Client / Contact Person Present During Visit *">
+            <RadioG value={f.clientPresent} onChange={v=>setF(p=>({...p,clientPresent:v,clientContactName:"",clientFeedback:"",satisfactionLevel:""}))} options={["Yes","No"]}/>
+          </Fld>
+          {f.clientPresent==="Yes"&&<>
+            <Fld label="Client Contact Name"><input className={inp} value={f.clientContactName} onChange={u("clientContactName")} placeholder="Name of person present"/></Fld>
+            <Fld label="Client Feedback / Comments" col><textarea className={inp} rows={3} value={f.clientFeedback} onChange={u("clientFeedback")} placeholder="Record what the client said about the service quality and team..."/></Fld>
+            <Fld label="Satisfaction Level (Observed) *">
+              <RadioG value={f.satisfactionLevel} onChange={v=>setF(p=>({...p,satisfactionLevel:v}))}
+                options={["Very Satisfied","Satisfied","Neutral","Unsatisfied"]}
+                danger={["Unsatisfied"]}/>
+            </Fld>
+          </>}
+          {f.clientPresent==="No"&&<div className="p-3 rounded-xl text-xs text-amber-700" style={{background:"#fffbeb",border:"1px solid #fde68a"}}> Satisfaction level will be marked as N/A since client was not present.</div>}
+          <Fld label="Additional Requirements from Client">
+            <RadioG value={f.additionalRequirements} onChange={v=>setF(p=>({...p,additionalRequirements:v,additionalReqDetails:""}))} options={["None","Yes — Requirements Noted"]}/>
+          </Fld>
+          {f.additionalRequirements.startsWith("Yes")&&<Fld label="Describe Requirements" col><textarea className={inp} rows={2} value={f.additionalReqDetails} onChange={u("additionalReqDetails")}/></Fld>}
+        </div>}
+
         {/* SECTION 3 -- Safety */}
-        {sec===3&&<div className="space-y-5">
+        {sec===3&&!isInspection&&<div className="space-y-5">
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 4 of 7 -- Safety Compliance</div>
           <Fld label="PPE Worn by All Crew Members *">
             <RadioG value={f.ppeWorn} onChange={v=>setF(p=>({...p,ppeWorn:v}))} options={["Yes","No","Partial"]} danger={["No","Partial"]}/>
@@ -845,8 +922,37 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
           {f.incidents.startsWith("Yes")&&<Fld label="Describe Incident / Near-Miss" col><textarea className={inp} rows={3} value={f.incidentDetails} onChange={u("incidentDetails")} placeholder="Describe what happened, who was involved, and any action taken..."/></Fld>}
         </div>}
 
+        {/* SECTION 4 -- Inspection: Photos & Notes */}
+        {sec===4&&isInspection&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 5 of 6 — Photos & Notes</div>
+          <Fld label="Site Photos (up to 10 — use camera or file picker)" col>
+            <div className="space-y-3">
+              <div className="flex gap-2 flex-wrap">
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer text-sm font-semibold transition-all hover:border-green-400" style={{borderColor:G,color:G}}>
+                   Take Photo
+                  <input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos} className="hidden"/>
+                </label>
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer text-sm font-semibold transition-all hover:border-blue-400" style={{borderColor:BLUE,color:BLUE}}>
+                   Choose from Gallery
+                  <input type="file" accept="image/*" multiple onChange={addPhotos} className="hidden"/>
+                </label>
+              </div>
+              {f.photos.length>0&&<div className="grid grid-cols-3 gap-2">{f.photos.map((p,i)=><div key={i} className="relative group">
+                <img src={p.data} alt={p.name} className="w-full h-24 object-cover rounded-xl"/>
+                <button type="button" onClick={()=>removePhoto(i)} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                <p className="text-xs text-gray-400 mt-0.5 truncate">{p.name}</p>
+              </div>)}</div>}
+              {f.photos.length===0&&<p className="text-xs text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-xl">No photos added yet — photos help document site condition and issues observed</p>}
+              <p className="text-xs text-gray-400">{f.photos.length}/10 photos added</p>
+            </div>
+          </Fld>
+          <Fld label="Supervisor's Operational Notes" col>
+            <textarea className={inp} rows={4} value={f.operationalNotes} onChange={u("operationalNotes")} placeholder="Observations about the site, recurring maintenance items, access issues, or anything to flag for the next visit..."/>
+          </Fld>
+        </div>}
+
         {/* SECTION 4 -- Client Interaction */}
-        {sec===4&&<div className="space-y-5">
+        {sec===4&&!isInspection&&<div className="space-y-5">
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 5 of 7 -- Client Interaction</div>
           <Fld label="Client / Contact Person Present During Visit *">
             <RadioG value={f.clientPresent} onChange={v=>setF(p=>({...p,clientPresent:v,clientContactName:"",clientFeedback:"",satisfactionLevel:""}))} options={["Yes","No"]}/>
@@ -867,8 +973,41 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
           {f.additionalRequirements.startsWith("Yes")&&<Fld label="Describe Requirements" col><textarea className={inp} rows={2} value={f.additionalReqDetails} onChange={u("additionalReqDetails")}/></Fld>}
         </div>}
 
+        {/* SECTION 5 -- Inspection: Supervisor Assessment */}
+        {sec===5&&isInspection&&<div className="space-y-5">
+          <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 6 of 6 — Supervisor Assessment</div>
+          <div className="p-4 rounded-2xl space-y-2 text-sm" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Inspection Summary</p>
+            {[
+              ["Client",f.clientName],
+              ["Date",`${fmtD(f.arrivalDate)} ${f.arrivalTime}`],
+              ["Service",f.serviceCategory.join(", ")],
+              ["Site Score",f.cleanlinessRating>0?`${((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}/5.0`:"Not rated"],
+              ["Client Present",f.clientPresent||"Not recorded"],
+              ["Satisfaction",f.satisfactionLevel||"N/A"],
+              ["Crew",f.crewMembers.split("\n").filter(Boolean).join(", ")],
+              ["Photos",`${f.photos.length} attached`],
+            ].map(([l,v])=>v&&<div key={l} className="flex gap-2"><span className="text-xs font-bold text-gray-400 w-32 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>)}
+          </div>
+          <Fld label="Supervisor's Feedback & Recommendations" col>
+            <textarea className={inp} rows={3} value={f.supervisorFeedback} onChange={u("supervisorFeedback")} placeholder="Overall assessment of the visit, team performance, and key observations for management..."/>
+          </Fld>
+          <Fld label="Follow-Up Actions Required" col>
+            <textarea className={inp} rows={3} value={f.followUpActions} onChange={u("followUpActions")} placeholder="List specific actions — assigned tasks, materials to procure, client requests to address, next inspection items..."/>
+          </Fld>
+          <Fld label="Overall Assessment *">
+            <RadioG value={f.overallAssessment} onChange={v=>setF(p=>({...p,overallAssessment:v}))}
+              options={["Inspection Passed — Standards Met","Issues Observed — Follow-up Required"]}
+              danger={["Issues Observed — Follow-up Required"]}/>
+          </Fld>
+          <Fld label="Supervisor Digital Signature (type full name) *">
+            <input className={inp} value={f.signatureName} onChange={e=>setF(p=>({...p,signatureName:e.target.value,signatureTimestamp:new Date().toLocaleString("en-GB")}))} placeholder={f.supervisorName}/>
+            {f.signatureName&&<p className="text-xs text-gray-400 mt-1">Signed: {f.signatureTimestamp}</p>}
+          </Fld>
+        </div>}
+
         {/* SECTION 5 -- Photos & Notes */}
-        {sec===5&&<div className="space-y-5">
+        {sec===5&&!isInspection&&<div className="space-y-5">
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 6 of 7 -- Photos &amp; Operational Notes</div>
           <Fld label="Site Photos (up to 10 -- use camera or file picker)" col>
             <div className="space-y-3">
@@ -934,10 +1073,10 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[]}){
         <button onClick={sec===0?onClose:()=>setSec(s=>s-1)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">
           {sec===0?"Cancel":" Back"}
         </button>
-        <span className="text-xs text-gray-400 font-medium">Step {sec+1} of 7</span>
-        {sec<6
-          ?<button onClick={()=>setSec(s=>s+1)} disabled={!canNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:G}}>Next </button>
-          :<button onClick={submit} disabled={!canNext[6]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:O}}>Submit Report </button>
+        <span className="text-xs text-gray-400 font-medium">Step {sec+1} of {totalSecs}</span>
+        {sec<totalSecs-1
+          ?<button onClick={()=>setSec(s=>s+1)} disabled={!activeCanNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:G}}>Next </button>
+          :<button onClick={submit} disabled={!activeCanNext[totalSecs-1]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:O}}>Submit Report </button>
         }
       </div>
     </div>
@@ -1704,7 +1843,7 @@ export default function App(){
   const handleLogin=u=>{setUser(u);setPage("dashboard");};
 
 
-  if(!user) return <LoginScreen onLogin={handleLogin} users={users}/>;
+  if(!user) return <LoginScreen onLogin={handleLogin} users={users} clients={clients}/>;
 
   if(dbLoading) return(
     <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
@@ -1790,7 +1929,7 @@ export default function App(){
           {page==="clients"     &&<ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/>}
           {page==="contracts"   &&<ContractsPage clients={clients} setClients={setClients}/>}
           {page==="requests"    &&<RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients}/>}
-          {page==="jobs"        &&<JobsPage jobs={jobs} setJobs={setJobs} clients={clients} user={user}/>}
+          {page==="jobs"        &&<JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} user={user}/>}
           {page==="schedule"    &&<SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/>}
           {page==="site_reports"&&<SiteReportsPage reports={siteReports} setReports={setSiteReports} user={user} clients={clients} contacts={contacts}/>}
           {page==="inventory"   &&<InventoryPage inventory={inventory} setInventory={setInventory} userRole={user.role}/>}
