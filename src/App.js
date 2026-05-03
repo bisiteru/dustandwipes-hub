@@ -1890,8 +1890,8 @@ const SA_CLEAN_SVCS=["Post-construction cleaning","Deep cleaning","Routine janit
 const SA_PEST_SVCS=["Pest control","Fumigation","Rodent control","Termite treatment","Bed bug treatment","Snake control"];
 const SA_OUTDOOR_SVCS=["Facade cleaning","Pressure washing","Gardening/landscaping"];
 const SA_JANITORIAL=["Routine janitorial service"];
-const SA_EQUIP_OPTS=["Vacuum cleaner","Industrial vacuum","Scrubbing machine","Pressure washer","Steam cleaner","Ladder","Scaffolding","Mop sets","Squeegee","Extension poles","Buckets","PPE kit","Generator"];
-const SA_CHEM_OPTS=["Liquid soap","Bleach","Disinfectant","Glass cleaner","Floor polish","Degreaser","Air freshener","Cypress","Cypermethrin","Deltamethrin","Gel bait","Rodenticide"];
+const SA_EQUIP_OPTS=["Vacuum cleaner","Industrial vacuum","Scrubbing machine","Pressure washer","Steam cleaner","Ladder","Scaffolding","Mop sets","Squeegee","Extension poles","Buckets","PPE kit","Generator","Cleaning Towels","Soft Iron Sponge"];
+const SA_CHEM_OPTS=["Liquid Soap","Bleach","Disinfectant","Glass Cleaner","Floor Polish","Degreaser","Air Freshener","Dr. Floor","Formula X","Wood Polish","Multi-Surface Cleaner","Scouring Powder","Scented Camphor","Cypress"];
 const SA_PEST_TYPES=["Cockroaches","Ants","Mosquitoes","Flies","Rodents","Termites","Bed bugs","Snakes","Wall geckos","Spiders","Fleas","Ticks","Other"];
 const SA_TREATMENT=["Spraying","Gel baiting","Fogging","Rodent baiting","Termite drilling/injection","Dusting","Fumigation","Trapping","Exclusion/sealing"];
 const SA_SECTIONS=["Client Info","Service Type","Scope","Site & Risk","Photos","Costing","Recommendation"];
@@ -2037,8 +2037,10 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
     {showForm&&<AssessmentForm
       data={editData}
       onSave={data=>{
-        if(data.id)setAssessments(as=>as.map(a=>a.id===data.id?data:a));
-        else setAssessments(as=>[data,...as]);
+        setAssessments(as=>{
+          const exists=as.some(a=>a.id===data.id);
+          return exists?as.map(a=>a.id===data.id?data:a):[data,...as];
+        });
         setShowForm(false);setEditData(null);
       }}
       onClose={()=>{setShowForm(false);setEditData(null);}}
@@ -2551,14 +2553,17 @@ export default function App(){
               const data=await r.json();
               const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
               const dbById=Object.fromEntries(records.map(r=>[r.id,r]));
-              // Merge: SEED_STAFF as authoritative base, DB fields overlaid on top; extra DB records appended
-              const merged=[
-                ...SEED_STAFF.map(s=>dbById[s.id]?{...s,...dbById[s.id]}:s),
-                ...records.filter(r=>!SEED_STAFF.some(s=>s.id===r.id)&&r.id&&/^st/.test(String(r.id)))
-              ];
-              setStaff(merged);
-              // Write any seed records missing from DB
-              if(!SEED_STAFF.every(s=>dbById[s.id]))dbSync("staff",merged);
+              if(records.length===0){
+                // First load ever — seed DB with initial staff list
+                setStaff(SEED_STAFF);dbSync("staff",SEED_STAFF);
+              }else{
+                // DB is authoritative: only include seed members that still exist in DB
+                const merged=[
+                  ...SEED_STAFF.filter(s=>dbById[s.id]).map(s=>({...s,...dbById[s.id]})),
+                  ...records.filter(r=>!SEED_STAFF.some(s=>s.id===r.id)&&r.id&&/^st/.test(String(r.id)))
+                ];
+                setStaff(merged);
+              }
             }catch(e){console.warn("[DB] load staff:",e.message);setStaff(SEED_STAFF);}
           })(),
           dbLoad("users",       u => {
