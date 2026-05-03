@@ -2046,8 +2046,6 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}){
 
   const[f,setF]=useState(data?{...blank,...data}:blank);
   const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  const tog=k=>v=>setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
-  const chk=k=>v=>setF(p=>({...p,[k]:!p[k]}));
 
   const hasCleaning=f.services.some(s=>SA_CLEAN_SVCS.includes(s));
   const hasPest    =f.services.some(s=>SA_PEST_SVCS.includes(s));
