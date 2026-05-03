@@ -433,7 +433,7 @@ function ClientModal({data,onSave,onClose,staff}){
   const[f,setF]=useState(data?{...data,cleaners:Array.isArray(data.cleaners)?data.cleaners:data.cleaners?[data.cleaners]:[]}:blank);
   const[cleanerSearch,setCleanerSearch]=useState("");
   const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  const cleaningStaff=staff.filter(s=>s.category==="Cleaning Staff"||s.role==="Cleaner"||s.role==="Team Lead");
+  const cleaningStaff=staff.filter(s=>s.category==="Cleaning Staff"||s.category==="Gardening Staff"||s.role==="Cleaner"||s.role==="Gardener"||s.role==="Team Lead");
   const filteredStaff=cleanerSearch?cleaningStaff.filter(s=>s.name.toLowerCase().includes(cleanerSearch.toLowerCase())):cleaningStaff;
   const toggleCleaner=name=>setF(p=>({...p,cleaners:p.cleaners.includes(name)?p.cleaners.filter(c=>c!==name):[...p.cleaners,name]}));
 
@@ -1341,33 +1341,33 @@ function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[
 
 // -- BIRTHDAYS (V5: users + standalone staff, Add Staff button) ----------------
 function BirthdaysPage({users,setUsers,staff,setStaff}){
-  const[modal,setModal]=useState(null);const[tab,setTab]=useState("all");const[confirm,confirmEl]=useConfirm();
+  const[modal,setModal]=useState(null);const[tab,setTab]=useState("all");
   const thisM=TODAY.getMonth()+1,todayD=TODAY.getDate();
   const allPeople=[...users.map(u=>({...u,src:"user"})),...staff.map(s=>({...s,src:"staff"}))];
   const withBdays=allPeople.filter(u=>u.dob);
   const sorted=[...withBdays].sort((a,b)=>{const am=new Date(a.dob).getMonth()+1,ad=new Date(a.dob).getDate(),bm=new Date(b.dob).getMonth()+1,bd=new Date(b.dob).getDate();return am!==bm?am-bm:ad-bd;});
   const thisMonth=sorted.filter(u=>new Date(u.dob).getMonth()+1===thisM);
   const showList=tab==="all"?allPeople:tab==="users"?users:staff;
-  const del=id=>confirm("Remove this staff member?",()=>setStaff(ss=>ss.filter(s=>s.id!==id)));
-  const save=data=>{
+  // DOB update only — staff records are managed in the Staff module
+  const saveDob=data=>{
     if(data.src==="user"||data.id?.startsWith("u")){setUsers(us=>us.map(u=>u.id===data.id?{...u,dob:data.dob}:u));}
-    else if(data.id&&!data._new){setStaff(ss=>ss.map(s=>s.id===data.id?{...s,...data}:s));}
-    else{setStaff(ss=>[...ss,{id:"st"+Date.now(),name:data.name,role:data.role||"Cleaner",site:data.site||"",dob:data.dob||""}]);}
+    else{setStaff(ss=>ss.map(s=>s.id===data.id?{...s,dob:data.dob}:s));}
     setModal(null);
   };
-  return(<div className="space-y-5">{confirmEl}
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><KPI icon="" label="Total Staff" value={allPeople.length} sub="Users + field staff" bg="#f0fdf4"/><KPI icon="" label="DOB Recorded" value={withBdays.length} sub={`of ${allPeople.length}`} bg="#fdf4ff"/><KPI icon="" label="This Month" value={thisMonth.length} sub={monthName(thisM-1)+" celebrants"} bg="#eff6ff"/><KPI icon="" label="No DOB" value={allPeople.filter(u=>!u.dob).length} sub="Update profiles" bg="#fffbeb"/></div>
-    {thisMonth.length>0&&<Card className="p-5"><h3 className="text-xs font-bold uppercase tracking-widest mb-4" style={{color:G}}> {monthName(thisM-1)} Celebrants</h3><div className="grid grid-cols-1 gap-2.5">{thisMonth.map(u=>{const d=new Date(u.dob);const isToday=d.getDate()===todayD;return(<div key={u.id} className={`flex items-center justify-between p-3.5 rounded-xl ${isToday?"border-2":"border"}`} style={isToday?{borderColor:"#9333ea",background:"#fdf4ff"}:{borderColor:"#e9d5ff",background:"#faf5ff"}}><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0" style={{background:isToday?"#9333ea":"#a855f7"}}>{(u.initial||u.name[0])}</div><div><p className="font-semibold text-gray-800">{u.name}</p><p className="text-xs text-gray-500">{u.role}{u.site?`  ${u.site}`:""}</p></div></div><p className={`text-sm font-bold ${isToday?"text-purple-600":"text-gray-500"}`}>{isToday?" Today!":d.getDate()+" "+monthName(d.getMonth())}</p></div>);})}</div></Card>}
-    <div className="flex items-center justify-between"><div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white">{[{id:"all",l:"All Staff"},{id:"users",l:"App Users"},{id:"staff",l:"Field Staff"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab===t.id?"text-white":"text-gray-500"}`} style={tab===t.id?{background:G}:{}}>{t.l}</button>)}</div><button onClick={()=>setModal({_new:true,role:"Cleaner"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Staff Member</button></div>
-    <Card><div className="divide-y divide-gray-50">{showList.map(u=>{const d=u.dob?new Date(u.dob):null;const isUser=u.src==="user"||u.id?.startsWith("u");return(<div key={u.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:isUser?O:G}}>{(u.initial||u.name[0])}</div><div><p className="font-semibold text-gray-800 text-sm">{u.name}</p><p className="text-xs text-gray-400">{u.role}{u.site?`  ${u.site}`:""}{isUser?<span className="text-blue-500 ml-1">(App User)</span>:null}</p></div></div><div className="flex items-center gap-3">{d?<p className="text-sm font-semibold text-gray-700">{d.getDate()} {monthName(d.getMonth())} {d.getFullYear()}</p>:<p className="text-xs text-amber-500 font-medium">No DOB</p>}<button onClick={()=>setModal({...u,_editing:true})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button>{!isUser&&<button onClick={()=>del(u.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button>}</div></div>);})}</div></Card>
-    {modal&&<ModalWrap title={modal._new?"Add Staff Member":modal.src==="user"?"Update User DOB":"Edit Staff Member"} onClose={()=>setModal(null)}>
+  return(<div className="space-y-5">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><KPI icon="🎂" label="Total Staff" value={allPeople.length} sub="Users + field staff" bg="#f0fdf4"/><KPI icon="🎉" label="DOB Recorded" value={withBdays.length} sub={`of ${allPeople.length}`} bg="#fdf4ff"/><KPI icon="🎁" label="This Month" value={thisMonth.length} sub={monthName(thisM-1)+" celebrants"} bg="#eff6ff"/><KPI icon="⚠️" label="No DOB" value={allPeople.filter(u=>!u.dob).length} sub="Update profiles" bg="#fffbeb"/></div>
+    {thisMonth.length>0&&<Card className="p-5"><h3 className="text-xs font-bold uppercase tracking-widest mb-4" style={{color:G}}>🎂 {monthName(thisM-1)} Celebrants</h3><div className="grid grid-cols-1 gap-2.5">{thisMonth.map(u=>{const d=new Date(u.dob);const isToday=d.getDate()===todayD;return(<div key={u.id} className={`flex items-center justify-between p-3.5 rounded-xl ${isToday?"border-2":"border"}`} style={isToday?{borderColor:"#9333ea",background:"#fdf4ff"}:{borderColor:"#e9d5ff",background:"#faf5ff"}}><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0" style={{background:isToday?"#9333ea":"#a855f7"}}>{(u.initial||u.name[0])}</div><div><p className="font-semibold text-gray-800">{u.name}</p><p className="text-xs text-gray-500">{u.role}{u.site?` · ${u.site}`:""}</p></div></div><p className={`text-sm font-bold ${isToday?"text-purple-600":"text-gray-500"}`}>{isToday?"🎉 Today!":d.getDate()+" "+monthName(d.getMonth())}</p></div>);})}</div></Card>}
+    <div className="flex items-center justify-between">
+      <div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white">{[{id:"all",l:"All"},{id:"users",l:"App Users"},{id:"staff",l:"Field Staff"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab===t.id?"text-white":"text-gray-500"}`} style={tab===t.id?{background:G}:{}}>{t.l}</button>)}</div>
+      <p className="text-xs text-gray-400">Click ✏️ to add or update a date of birth. Manage staff records in the Staff module.</p>
+    </div>
+    <Card><div className="divide-y divide-gray-50">{showList.map(u=>{const d=u.dob?new Date(u.dob):null;const isUser=u.src==="user"||u.id?.startsWith("u");return(<div key={u.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:isUser?O:G}}>{(u.initial||u.name[0])}</div><div><p className="font-semibold text-gray-800 text-sm">{u.name}</p><p className="text-xs text-gray-400">{u.role}{u.site?` · ${u.site}`:""}{isUser?<span className="text-blue-500 ml-1">(App User)</span>:null}</p></div></div><div className="flex items-center gap-3">{d?<p className="text-sm font-semibold text-gray-700">{d.getDate()} {monthName(d.getMonth())} {d.getFullYear()}</p>:<p className="text-xs text-amber-500 font-medium">No DOB</p>}<button onClick={()=>setModal({...u})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100" title="Update date of birth"><Edit2 size={13}/></button></div></div>);})}</div></Card>
+    {modal&&<ModalWrap title={modal.src==="user"?"Update User DOB":"Update Staff DOB"} onClose={()=>setModal(null)}>
       <div className="space-y-4">
-        {modal._new&&!modal._editing&&<><Fld label="Full Name"><input className={inp} value={modal.name||""} onChange={e=>setModal(p=>({...p,name:e.target.value}))}/></Fld><Fld label="Role / Position"><select className={inp} value={modal.role||"Cleaner"} onChange={e=>setModal(p=>({...p,role:e.target.value}))}><option>Cleaner</option><option>Team Lead</option><option>Pest Technician</option><option>Driver</option><option>Office Staff</option><option>Other</option></select></Fld><Fld label="Assigned Site"><input className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))} placeholder="e.g. IFRC, AFD..."/></Fld></>}
-        {modal._editing&&!modal._new&&<div className="p-3 rounded-xl mb-2 text-sm text-gray-600" style={{background:"#f9fafb"}}><span className="font-bold">{modal.name}</span>  {modal.role}{modal.site?`  ${modal.site}`:""}</div>}
+        <div className="p-3 rounded-xl text-sm text-gray-600" style={{background:"#f9fafb"}}><span className="font-bold">{modal.name}</span>{modal.role?` · ${modal.role}`:""}{modal.site?` · ${modal.site}`:""}</div>
         <Fld label="Date of Birth"><input className={inp} type="date" value={modal.dob||""} onChange={e=>setModal(p=>({...p,dob:e.target.value}))}/></Fld>
-        {modal._editing&&modal.src!=="user"&&<><Fld label="Role"><select className={inp} value={modal.role||""} onChange={e=>setModal(p=>({...p,role:e.target.value}))}><option>Cleaner</option><option>Team Lead</option><option>Pest Technician</option><option>Driver</option><option>Other</option></select></Fld><Fld label="Site"><input className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}/></Fld></>}
       </div>
-      <div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} disabled={modal._new&&!modal.name} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Save</button></div>
+      <div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>saveDob(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Save DOB</button></div>
     </ModalWrap>}
   </div>);}
 
@@ -1633,7 +1633,7 @@ function AnalyticsPage({clients,siteReports,jobs,staff}){
 
 // -- USERS ----------------------------------------------------------------------
 function StaffPage({staff,setStaff}){
-  const[tab,setTab]=useState("office");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
+  const[tab,setTab]=useState("cleaning");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const[search,setSearch]=useState("");
   const CATEGORIES=["Office Staff","Cleaning Staff","Gardening Staff"];
   const TAB_MAP={"office":"Office Staff","cleaning":"Cleaning Staff","gardening":"Gardening Staff"};
@@ -1835,9 +1835,12 @@ export default function App(){
               if(!r.ok)throw new Error(`HTTP ${r.status}`);
               const data=await r.json();
               const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
-              if(records.length>0){setStaff(records);}
+              // Only trust records that have a SEED-style ID (st1000–st9999).
+              // Old manually-entered records have timestamp IDs (st171...) and must be replaced.
+              const hasSeedRecords=records.some(r=>r.id&&/^st\d{1,4}$/.test(String(r.id)));
+              if(records.length>0&&hasSeedRecords){setStaff(records);}
               else{setStaff(SEED_STAFF);dbSync("staff",SEED_STAFF);}
-            }catch(e){console.warn("[DB] load staff:",e.message);}
+            }catch(e){console.warn("[DB] load staff:",e.message);setStaff(SEED_STAFF);}
           })(),
           dbLoad("users",       u => {
             if(u && u.length > 0) setUsers(u);
