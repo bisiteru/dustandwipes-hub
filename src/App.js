@@ -374,7 +374,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
   const[confirm,confirmEl]=useConfirm();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
-  const save=data=>{if(data.id)setClients(cs=>cs.map(c=>c.id===data.id?data:c));else setClients(cs=>[...cs,{...data,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}]);setModal(null);};
+  const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);setModal(null);};
   const del=id=>confirm("Delete this client?",()=>setClients(cs=>cs.filter(c=>c.id!==id)));
   const can=userRole!=="Technician";
   const filteredContacts=useMemo(()=>{
@@ -510,14 +510,14 @@ function ContractsPage({clients,setClients}){
     <div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}> <strong>Alert Policy:</strong> <span className="font-bold text-amber-600">Amber</span> 60d  <span className="font-bold text-red-600">Red/Critical</span> 30d  SMS &amp; Email to Admin &amp; Supervisor.</div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{stats.map(s=><button key={s.l} onClick={()=>setFilter(filter===s.l?"All":s.l)} className="p-5 rounded-2xl border-2 text-center transition-all bg-white border-gray-100 hover:shadow" style={filter===s.l?{borderColor:s.c,background:s.bg}:{}}><div className="text-3xl font-black" style={{color:s.c}}>{s.v}</div><div className="text-xs font-semibold text-gray-500 mt-1">{s.l}</div></button>)}</div>
     <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Phone","Start","End","Days Left","Value","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{sorted.map(c=>{const dl=dLeft(c.ce);return(<tr key={c.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5"><p className="font-semibold text-gray-800">{c.name}</p><p className="text-xs text-gray-400">{c.cp}</p></td><td className="px-4 py-3.5 text-xs text-gray-500">{c.svc}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{c.phone}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.cs)}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.ce)}</td><td className="px-4 py-3.5">{dl!==null&&<span className={`text-xs font-bold ${dl<0?"text-gray-500":dl<=30?"text-red-600":dl<=60?"text-amber-600":"text-green-600"}`}>{dl<0?`${Math.abs(dl)}d ago`:`${dl}d`}</span>}</td><td className="px-4 py-3.5 font-bold text-gray-700 whitespace-nowrap">{fmt(c.tot)}</td><td className="px-4 py-3.5"><div className="flex items-center gap-2"><SBadge s={c.status}/>{c.status!=="Active"&&<button onClick={()=>setRenewModal({...c})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Renew</button>}</div></td></tr>);})}</tbody></table></div></Card>
-    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{setClients(cs=>cs.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c));setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
+    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{const nc=clients.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c);setClients(nc);dbSync("clients",nc);setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
   </div>);}
 
 // -- SERVICE REQUESTS ---------------------------------------------------------
 function RequestsPage({requests,setRequests,setJobs,clients}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
-  const save=data=>{if(data.id)setRequests(rs=>rs.map(r=>r.id===data.id?data:r));else setRequests(rs=>[...rs,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}]);setModal(null);};
+  const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);setModal(null);};
   const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));};
   const del=id=>confirm("Delete this request?",()=>setRequests(rs=>rs.filter(r=>r.id!==id)));
   const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
@@ -532,7 +532,7 @@ function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
-  const save=data=>{if(data.id)setJobs(js=>js.map(j=>j.id===data.id?data:j));else setJobs(js=>[...js,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}]);setModal(null);};
+  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);setModal(null);};
   const advance=(id,ns)=>setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));
   const del=id=>confirm("Delete this job?",()=>setJobs(js=>js.filter(j=>j.id!==id)));
   const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
@@ -589,9 +589,8 @@ function SchedulePage({schedules,setSchedules,clients,userRole}){
       d.setDate(d.getDate()+RECUR_DAYS[saved.recurrence]);
       saved.dueDate=d.toISOString().split("T")[0];
     }
-    if(saved.id)setSchedules(ss=>ss.map(s=>s.id===saved.id?saved:s));
-    else setSchedules(ss=>[...ss,{...saved,id:Date.now()}]);
-    setModal(null);
+    let ns;if(saved.id)ns=schedules.map(s=>s.id===saved.id?saved:s);else ns=[...schedules,{...saved,id:Date.now()}];
+    setSchedules(ns);dbSync("schedules",ns);setModal(null);
   };
   const del=id=>confirm("Delete this schedule?",()=>setSchedules(ss=>ss.filter(s=>s.id!==id)));
   return(<div className="space-y-5">{confirmEl}
@@ -1210,7 +1209,7 @@ function InventoryPage({inventory,setInventory,userRole}){
   const[confirm,confirmEl]=useConfirm();
   const cats=["All",...new Set(inventory.map(i=>i.cat))];
   const filtered=inventory.filter(i=>(filter==="All"||i.cat===filter)&&i.item.toLowerCase().includes(search.toLowerCase()));
-  const save=data=>{if(data.id)setInventory(inv=>inv.map(i=>i.id===data.id?data:i));else setInventory(inv=>[...inv,{...data,id:"i"+Date.now()}]);setModal(null);};
+  const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);setModal(null);};
   const del=id=>confirm("Remove this item?",()=>setInventory(inv=>inv.filter(i=>i.id!==id)));
   const canEdit=userRole!=="Technician";
   return(<div className="space-y-5">{confirmEl}
@@ -1226,26 +1225,22 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
   const canManage=user.role==="Admin"||user.role==="Supervisor";
   const statusColors={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Approved:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},Rejected:{bg:"#fee2e2",color:RED,border:"#fca5a5"},Forwarded:{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"}};
   const approve=(id,status)=>{
-    setRequisitions(rs=>rs.map(r=>{
+    const newRs=requisitions.map(r=>{
       if(r.id!==id) return r;
-      // Auto-add to CONTACTS_DB if newly approved and site not already known
       if(status==="Approved"&&r.site){
         const alreadyInContacts=(window.__DW_CONTACTS__||[]).some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         const alreadyInClients=clients.some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         if(!alreadyInContacts&&!alreadyInClients){
-          // Save to Supabase dw_contacts table
           saveContact({name:r.site,phone:"",email:"",address:""});
-          // Also add to local window cache
-          if(window.__DW_CONTACTS__){
-            window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});
-          }
+          if(window.__DW_CONTACTS__){window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});}
         }
       }
       return {...r,status,reviewedBy:user.name,reviewedAt:new Date().toLocaleString("en-GB")};
-    }));
+    });
+    setRequisitions(newRs);dbSync("requisitions",newRs);
   };
   const del=id=>confirm("Delete this requisition?",()=>setRequisitions(rs=>rs.filter(r=>r.id!==id)));
-  const saveItem=data=>{if(data.id)setSupplyItems(si=>si.map(i=>i.id===data.id?data:i));else setSupplyItems(si=>[...si,{...data,id:"s"+Date.now(),active:true}]);setItemModal(null);};
+  const saveItem=data=>{let ns;if(data.id)ns=supplyItems.map(i=>i.id===data.id?data:i);else ns=[...supplyItems,{...data,id:"s"+Date.now(),active:true}];setSupplyItems(ns);dbSync("supplyitems",ns);setItemModal(null);};
   const delItem=id=>confirm("Remove item from catalogue?",()=>setSupplyItems(si=>si.filter(i=>i.id!==id)));
   const cats=["All",...new Set(supplyItems.map(i=>i.cat))];
   const[catFilter,setCatFilter]=useState("All");
@@ -1280,13 +1275,13 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
         const idx=updated.findIndex(i=>i.item.toLowerCase()===item.name.toLowerCase());
         if(idx>-1)updated[idx]={...updated[idx],qty:Math.max(0,updated[idx].qty-item.qty)};
       });
-      setInventory(updated);
+      setInventory(updated);dbSync("inventory",updated);
       approve(deductModal.id,"Forwarded");
       setDeductModal(null);
     }} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Forward & Deduct Stock</button>
   </div>
 </ModalWrap>}
-    {modal?.type==="new"&&<ReqFormModal supplyItems={supplyItems} clients={clients} user={user} canSeeCosts={canManage} onSave={data=>{setRequisitions(rs=>[data,...rs]);setModal(null);}} onClose={()=>setModal(null)}/>}
+    {modal?.type==="new"&&<ReqFormModal supplyItems={supplyItems} clients={clients} user={user} canSeeCosts={canManage} onSave={data=>{const nr=[data,...requisitions];setRequisitions(nr);dbSync("requisitions",nr);setModal(null);}} onClose={()=>setModal(null)}/>}
     {view&&<ReqViewer req={view} canSeeCosts={canManage} onClose={()=>setView(null)}/>}
     {itemModal&&<ModalWrap title={itemModal.id?"Edit Item":"Add to Catalogue"} onClose={()=>setItemModal(null)}><div className="space-y-4"><Fld label="Item Name"><input className={inp} value={itemModal.name||""} onChange={e=>setItemModal(p=>({...p,name:e.target.value}))}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Category"><select className={inp} value={itemModal.cat||"Cleaning"} onChange={e=>setItemModal(p=>({...p,cat:e.target.value}))}>{["Cleaning","Air Care","Consumables","Hygiene","PPE","Equipment","Pest Control"].map(c=><option key={c}>{c}</option>)}</select></Fld><Fld label="Unit"><select className={inp} value={itemModal.unit||"bottle"} onChange={e=>setItemModal(p=>({...p,unit:e.target.value}))}>{["bottle","can","pack","bag","box","tin","piece","roll","sachet","litre","kg"].map(u=><option key={u}>{u}</option>)}</select></Fld><Fld label="Unit Cost ()"><input className={inp} type="number" min="0" value={itemModal.cost||""} onChange={e=>setItemModal(p=>({...p,cost:Number(e.target.value)}))}/></Fld><Fld label="Status"><select className={inp} value={itemModal.active?"Active":"Inactive"} onChange={e=>setItemModal(p=>({...p,active:e.target.value==="Active"}))}><option>Active</option><option>Inactive</option></select></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setItemModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>saveItem(itemModal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{itemModal.id?"Save Changes":"Add Item"}</button></div></ModalWrap>}
   </div>);}
@@ -1353,8 +1348,8 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
   const showList=tab==="all"?allPeople:tab==="users"?users:staff;
   // DOB update only — staff records are managed in the Staff module
   const saveDob=data=>{
-    if(data.src==="user"||data.id?.startsWith("u")){setUsers(us=>us.map(u=>u.id===data.id?{...u,dob:data.dob}:u));}
-    else{setStaff(ss=>ss.map(s=>s.id===data.id?{...s,dob:data.dob}:s));}
+    if(data.src==="user"||data.id?.startsWith("u")){const nu=users.map(u=>u.id===data.id?{...u,dob:data.dob}:u);setUsers(nu);dbSync("users",nu);}
+    else{const ns=staff.map(s=>s.id===data.id?{...s,dob:data.dob}:s);setStaff(ns);dbSync("staff",ns);}
     setModal(null);
   };
   return(<div className="space-y-5">
@@ -1697,9 +1692,8 @@ function StaffPage({staff,setStaff}){
   const filtered=staff.filter(s=>s.category===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
   const del=id=>confirm("Remove this staff member?",()=>setStaff(ss=>ss.filter(s=>s.id!==id)));
   const save=data=>{
-    if(data.id)setStaff(ss=>ss.map(s=>s.id===data.id?{...s,...data}:s));
-    else setStaff(ss=>[...ss,{...data,id:"st"+Date.now()}]);
-    setModal(null);
+    let ns;if(data.id)ns=staff.map(s=>s.id===data.id?{...s,...data}:s);else ns=[...staff,{...data,id:"st"+Date.now()}];
+    setStaff(ns);dbSync("staff",ns);setModal(null);
   };
   const blank={name:"",category:TAB_MAP[tab],role:"",site:"",phone:"",email:"",homeAddress:"",emergencyContact:"",emergencyPhone:"",emergencyAddress:"",dob:"",employmentType:"Full Time",startDate:"",workDays:"",bankName:"",accountName:"",accountNumber:""};
 
@@ -1800,7 +1794,7 @@ function StaffPage({staff,setStaff}){
 function SettingsPage({users,setUsers,activityLog=[]}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
-  const save=data=>{if(data.id)setUsers(us=>us.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u));else setUsers(us=>[...us,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}]);setModal(null);};
+  const save=data=>{let nu;if(data.id)nu=users.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u);else nu=[...users,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}];setUsers(nu);dbSync("users",nu);setModal(null);};
   const del=id=>confirm("Remove this app user account?",()=>setUsers(us=>us.filter(u=>u.id!==id)));
   return(<div className="space-y-6 max-w-3xl">{confirmEl}
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-4">Company Profile</h3><div className="grid grid-cols-2 gap-4">{[["Company Name","Dust & Wipes Limited"],["App Name","Operations Hub"],["Domain","app.dustandwipes.com"],["Location","Abuja, Nigeria"],["Currency","NGN ()"],["Timezone","WAT (UTC+1)"]].map(([l,v])=><Fld key={l} label={l}><input className={inp+" bg-gray-50"} defaultValue={v} readOnly/></Fld>)}</div></Card>
@@ -2037,10 +2031,9 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
     {showForm&&<AssessmentForm
       data={editData}
       onSave={data=>{
-        setAssessments(as=>{
-          const exists=as.some(a=>a.id===data.id);
-          return exists?as.map(a=>a.id===data.id?data:a):[data,...as];
-        });
+        const exists=assessments.some(a=>a.id===data.id);
+        const na=exists?assessments.map(a=>a.id===data.id?data:a):[data,...assessments];
+        setAssessments(na);dbSync("assessments",na);
         setShowForm(false);setEditData(null);
       }}
       onClose={()=>{setShowForm(false);setEditData(null);}}
@@ -2513,7 +2506,7 @@ export default function App(){
   const[siteReports, setSiteReports] =useState([]);
   const[contacts,    setContacts]    =useState([]); // loaded from dw_contacts
   const[activityLog, setActivityLog] =useState([]);
-  const[supplyItems, setSupplyItems] =useState(INITIAL_SUPPLY_MASTER);
+  const[supplyItems, setSupplyItems] =useState([]);
   const[requisitions,setRequisitions]=useState([]);
   const[absences,    setAbsences]    =useState([]);
   const[covers,      setCovers]      =useState([]);
@@ -2540,7 +2533,16 @@ export default function App(){
           loadContacts(setContacts),
           loadActivityLog(setActivityLog),
           dbLoad("inventory",   setInventory),
-          dbLoad("supplyitems", setSupplyItems),
+          (async()=>{
+            const url=`${SUPABASE_URL}/rest/v1/${T("supplyitems")}?select=id,record&order=updated_at.desc`;
+            try{const r=await fetch(url,{headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`}});
+              if(!r.ok)throw new Error(`HTTP ${r.status}`);
+              const data=await r.json();
+              const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
+              if(records.length===0){setSupplyItems(INITIAL_SUPPLY_MASTER);dbSync("supplyitems",INITIAL_SUPPLY_MASTER);}
+              else setSupplyItems(records);
+            }catch(e){console.warn("[DB] load supplyitems:",e.message);setSupplyItems(INITIAL_SUPPLY_MASTER);}
+          })(),
           dbLoad("requisitions",setRequisitions),
           dbLoad("absences",    setAbsences),
           dbLoad("covers",      setCovers),
@@ -2606,7 +2608,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
