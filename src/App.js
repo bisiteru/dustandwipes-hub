@@ -374,7 +374,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
   const[confirm,confirmEl]=useConfirm();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
-  const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);setModal(null);};
+  const save=data=>{if(data.id)setClients(cs=>cs.map(c=>c.id===data.id?data:c));else setClients(cs=>[...cs,{...data,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}]);setModal(null);};
   const del=id=>confirm("Delete this client?",()=>setClients(cs=>cs.filter(c=>c.id!==id)));
   const can=userRole!=="Technician";
   const filteredContacts=useMemo(()=>{
@@ -510,14 +510,14 @@ function ContractsPage({clients,setClients}){
     <div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}> <strong>Alert Policy:</strong> <span className="font-bold text-amber-600">Amber</span> 60d  <span className="font-bold text-red-600">Red/Critical</span> 30d  SMS &amp; Email to Admin &amp; Supervisor.</div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{stats.map(s=><button key={s.l} onClick={()=>setFilter(filter===s.l?"All":s.l)} className="p-5 rounded-2xl border-2 text-center transition-all bg-white border-gray-100 hover:shadow" style={filter===s.l?{borderColor:s.c,background:s.bg}:{}}><div className="text-3xl font-black" style={{color:s.c}}>{s.v}</div><div className="text-xs font-semibold text-gray-500 mt-1">{s.l}</div></button>)}</div>
     <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Phone","Start","End","Days Left","Value","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{sorted.map(c=>{const dl=dLeft(c.ce);return(<tr key={c.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5"><p className="font-semibold text-gray-800">{c.name}</p><p className="text-xs text-gray-400">{c.cp}</p></td><td className="px-4 py-3.5 text-xs text-gray-500">{c.svc}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{c.phone}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.cs)}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.ce)}</td><td className="px-4 py-3.5">{dl!==null&&<span className={`text-xs font-bold ${dl<0?"text-gray-500":dl<=30?"text-red-600":dl<=60?"text-amber-600":"text-green-600"}`}>{dl<0?`${Math.abs(dl)}d ago`:`${dl}d`}</span>}</td><td className="px-4 py-3.5 font-bold text-gray-700 whitespace-nowrap">{fmt(c.tot)}</td><td className="px-4 py-3.5"><div className="flex items-center gap-2"><SBadge s={c.status}/>{c.status!=="Active"&&<button onClick={()=>setRenewModal({...c})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Renew</button>}</div></td></tr>);})}</tbody></table></div></Card>
-    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{const nc=clients.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c);setClients(nc);dbSync("clients",nc);setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
+    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{setClients(cs=>cs.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c));setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
   </div>);}
 
 // -- SERVICE REQUESTS ---------------------------------------------------------
 function RequestsPage({requests,setRequests,setJobs,clients}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
-  const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);setModal(null);};
+  const save=data=>{if(data.id)setRequests(rs=>rs.map(r=>r.id===data.id?data:r));else setRequests(rs=>[...rs,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}]);setModal(null);};
   const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));};
   const del=id=>confirm("Delete this request?",()=>setRequests(rs=>rs.filter(r=>r.id!==id)));
   const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
@@ -532,7 +532,7 @@ function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
-  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);setModal(null);};
+  const save=data=>{if(data.id)setJobs(js=>js.map(j=>j.id===data.id?data:j));else setJobs(js=>[...js,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}]);setModal(null);};
   const advance=(id,ns)=>setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));
   const del=id=>confirm("Delete this job?",()=>setJobs(js=>js.filter(j=>j.id!==id)));
   const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
@@ -589,8 +589,9 @@ function SchedulePage({schedules,setSchedules,clients,userRole}){
       d.setDate(d.getDate()+RECUR_DAYS[saved.recurrence]);
       saved.dueDate=d.toISOString().split("T")[0];
     }
-    let ns;if(saved.id)ns=schedules.map(s=>s.id===saved.id?saved:s);else ns=[...schedules,{...saved,id:Date.now()}];
-    setSchedules(ns);dbSync("schedules",ns);setModal(null);
+    if(saved.id)setSchedules(ss=>ss.map(s=>s.id===saved.id?saved:s));
+    else setSchedules(ss=>[...ss,{...saved,id:Date.now()}]);
+    setModal(null);
   };
   const del=id=>confirm("Delete this schedule?",()=>setSchedules(ss=>ss.filter(s=>s.id!==id)));
   return(<div className="space-y-5">{confirmEl}
@@ -1209,7 +1210,7 @@ function InventoryPage({inventory,setInventory,userRole}){
   const[confirm,confirmEl]=useConfirm();
   const cats=["All",...new Set(inventory.map(i=>i.cat))];
   const filtered=inventory.filter(i=>(filter==="All"||i.cat===filter)&&i.item.toLowerCase().includes(search.toLowerCase()));
-  const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);setModal(null);};
+  const save=data=>{if(data.id)setInventory(inv=>inv.map(i=>i.id===data.id?data:i));else setInventory(inv=>[...inv,{...data,id:"i"+Date.now()}]);setModal(null);};
   const del=id=>confirm("Remove this item?",()=>setInventory(inv=>inv.filter(i=>i.id!==id)));
   const canEdit=userRole!=="Technician";
   return(<div className="space-y-5">{confirmEl}
@@ -1225,22 +1226,26 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
   const canManage=user.role==="Admin"||user.role==="Supervisor";
   const statusColors={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Approved:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},Rejected:{bg:"#fee2e2",color:RED,border:"#fca5a5"},Forwarded:{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"}};
   const approve=(id,status)=>{
-    const newRs=requisitions.map(r=>{
+    setRequisitions(rs=>rs.map(r=>{
       if(r.id!==id) return r;
+      // Auto-add to CONTACTS_DB if newly approved and site not already known
       if(status==="Approved"&&r.site){
         const alreadyInContacts=(window.__DW_CONTACTS__||[]).some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         const alreadyInClients=clients.some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         if(!alreadyInContacts&&!alreadyInClients){
+          // Save to Supabase dw_contacts table
           saveContact({name:r.site,phone:"",email:"",address:""});
-          if(window.__DW_CONTACTS__){window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});}
+          // Also add to local window cache
+          if(window.__DW_CONTACTS__){
+            window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});
+          }
         }
       }
       return {...r,status,reviewedBy:user.name,reviewedAt:new Date().toLocaleString("en-GB")};
-    });
-    setRequisitions(newRs);dbSync("requisitions",newRs);
+    }));
   };
   const del=id=>confirm("Delete this requisition?",()=>setRequisitions(rs=>rs.filter(r=>r.id!==id)));
-  const saveItem=data=>{let ns;if(data.id)ns=supplyItems.map(i=>i.id===data.id?data:i);else ns=[...supplyItems,{...data,id:"s"+Date.now(),active:true}];setSupplyItems(ns);dbSync("supplyitems",ns);setItemModal(null);};
+  const saveItem=data=>{if(data.id)setSupplyItems(si=>si.map(i=>i.id===data.id?data:i));else setSupplyItems(si=>[...si,{...data,id:"s"+Date.now(),active:true}]);setItemModal(null);};
   const delItem=id=>confirm("Remove item from catalogue?",()=>setSupplyItems(si=>si.filter(i=>i.id!==id)));
   const cats=["All",...new Set(supplyItems.map(i=>i.cat))];
   const[catFilter,setCatFilter]=useState("All");
@@ -1275,13 +1280,13 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
         const idx=updated.findIndex(i=>i.item.toLowerCase()===item.name.toLowerCase());
         if(idx>-1)updated[idx]={...updated[idx],qty:Math.max(0,updated[idx].qty-item.qty)};
       });
-      setInventory(updated);dbSync("inventory",updated);
+      setInventory(updated);
       approve(deductModal.id,"Forwarded");
       setDeductModal(null);
     }} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Forward & Deduct Stock</button>
   </div>
 </ModalWrap>}
-    {modal?.type==="new"&&<ReqFormModal supplyItems={supplyItems} clients={clients} user={user} canSeeCosts={canManage} onSave={data=>{const nr=[data,...requisitions];setRequisitions(nr);dbSync("requisitions",nr);setModal(null);}} onClose={()=>setModal(null)}/>}
+    {modal?.type==="new"&&<ReqFormModal supplyItems={supplyItems} clients={clients} user={user} canSeeCosts={canManage} onSave={data=>{setRequisitions(rs=>[data,...rs]);setModal(null);}} onClose={()=>setModal(null)}/>}
     {view&&<ReqViewer req={view} canSeeCosts={canManage} onClose={()=>setView(null)}/>}
     {itemModal&&<ModalWrap title={itemModal.id?"Edit Item":"Add to Catalogue"} onClose={()=>setItemModal(null)}><div className="space-y-4"><Fld label="Item Name"><input className={inp} value={itemModal.name||""} onChange={e=>setItemModal(p=>({...p,name:e.target.value}))}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Category"><select className={inp} value={itemModal.cat||"Cleaning"} onChange={e=>setItemModal(p=>({...p,cat:e.target.value}))}>{["Cleaning","Air Care","Consumables","Hygiene","PPE","Equipment","Pest Control"].map(c=><option key={c}>{c}</option>)}</select></Fld><Fld label="Unit"><select className={inp} value={itemModal.unit||"bottle"} onChange={e=>setItemModal(p=>({...p,unit:e.target.value}))}>{["bottle","can","pack","bag","box","tin","piece","roll","sachet","litre","kg"].map(u=><option key={u}>{u}</option>)}</select></Fld><Fld label="Unit Cost ()"><input className={inp} type="number" min="0" value={itemModal.cost||""} onChange={e=>setItemModal(p=>({...p,cost:Number(e.target.value)}))}/></Fld><Fld label="Status"><select className={inp} value={itemModal.active?"Active":"Inactive"} onChange={e=>setItemModal(p=>({...p,active:e.target.value==="Active"}))}><option>Active</option><option>Inactive</option></select></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setItemModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>saveItem(itemModal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{itemModal.id?"Save Changes":"Add Item"}</button></div></ModalWrap>}
   </div>);}
@@ -1348,8 +1353,8 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
   const showList=tab==="all"?allPeople:tab==="users"?users:staff;
   // DOB update only — staff records are managed in the Staff module
   const saveDob=data=>{
-    if(data.src==="user"||data.id?.startsWith("u")){const nu=users.map(u=>u.id===data.id?{...u,dob:data.dob}:u);setUsers(nu);dbSync("users",nu);}
-    else{const ns=staff.map(s=>s.id===data.id?{...s,dob:data.dob}:s);setStaff(ns);dbSync("staff",ns);}
+    if(data.src==="user"||data.id?.startsWith("u")){setUsers(us=>us.map(u=>u.id===data.id?{...u,dob:data.dob}:u));}
+    else{setStaff(ss=>ss.map(s=>s.id===data.id?{...s,dob:data.dob}:s));}
     setModal(null);
   };
   return(<div className="space-y-5">
@@ -1372,168 +1377,134 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
 // -- IMPREST -------------------------------------------------------------------
 function ImprestPage({imprests,setImprests,staff=[]}){
   const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[confirm,confirmEl]=useConfirm();
-  const today=new Date();
-  const curMK=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
-  const[selMK,setSelMK]=useState(curMK);
+  const today=new Date();const thisMonth=today.getMonth();const thisYear=today.getFullYear();
 
-  const save=updated=>{setImprests(updated);dbSync("imprests",updated);};
-  const mKey=i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK);
-  const mkLabel=mk=>{const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
+  const del=id=>confirm("Delete this imprest account?",()=>setImprests(im=>im.filter(i=>i.id!==id)));
 
-  const allMonths=useMemo(()=>{
-    const s=new Set(imprests.map(i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK)));
-    s.add(curMK);return[...s].sort().reverse();
-  },[imprests,curMK]);
+  const saveImprests=updated=>{setImprests(updated);dbSync("imprests",updated);};
+  const addExpense=(id,exp)=>saveImprests(imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i));
+  const addTopUp=(id,topup)=>saveImprests(imprests.map(i=>i.id===id?{...i,amount:i.amount+(topup.amount||0),topups:[...(i.topups||[]),topup]}:i));
+  const updateStatus=(id,status)=>saveImprests(imprests.map(i=>i.id===id?{...i,status}:i));
 
-  const monthRecs=imprests.filter(i=>mKey(i)===selMK);
-
-  const getPrevBal=(holder,beforeMK)=>{
-    const prev=imprests.filter(i=>mKey(i)<beforeMK&&i.holder===holder).sort((a,b)=>mKey(b).localeCompare(mKey(a)));
-    if(!prev.length)return 0;
-    const p=prev[0];const spent=(p.expenses||[]).reduce((s,e)=>s+e.amount,0);
-    return Math.max(0,p.amount-spent);
-  };
-
-  const addExpense=(id,exp)=>save(imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i));
-  const addTopUp=(id,tu)=>save(imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i));
-  const updStatus=(id,status)=>save(imprests.map(i=>i.id===id?{...i,status}:i));
-  const del=id=>confirm("Delete this imprest record?",()=>save(imprests.filter(i=>i.id!==id)));
-
-  const doMonthClose=()=>{
-    const active=monthRecs.filter(i=>i.status==="Active");if(!active.length)return;
-    confirm(`Close all ${active.length} active account(s) for ${mkLabel(selMK)}? You can open next month to carry forward balances.`,()=>{
-      save(imprests.map(i=>mKey(i)===selMK&&i.status==="Active"?{...i,status:"Closed",closedPeriod:mkLabel(selMK)}:i));
-    });
-  };
-
-  const openNextMonth=()=>{
-    const latestMK=allMonths[0];
-    const[y,m]=latestMK.split("-").map(Number);
-    const nd=new Date(y,m,1);
-    const nextMK=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}`;
-    const nextLabel=mkLabel(nextMK);
-    if(imprests.some(i=>mKey(i)===nextMK)){setSelMK(nextMK);return;}
-    const lastRecs=imprests.filter(i=>mKey(i)===latestMK);
-    const holders=[...new Set(lastRecs.map(i=>i.holder).filter(Boolean))];
-    if(!holders.length){confirm(`Open ${nextLabel} with no carry-forward records?`,()=>setSelMK(nextMK));return;}
-    confirm(`Open ${nextLabel}? Closing balances from ${holders.length} fund manager(s) will be carried forward automatically.`,()=>{
-      const ts=Date.now();
-      const carries=holders.map((holder,idx)=>{
-        const bal=getPrevBal(holder,nextMK);
-        const ref=lastRecs.filter(i=>i.holder===holder)[0]||{};
-        return{id:`imp${ts}_${idx}`,month:nextMK,title:`${holder} \u2014 ${nextLabel}`,holder,fundType:ref.fundType||"Field Operations",branch:ref.branch||"",amount:bal,originalAmount:bal,releaseDate:nd.toISOString().split("T")[0],deadline:"",purpose:`Carried forward from ${mkLabel(latestMK)}. Previous closing balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:latestMK,carryForwardAmount:bal,isCarryForward:true};
-      });
-      save([...imprests,...carries]);setSelMK(nextMK);
-    });
-  };
-
-  const printReport=()=>{
-    const ml=mkLabel(selMK);
-    const tIssued=monthRecs.reduce((s,i)=>s+i.amount,0);
-    const tSpent=monthRecs.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
+  const printMonthReport=()=>{
+    const ml=`${MONTHS[thisMonth]} ${thisYear}`;
+    const{tIssued,tSpent,accts}=imprests.reduce((acc,imp)=>{
+      const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
+      const bal=imp.amount-spent;
+      const expHtml=(imp.expenses||[]).length>0
+        ?`<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px"><thead><tr style="background:#f3f4f6"><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Date</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Item</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Category</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Vendor</th><th style="padding:3px 8px;text-align:right;border:1px solid #e5e7eb">Amount (&#x20a6;)</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Notes</th></tr></thead><tbody>${(imp.expenses||[]).map(e=>`<tr><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.date||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.item||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.category||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.vendor||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px;text-align:right">${e.amount.toLocaleString()}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.note||""}</td></tr>`).join("")}</tbody></table>`
+        :`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No expenses recorded</p>`;
+      const topupHtml=(imp.topups||[]).length>0?`<p style="font-size:10px;color:#2563EB;margin:4px 0">Top-ups: ${(imp.topups||[]).map(t=>`+&#x20a6;${t.amount.toLocaleString()} on ${t.date||""}${t.note?` (${t.note})`:""}`).join("; ")}</p>`:"";
+      acc.tIssued+=imp.amount;
+      acc.tSpent+=spent;
+      acc.accts.push(`<div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><div style="background:#1B6B2F;color:white;padding:8px 12px;display:flex;justify-content:space-between"><span style="font-weight:bold">${imp.title}</span><span>Status: ${imp.status}</span></div><div style="background:#f9fafb;padding:6px 12px;display:flex;gap:32px;font-size:11px"><span>Holder: <strong>${imp.holder||"N/A"}</strong></span><span>Issued: <strong style="color:#1B6B2F">&#x20a6;${imp.amount.toLocaleString()}</strong></span><span>Spent: <strong style="color:#E85D04">&#x20a6;${spent.toLocaleString()}</strong></span><span>Balance: <strong style="color:${bal<0?"#DC2626":"#2563EB"}">&#x20a6;${bal.toLocaleString()}</strong></span></div><div style="padding:8px 12px">${topupHtml}${expHtml}</div></div>`);
+      return acc;
+    },{tIssued:0,tSpent:0,accts:[]});
     const tBal=tIssued-tSpent;
-    const accts=monthRecs.map(imp=>{
-      const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);const bal=imp.amount-spent;
-      const expHtml=(imp.expenses||[]).length>0?`<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px"><thead><tr style="background:#f3f4f6"><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Date</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Item</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Category</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Vendor</th><th style="padding:3px 8px;text-align:right;border:1px solid #e5e7eb">Amount (&#x20a6;)</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Notes</th></tr></thead><tbody>${(imp.expenses||[]).map(e=>`<tr><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.date||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.item||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.category||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.vendor||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px;text-align:right">${e.amount.toLocaleString()}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.note||""}</td></tr>`).join("")}</tbody></table>`:`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No expenses recorded</p>`;
-      const tuHtml=(imp.topups||[]).length>0?`<p style="font-size:10px;color:#2563EB;margin:4px 0">Top-ups: ${(imp.topups||[]).map(t=>`+&#x20a6;${t.amount.toLocaleString()} on ${t.date||""}${t.note?` (${t.note})`:""}`).join("; ")}</p>`:"";
-      return`<div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><div style="background:#1B6B2F;color:white;padding:8px 12px;display:flex;justify-content:space-between"><span style="font-weight:bold">${imp.title}${imp.isCarryForward?" (Carry-forward)":""}</span><span>Status: ${imp.status}</span></div><div style="background:#f9fafb;padding:6px 12px;display:flex;gap:32px;font-size:11px"><span>Holder: <strong>${imp.holder||"N/A"}</strong></span><span>Issued: <strong style="color:#1B6B2F">&#x20a6;${imp.amount.toLocaleString()}</strong></span><span>Spent: <strong style="color:#E85D04">&#x20a6;${spent.toLocaleString()}</strong></span><span>Balance: <strong style="color:${bal<0?"#DC2626":"#2563EB"}">&#x20a6;${bal.toLocaleString()}</strong></span></div><div style="padding:8px 12px">${tuHtml}${expHtml}</div></div>`;
-    });
-    const html=`<!DOCTYPE html><html><head><title>Imprest Fund Report &mdash; ${ml}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited &mdash; Imprest Fund Report</h1><h2>Period: ${ml} &nbsp;&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</h2><div style="display:flex;gap:40px;margin-bottom:20px;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL ISSUED</p><p style="font-size:22px;font-weight:bold;color:#1B6B2F;margin:2px 0">&#x20a6;${tIssued.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL SPENT</p><p style="font-size:22px;font-weight:bold;color:#E85D04;margin:2px 0">&#x20a6;${tSpent.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">NET BALANCE</p><p style="font-size:22px;font-weight:bold;color:${tBal<0?"#DC2626":"#2563EB"};margin:2px 0">&#x20a6;${tBal.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">ACCOUNTS</p><p style="font-size:22px;font-weight:bold;color:#374151;margin:2px 0">${monthRecs.length}</p></div></div><h2 style="margin-bottom:10px;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280">Account Breakdown</h2>${accts.join("")}</body></html>`;
+    const html=`<!DOCTYPE html><html><head><title>Imprest Fund Report &mdash; ${ml}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited &mdash; Imprest Fund Report</h1><h2>Period: ${ml} &nbsp;&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</h2><div style="display:flex;gap:40px;margin-bottom:20px;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL ISSUED</p><p style="font-size:22px;font-weight:bold;color:#1B6B2F;margin:2px 0">&#x20a6;${tIssued.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL SPENT</p><p style="font-size:22px;font-weight:bold;color:#E85D04;margin:2px 0">&#x20a6;${tSpent.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">NET BALANCE</p><p style="font-size:22px;font-weight:bold;color:${tBal<0?"#DC2626":"#2563EB"};margin:2px 0">&#x20a6;${tBal.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">ACCOUNTS</p><p style="font-size:22px;font-weight:bold;color:#374151;margin:2px 0">${imprests.length}</p></div></div><h2 style="margin-bottom:10px;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280">Account Breakdown</h2>${accts.join("")}</body></html>`;
     const w=window.open("","_blank","width=920,height=1000");
     if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);}
   };
 
-  const totalIssued=monthRecs.reduce((s,i)=>s+i.amount,0);
-  const totalSpent=monthRecs.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
+  const doMonthClose=()=>{
+    const ml=`${MONTHS[thisMonth]} ${thisYear}`;
+    const activeCount=imprests.filter(i=>i.status==="Active").length;
+    if(activeCount===0)return;
+    confirm(`Close all ${activeCount} active imprest account(s) for ${ml}? Positive balances will be carried forward into the next month.`,()=>{
+      const nextD=new Date(thisYear,thisMonth+1,1);
+      const nextML=`${MONTHS[nextD.getMonth()]} ${nextD.getFullYear()}`;
+      const nextDateStr=nextD.toISOString().split("T")[0];
+      const ts=Date.now();
+      const{closed,carries}=imprests.reduce((acc,i,idx)=>{
+        if(i.status!=="Active"){acc.closed.push(i);return acc;}
+        acc.closed.push({...i,status:"Closed",closedPeriod:ml});
+        const spent=(i.expenses||[]).reduce((s,e)=>s+e.amount,0);
+        const bal=i.amount-spent;
+        if(bal>0){const baseTitle=i.title.replace(/\s*--\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s*\d{0,4}$/i,"").trim();acc.carries.push({id:"imp"+ts+"_"+idx,title:`${baseTitle} -- ${nextML}`,holder:i.holder,fundType:i.fundType,branch:i.branch,amount:bal,originalAmount:bal,releaseDate:nextDateStr,deadline:"",purpose:`Carried forward from ${ml}. Previous balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:i.id});}
+        return acc;
+      },{closed:[],carries:[]});
+      saveImprests([...closed,...carries]);
+    });
+  };
+
+  // Mini dashboard per fund manager this month
   const byManager={};
-  monthRecs.forEach(imp=>{const k=imp.holder||"Unknown";if(!byManager[k])byManager[k]={name:k,issued:0,spent:0,accounts:0};byManager[k].issued+=imp.amount||0;byManager[k].spent+=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);byManager[k].accounts++;});
+  imprests.forEach(imp=>{
+    const key=imp.holder||"Unknown";
+    if(!byManager[key])byManager[key]={name:key,issued:0,spent:0,accounts:0};
+    byManager[key].issued+=imp.amount||0;
+    byManager[key].spent+=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
+    byManager[key].accounts++;
+  });
+  const totalIssued=imprests.reduce((s,i)=>s+i.amount,0);
+  const totalSpent=imprests.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
+
+  // Monthly issued this month
+  const monthlyIssued=imprests.filter(i=>{
+    const d=new Date(i.releaseDate||i.created||"");
+    return d.getMonth()===thisMonth&&d.getFullYear()===thisYear;
+  }).reduce((s,i)=>s+i.amount,0);
+
   const SC={"Active":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Pending Reconciliation":{bg:"#fffbeb",color:AMBER,border:"#fde68a"},"Closed":{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"},"Flagged":{bg:"#fee2e2",color:RED,border:"#fca5a5"}};
-  const selLabel=mkLabel(selMK);const isCurMonth=selMK===curMK;
 
   return(<div className="space-y-5">{confirmEl}
-
-    {/* Month Navigator */}
-    <div className="flex items-center gap-2 flex-wrap">
-      {allMonths.map(mk=>{
-        const[y2,m2]=mk.split("-").map(Number);const lbl=`${MONTHS[m2-1].slice(0,3)} ${y2}`;const active=mk===selMK;
-        return(<button key={mk} onClick={()=>setSelMK(mk)} className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${active?"text-white":"text-gray-500 hover:text-gray-700"}`} style={active?{background:G}:{background:"#f3f4f6"}}>{lbl}{mk===curMK?" \u25cf":""}</button>);
-      })}
-      <button onClick={openNextMonth} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white" style={{background:BLUE}}><Plus size={13}/>Open Next Month</button>
-    </div>
-
-    {/* KPIs */}
+    {/* Mini Dashboard */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <KPI icon="\u20a6" label="Total Issued" value={fmt(totalIssued)} sub={selLabel} bg={GL}/>
-      <KPI icon="" label="Total Spent" value={fmt(totalSpent)} sub="Expenses logged" bg={OL}/>
-      <KPI icon="" label="Net Balance" value={fmt(totalIssued-totalSpent)} sub={(totalIssued-totalSpent)<0?"Overspent":"Remaining"} bg={(totalIssued-totalSpent)<0?"#fee2e2":"#f0f9ff"}/>
-      <KPI icon="" label="Accounts" value={monthRecs.length} sub={`${monthRecs.filter(i=>i.status==="Active").length} active`} bg="#f9fafb"/>
+      <KPI icon="" label="Total Issued" value={fmt(totalIssued)} sub="All accounts" bg={GL}/>
+      <KPI icon="" label="This Month" value={fmt(monthlyIssued)} sub={MONTHS[thisMonth]+" disbursements"} bg="#eff6ff"/>
+      <KPI icon="" label="Total Spent" value={fmt(totalSpent)} sub="Across all accounts" bg={OL}/>
+      <KPI icon="" label="Net Balance" value={fmt(totalIssued-totalSpent)} sub={totalIssued-totalSpent<0?" Overspent":"Remaining"} bg={totalIssued-totalSpent<0?"#fee2e2":"#f0f9ff"}/>
     </div>
-
     {/* Per-Manager Summary */}
     {Object.values(byManager).length>0&&<Card className="p-5">
-      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Fund Manager Summary \u2014 {selLabel}</h3>
+      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Fund Manager Summary</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {Object.values(byManager).map(m=>{const bal=m.issued-m.spent;const prevBal=getPrevBal(m.name,selMK);return(
-          <div key={m.name} className="p-3.5 rounded-xl" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
-            <p className="text-sm font-bold text-gray-800 mb-1">{m.name}</p>
-            {prevBal>0&&<p className="text-xs text-blue-600 mb-2">\u21a9 Carried in from last month: <strong>{fmt(prevBal)}</strong></p>}
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div><p className="text-xs font-bold text-gray-400">Issued</p><p className="text-sm font-black" style={{color:G}}>{fmt(m.issued)}</p></div>
-              <div><p className="text-xs font-bold text-gray-400">Spent</p><p className="text-sm font-black" style={{color:O}}>{fmt(m.spent)}</p></div>
-              <div><p className="text-xs font-bold text-gray-400">Balance</p><p className="text-sm font-black" style={{color:bal<0?RED:BLUE}}>{fmt(bal)}</p></div>
-            </div>
+        {Object.values(byManager).map(m=>{const bal=m.issued-m.spent;return(<div key={m.name} className="p-3.5 rounded-xl" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
+          <p className="text-sm font-bold text-gray-800 mb-2">{m.name}</p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div><p className="text-xs font-bold text-gray-400">Issued</p><p className="text-sm font-black" style={{color:G}}>{fmt(m.issued)}</p></div>
+            <div><p className="text-xs font-bold text-gray-400">Spent</p><p className="text-sm font-black" style={{color:O}}>{fmt(m.spent)}</p></div>
+            <div><p className="text-xs font-bold text-gray-400">Balance</p><p className="text-sm font-black" style={{color:bal<0?RED:BLUE}}>{fmt(bal)}</p></div>
           </div>
-        );})}
+        </div>);})}
       </div>
     </Card>}
-
-    {/* Action Bar */}
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-2">
-        <button onClick={printReport} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Print Report</button>
-        {monthRecs.some(i=>i.status==="Active")&&<button onClick={doMonthClose} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{background:AMBER}}><ClipboardCheck size={14}/>Month-End Close</button>}
+        <button onClick={printMonthReport} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Download Report</button>
+        {imprests.some(i=>i.status==="Active")&&<button onClick={doMonthClose} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{background:AMBER}}><ClipboardCheck size={14}/>Month-End Close</button>}
       </div>
-      <button onClick={()=>setModal({type:"new",month:selMK})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Imprest</button>
+      <button onClick={()=>setModal({type:"new"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Imprest</button>
     </div>
-
-    {/* Records list */}
-    <Card><div className="divide-y divide-gray-50">
-      {monthRecs.length===0&&<div className="text-center py-12 text-gray-400 text-sm">
-        No imprest records for {selLabel}
-        {isCurMonth&&<p className="text-xs mt-1">Use \u201c+ New Imprest\u201d to add one, or \u201cOpen Next Month\u201d to carry balances forward from the previous month.</p>}
-      </div>}
-      {monthRecs.map(imp=>{
+    <Card><div className="divide-y divide-gray-50">{imprests.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No imprest accounts yet</div>}
+      {imprests.map(imp=>{
         const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
         const topupsTotal=(imp.topups||[]).reduce((s,t)=>s+t.amount,0);
         const bal=imp.amount-spent;
         const overdue=imp.deadline&&new Date(imp.deadline)<TODAY&&imp.status==="Active";
-        const sts=overdue?"Flagged":imp.status;
         return(<div key={imp.id} className="px-5 py-4 hover:bg-gray-50">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl text-white text-sm font-bold flex items-center justify-center flex-shrink-0" style={{background:bal<0?RED:G}}>\u20a6</div>
+              <div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:bal<0?RED:G}}></div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                  <p className="font-semibold text-gray-800 text-sm">{imp.title}</p>
-                  {imp.isCarryForward&&<span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#eff6ff",color:BLUE}}>\u21a9 Carry-fwd</span>}
-                  <SBadge s={sts} custom={SC[sts]}/>
-                </div>
-                <p className="text-xs text-gray-500">Holder: {imp.holder} \u00b7 {imp.fundType||"Field Operations"} \u00b7 {fmtD(imp.releaseDate)}</p>
-                {imp.purpose&&<p className="text-xs text-gray-400 truncate max-w-sm mt-0.5">{imp.purpose}</p>}
-                {overdue&&<p className="text-xs text-red-600 font-semibold mt-0.5">\u26a0 Reconciliation overdue</p>}
+                <p className="font-semibold text-gray-800 text-sm">{imp.title}</p>
+                <p className="text-xs text-gray-500">Holder: {imp.holder}  {imp.fundType||"Field Operations"}  {fmtD(imp.releaseDate)}</p>
+                <p className="text-xs text-gray-400">{imp.purpose}</p>
+                {overdue&&<p className="text-xs text-red-600 font-semibold"> Reconciliation overdue</p>}
+                {(imp.topups||[]).length>0&&<p className="text-xs text-blue-600">+{imp.topups.length} top-up{imp.topups.length!==1?"s":""}  Total received: {fmt(imp.amount)}</p>}
                 <div className="flex gap-4 mt-1.5 text-xs flex-wrap">
-                  {imp.isCarryForward&&<span>Carry-in: <strong style={{color:BLUE}}>{fmt(imp.carryForwardAmount||0)}</strong></span>}
-                  <span>Issued: <strong>{fmt(imp.originalAmount||imp.amount)}</strong></span>
-                  {topupsTotal>0&&<span>Top-ups: <strong style={{color:BLUE}}>+{fmt(topupsTotal)}</strong></span>}
-                  <span>Spent: <strong style={{color:O}}>{fmt(spent)}</strong></span>
-                  <span>Balance: <strong style={{color:bal<0?RED:G}}>{fmt(bal)}</strong></span>
+                  <span>Original: <strong>{fmt(imp.originalAmount||imp.amount)}</strong></span>
+                  {(imp.topups||[]).length>0&&<span>Top-ups: <strong style={{color:BLUE}}>{fmt(topupsTotal)}</strong></span>}
+                  <span>Spent: <strong>{fmt(spent)}</strong></span>
+                  <span>Bal: <strong style={{color:bal<0?RED:G}}>{fmt(bal)}</strong></span>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+              <SBadge s={overdue?"Flagged":imp.status} custom={SC[overdue?"Flagged":imp.status]}/>
               <button onClick={()=>setView(imp)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100" title="View Details"><Eye size={13}/></button>
               <button onClick={()=>setModal({type:"expense",impId:imp.id,imp})} className="w-7 h-7 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-50 border border-green-100" title="Log Expense"><Plus size={13}/></button>
-              <button onClick={()=>setModal({type:"topup",impId:imp.id,imp})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-100" title="Top Up Fund">\u2191</button>
+              <button onClick={()=>setModal({type:"topup",impId:imp.id,imp})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-100" title="Top Up Fund"></button>
               <button onClick={()=>del(imp.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button>
             </div>
           </div>
@@ -1544,49 +1515,32 @@ function ImprestPage({imprests,setImprests,staff=[]}){
     {/* NEW IMPREST MODAL */}
     {modal?.type==="new"&&<ModalWrap title="Create Imprest Account" onClose={()=>setModal(null)} wide>
       <div className="grid grid-cols-2 gap-4">
-        <Fld label="Fund Holder (Staff Name)">
-          <StaffSelect staff={staff} value={modal.holder||""} onChange={v=>{
-            const prev=getPrevBal(v,modal.month||curMK);
-            setModal(p=>({...p,holder:v,_prevBal:prev,amount:p._manual!=null?p._manual:(prev||p.amount||0),title:`${v} \u2014 ${mkLabel(modal.month||curMK)}`}));
-          }} placeholder="-- Select staff --"/>
-        </Fld>
-        <Fld label="Fund Type">
-          <select className={inp} value={modal.fundType||"Field Operations"} onChange={e=>setModal(p=>({...p,fundType:e.target.value}))}><option>Field Operations</option><option>Office Operations / Supplies</option></select>
-        </Fld>
-        <Fld label="Title" col><input className={inp} value={modal.title||""} onChange={e=>setModal(p=>({...p,title:e.target.value}))} placeholder={`e.g. Site Operations Fund \u2014 ${selLabel}`}/></Fld>
-        {modal._prevBal>0&&<div className="col-span-2 flex items-center justify-between p-3 rounded-xl" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>
-          <span className="text-blue-700 text-xs">\u21a9 <strong>{modal.holder}</strong> has an unspent balance of <strong>{fmt(modal._prevBal)}</strong> from last month \u2014 pre-filled as starting amount.</span>
-          <button onClick={()=>setModal(p=>({...p,amount:p._prevBal,_manual:p._prevBal}))} className="text-xs px-2.5 py-1 rounded-lg font-semibold border border-blue-300 text-blue-700 ml-3 flex-shrink-0">Use Balance</button>
-        </div>}
-        <Fld label="Amount Released (\u20a6)"><input className={inp} type="number" min="0" value={modal.amount||""} onChange={e=>setModal(p=>({...p,amount:Number(e.target.value),_manual:Number(e.target.value)}))}/></Fld>
-        <Fld label="Release Date"><input className={inp} type="date" value={modal.releaseDate||today.toISOString().split("T")[0]} onChange={e=>setModal(p=>({...p,releaseDate:e.target.value}))}/></Fld>
+        <Fld label="Title" col><input className={inp} value={modal.title||""} onChange={e=>setModal(p=>({...p,title:e.target.value}))} placeholder="e.g. Site Operations Fund -- April"/></Fld>
+        <Fld label="Fund Type"><select className={inp} value={modal.fundType||"Field Operations"} onChange={e=>setModal(p=>({...p,fundType:e.target.value}))}><option>Field Operations</option><option>Office Operations / Supplies</option></select></Fld>
+        <Fld label="Fund Holder (Staff Name)"><StaffSelect staff={staff} value={modal.holder||""} onChange={v=>setModal(p=>({...p,holder:v}))} placeholder="-- Select staff --"/></Fld>
         <Fld label="Branch / Site"><input className={inp} value={modal.branch||""} onChange={e=>setModal(p=>({...p,branch:e.target.value}))}/></Fld>
+        <Fld label="Amount Released ()"><input className={inp} type="number" min="0" value={modal.amount||""} onChange={e=>setModal(p=>({...p,amount:Number(e.target.value)}))}/></Fld>
+        <Fld label="Release Date"><input className={inp} type="date" value={modal.releaseDate||""} onChange={e=>setModal(p=>({...p,releaseDate:e.target.value}))}/></Fld>
         <Fld label="Reconciliation Deadline"><input className={inp} type="date" value={modal.deadline||""} onChange={e=>setModal(p=>({...p,deadline:e.target.value}))}/></Fld>
         <Fld label="Purpose" col><textarea className={inp} rows={2} value={modal.purpose||""} onChange={e=>setModal(p=>({...p,purpose:e.target.value}))}/></Fld>
       </div>
       <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
         <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-        <button onClick={()=>{
-          if(!modal.holder||!modal.amount)return;
-          const prevBal=modal._prevBal||0;const isCarry=prevBal>0;
-          const{_prevBal,_manual,type,...rest}=modal;
-          save([...imprests,{...rest,id:"imp"+Date.now(),month:modal.month||curMK,originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[],carryForwardAmount:isCarry?prevBal:0,isCarryForward:isCarry}]);
-          setModal(null);
-        }} disabled={!modal.holder||!modal.amount} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Create</button>
+        <button onClick={()=>{const newItem={...modal,id:"imp"+Date.now(),originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[]};const newList=[...imprests,newItem];setImprests(newList);dbSync("imprests",newList);setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Create</button>
       </div>
     </ModalWrap>}
 
     {/* LOG EXPENSE MODAL */}
-    {modal?.type==="expense"&&<ModalWrap title={`Log Expense \u2014 ${modal.imp.title}`} onClose={()=>setModal(null)}>
+    {modal?.type==="expense"&&<ModalWrap title={`Log Expense -- ${modal.imp.title}`} onClose={()=>setModal(null)}>
       <div className="space-y-4">
         <div className="p-3 rounded-xl text-sm flex justify-between" style={{background:GL}}>
           <span className="font-bold text-green-700">Available Balance:</span>
           <span className="font-black" style={{color:(modal.imp.amount-(modal.imp.expenses||[]).reduce((s,e)=>s+e.amount,0))<0?RED:G}}>{fmt(modal.imp.amount-(modal.imp.expenses||[]).reduce((s,e)=>s+e.amount,0))}</span>
         </div>
-        <p className="text-xs text-blue-600 font-medium">\u2139 Negative balance is permitted \u2014 overspend will be flagged.</p>
+        <p className="text-xs text-blue-600 font-medium"> Negative balance is permitted -- overspend will be flagged.</p>
         <div className="grid grid-cols-2 gap-4">
           <Fld label="Date"><input className={inp} type="date" value={modal.expDate||TODAY.toISOString().split("T")[0]} onChange={e=>setModal(p=>({...p,expDate:e.target.value}))}/></Fld>
-          <Fld label="Amount (\u20a6)"><input className={inp} type="number" min="0" value={modal.expAmount||""} onChange={e=>setModal(p=>({...p,expAmount:Number(e.target.value)}))}/></Fld>
+          <Fld label="Amount ()"><input className={inp} type="number" min="0" value={modal.expAmount||""} onChange={e=>setModal(p=>({...p,expAmount:Number(e.target.value)}))}/></Fld>
         </div>
         <Fld label="Category"><select className={inp} value={modal.expCat||""} onChange={e=>setModal(p=>({...p,expCat:e.target.value}))}><option value="">-- Select --</option>{IMPREST_CATS.map(c=><option key={c}>{c}</option>)}</select></Fld>
         <Fld label="Item / Service" col><input className={inp} value={modal.expItem||""} onChange={e=>setModal(p=>({...p,expItem:e.target.value}))}/></Fld>
@@ -1595,17 +1549,17 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </div>
       <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
         <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-        <button onClick={()=>{if(!modal.expAmount||!modal.expItem)return;addExpense(modal.impId,{id:"exp"+Date.now(),date:modal.expDate||TODAY.toISOString().split("T")[0],amount:modal.expAmount||0,category:modal.expCat,item:modal.expItem,vendor:modal.expVendor,note:modal.expNote});setModal(null);}} disabled={!modal.expAmount||!modal.expItem} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Log Expense</button>
+        <button onClick={()=>{addExpense(modal.impId,{id:"exp"+Date.now(),date:modal.expDate,amount:modal.expAmount||0,category:modal.expCat,item:modal.expItem,vendor:modal.expVendor,note:modal.expNote});setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Log Expense</button>
       </div>
     </ModalWrap>}
 
     {/* TOP UP MODAL */}
-    {modal?.type==="topup"&&<ModalWrap title={`Top Up \u2014 ${modal.imp.title}`} onClose={()=>setModal(null)}>
+    {modal?.type==="topup"&&<ModalWrap title={`Top Up -- ${modal.imp.title}`} onClose={()=>setModal(null)}>
       <div className="space-y-4">
         <div className="p-3 rounded-xl text-sm" style={{background:GL}}><p className="text-xs font-bold text-green-700 mb-1">Current Fund Total</p><p className="text-lg font-black" style={{color:G}}>{fmt(modal.imp.amount)}</p></div>
         <div className="grid grid-cols-2 gap-4">
           <Fld label="Top-Up Date"><input className={inp} type="date" value={modal.topupDate||TODAY.toISOString().split("T")[0]} onChange={e=>setModal(p=>({...p,topupDate:e.target.value}))}/></Fld>
-          <Fld label="Amount to Add (\u20a6)"><input className={inp} type="number" min="1" value={modal.topupAmount||""} onChange={e=>setModal(p=>({...p,topupAmount:Number(e.target.value)}))}/></Fld>
+          <Fld label="Amount to Add ()"><input className={inp} type="number" min="1" value={modal.topupAmount||""} onChange={e=>setModal(p=>({...p,topupAmount:Number(e.target.value)}))}/></Fld>
         </div>
         <Fld label="Reason / Note" col><input className={inp} value={modal.topupNote||""} onChange={e=>setModal(p=>({...p,topupNote:e.target.value}))} placeholder="e.g. Additional site expenses authorised by admin"/></Fld>
         {modal.topupAmount>0&&<div className="p-3 rounded-xl text-sm" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}><span className="text-blue-700 font-semibold">New total after top-up: </span><span className="font-black text-blue-800">{fmt((modal.imp.amount||0)+(modal.topupAmount||0))}</span></div>}
@@ -1616,32 +1570,28 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </div>
     </ModalWrap>}
 
-    {/* DETAIL VIEW */}
-    {view&&<ModalWrap title={`Imprest \u2014 ${view.title}`} onClose={()=>setView(null)} xl>
-      <div className="flex justify-between items-center mb-4 pb-4 border-b flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-bold text-gray-800">{view.title}</p>
-            {view.isCarryForward&&<span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#eff6ff",color:BLUE}}>\u21a9 Carry-forward</span>}
-          </div>
-          <p className="text-xs text-gray-400 mt-0.5">Holder: {view.holder} \u00b7 {view.fundType||"Field Operations"} \u00b7 Released: {fmtD(view.releaseDate)}</p>
-        </div>
+    {/* DETAIL VIEW MODAL */}
+    {view&&<ModalWrap title={`Imprest -- ${view.title}`} onClose={()=>setView(null)} xl>
+      <div className="flex justify-between items-center mb-4 pb-4 border-b">
+        <div><p className="font-bold text-gray-800">{view.title}</p><p className="text-xs text-gray-400">Holder: {view.holder}  {view.fundType||"Field Operations"}  Released: {fmtD(view.releaseDate)}</p></div>
         <div className="flex gap-2">
-          <button onClick={()=>{updStatus(view.id,"Pending Reconciliation");setView(v=>({...v,status:"Pending Reconciliation"}));}} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-amber-300 text-amber-700">Reconcile</button>
-          <button onClick={()=>{updStatus(view.id,"Closed");setView(v=>({...v,status:"Closed"}));}} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-gray-300 text-gray-600">Close</button>
+          <button onClick={()=>updateStatus(view.id,"Pending Reconciliation")} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-amber-300 text-amber-700">Reconcile</button>
+          <button onClick={()=>updateStatus(view.id,"Closed")} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-gray-300 text-gray-600">Close</button>
         </div>
       </div>
-      {(()=>{const spent=(view.expenses||[]).reduce((s,e)=>s+e.amount,0);const bal=view.amount-spent;return(<>
-        {view.isCarryForward&&<div className="p-3 rounded-xl text-sm mb-4" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>
-          <span className="text-blue-700 text-xs">\u21a9 Balance carried forward from <strong>{view.carriedFrom?mkLabel(view.carriedFrom):""}</strong>: <strong>{fmt(view.carryForwardAmount||0)}</strong></span>
-        </div>}
+      {(()=>{const spent=(view.expenses||[]).reduce((s,e)=>s+e.amount,0);const bal=view.amount-spent;return(
         <div className="grid grid-cols-3 gap-3 mb-4">
           {[["Issued",view.amount,GL,G],["Spent",spent,OL,O],["Balance",bal,bal<0?"#fee2e2":"#f0f9ff",bal<0?RED:BLUE]].map(([l,v,bg,c])=>
-            <div key={l} className="p-4 rounded-xl text-center" style={{background:bg}}><p className="text-lg font-black" style={{color:c}}>{fmt(v)}</p><p className="text-xs font-bold text-gray-500 mt-1">{l}</p></div>
-          )}
+            <div key={l} className="p-4 rounded-xl text-center" style={{background:bg}}>
+              <p className="text-lg font-black" style={{color:c}}>{fmt(v)}</p>
+              <p className="text-xs font-bold text-gray-500 mt-1">{l}</p>
+            </div>)
+          }
         </div>
-      </>);})()}
-      {(view.topups||[]).length>0&&<div className="mb-4"><p className="text-xs font-bold text-blue-600 mb-2">TOP-UPS</p><div className="space-y-1">{(view.topups||[]).map(t=><div key={t.id} className="flex justify-between p-2.5 rounded-lg text-xs" style={{background:"#eff6ff"}}><span>{fmtD(t.date)} \u2014 {t.note||"Top-up"}</span><span className="font-bold text-blue-700">+{fmt(t.amount)}</span></div>)}</div></div>}
+      );})()}
+      {/* Top-ups */}
+      {(view.topups||[]).length>0&&<div className="mb-4"><p className="text-xs font-bold text-blue-600 mb-2">TOP-UPS</p><div className="space-y-1">{(view.topups||[]).map(t=><div key={t.id} className="flex justify-between p-2.5 rounded-lg text-xs" style={{background:"#eff6ff"}}><span>{fmtD(t.date)} -- {t.note||"Top-up"}</span><span className="font-bold text-blue-700">+{fmt(t.amount)}</span></div>)}</div></div>}
+      {/* Expenses */}
       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Expenses</p>
       <div className="border border-gray-200 rounded-xl overflow-hidden"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Date","Item","Category","Vendor","Amount","Notes"].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead>
         <tbody className="divide-y divide-gray-50">{(view.expenses||[]).length===0?<tr><td colSpan={6} className="text-center py-6 text-gray-400 text-sm">No expenses logged</td></tr>:(view.expenses||[]).map(e=><tr key={e.id} className="hover:bg-gray-50"><td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{fmtD(e.date)}</td><td className="px-3 py-2 font-medium text-gray-800">{e.item}</td><td className="px-3 py-2 text-xs text-gray-500">{e.category}</td><td className="px-3 py-2 text-xs text-gray-500">{e.vendor||"--"}</td><td className="px-3 py-2 font-bold text-gray-800">{fmt(e.amount)}</td><td className="px-3 py-2 text-xs text-gray-400">{e.note||"--"}</td></tr>)}
@@ -1649,6 +1599,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </table></div>
     </ModalWrap>}
   </div>);}
+
 
 
 // -- ANALYTICS -----------------------------------------------------------------
@@ -1692,8 +1643,9 @@ function StaffPage({staff,setStaff}){
   const filtered=staff.filter(s=>s.category===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
   const del=id=>confirm("Remove this staff member?",()=>setStaff(ss=>ss.filter(s=>s.id!==id)));
   const save=data=>{
-    let ns;if(data.id)ns=staff.map(s=>s.id===data.id?{...s,...data}:s);else ns=[...staff,{...data,id:"st"+Date.now()}];
-    setStaff(ns);dbSync("staff",ns);setModal(null);
+    if(data.id)setStaff(ss=>ss.map(s=>s.id===data.id?{...s,...data}:s));
+    else setStaff(ss=>[...ss,{...data,id:"st"+Date.now()}]);
+    setModal(null);
   };
   const blank={name:"",category:TAB_MAP[tab],role:"",site:"",phone:"",email:"",homeAddress:"",emergencyContact:"",emergencyPhone:"",emergencyAddress:"",dob:"",employmentType:"Full Time",startDate:"",workDays:"",bankName:"",accountName:"",accountNumber:""};
 
@@ -1794,7 +1746,7 @@ function StaffPage({staff,setStaff}){
 function SettingsPage({users,setUsers,activityLog=[]}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
-  const save=data=>{let nu;if(data.id)nu=users.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u);else nu=[...users,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}];setUsers(nu);dbSync("users",nu);setModal(null);};
+  const save=data=>{if(data.id)setUsers(us=>us.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u));else setUsers(us=>[...us,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}]);setModal(null);};
   const del=id=>confirm("Remove this app user account?",()=>setUsers(us=>us.filter(u=>u.id!==id)));
   return(<div className="space-y-6 max-w-3xl">{confirmEl}
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-4">Company Profile</h3><div className="grid grid-cols-2 gap-4">{[["Company Name","Dust & Wipes Limited"],["App Name","Operations Hub"],["Domain","app.dustandwipes.com"],["Location","Abuja, Nigeria"],["Currency","NGN ()"],["Timezone","WAT (UTC+1)"]].map(([l,v])=><Fld key={l} label={l}><input className={inp+" bg-gray-50"} defaultValue={v} readOnly/></Fld>)}</div></Card>
@@ -1884,8 +1836,8 @@ const SA_CLEAN_SVCS=["Post-construction cleaning","Deep cleaning","Routine janit
 const SA_PEST_SVCS=["Pest control","Fumigation","Rodent control","Termite treatment","Bed bug treatment","Snake control"];
 const SA_OUTDOOR_SVCS=["Facade cleaning","Pressure washing","Gardening/landscaping"];
 const SA_JANITORIAL=["Routine janitorial service"];
-const SA_EQUIP_OPTS=["Vacuum cleaner","Industrial vacuum","Scrubbing machine","Pressure washer","Steam cleaner","Ladder","Scaffolding","Mop sets","Squeegee","Extension poles","Buckets","PPE kit","Generator","Cleaning Towels","Soft Iron Sponge"];
-const SA_CHEM_OPTS=["Liquid Soap","Bleach","Disinfectant","Glass Cleaner","Floor Polish","Degreaser","Air Freshener","Dr. Floor","Formula X","Wood Polish","Multi-Surface Cleaner","Scouring Powder","Scented Camphor","Cypress"];
+const SA_EQUIP_OPTS=["Vacuum cleaner","Industrial vacuum","Scrubbing machine","Pressure washer","Steam cleaner","Ladder","Scaffolding","Mop sets","Squeegee","Extension poles","Buckets","PPE kit","Generator"];
+const SA_CHEM_OPTS=["Liquid soap","Bleach","Disinfectant","Glass cleaner","Floor polish","Degreaser","Air freshener","Cypress","Cypermethrin","Deltamethrin","Gel bait","Rodenticide"];
 const SA_PEST_TYPES=["Cockroaches","Ants","Mosquitoes","Flies","Rodents","Termites","Bed bugs","Snakes","Wall geckos","Spiders","Fleas","Ticks","Other"];
 const SA_TREATMENT=["Spraying","Gel baiting","Fogging","Rodent baiting","Termite drilling/injection","Dusting","Fumigation","Trapping","Exclusion/sealing"];
 const SA_SECTIONS=["Client Info","Service Type","Scope","Site & Risk","Photos","Costing","Recommendation"];
@@ -2031,9 +1983,8 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
     {showForm&&<AssessmentForm
       data={editData}
       onSave={data=>{
-        const exists=assessments.some(a=>a.id===data.id);
-        const na=exists?assessments.map(a=>a.id===data.id?data:a):[data,...assessments];
-        setAssessments(na);dbSync("assessments",na);
+        if(data.id)setAssessments(as=>as.map(a=>a.id===data.id?data:a));
+        else setAssessments(as=>[data,...as]);
         setShowForm(false);setEditData(null);
       }}
       onClose={()=>{setShowForm(false);setEditData(null);}}
@@ -2095,6 +2046,8 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}){
 
   const[f,setF]=useState(data?{...blank,...data}:blank);
   const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+  const tog=k=>v=>setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
+  const chk=k=>v=>setF(p=>({...p,[k]:!p[k]}));
 
   const hasCleaning=f.services.some(s=>SA_CLEAN_SVCS.includes(s));
   const hasPest    =f.services.some(s=>SA_PEST_SVCS.includes(s));
@@ -2506,7 +2459,7 @@ export default function App(){
   const[siteReports, setSiteReports] =useState([]);
   const[contacts,    setContacts]    =useState([]); // loaded from dw_contacts
   const[activityLog, setActivityLog] =useState([]);
-  const[supplyItems, setSupplyItems] =useState([]);
+  const[supplyItems, setSupplyItems] =useState(INITIAL_SUPPLY_MASTER);
   const[requisitions,setRequisitions]=useState([]);
   const[absences,    setAbsences]    =useState([]);
   const[covers,      setCovers]      =useState([]);
@@ -2533,16 +2486,7 @@ export default function App(){
           loadContacts(setContacts),
           loadActivityLog(setActivityLog),
           dbLoad("inventory",   setInventory),
-          (async()=>{
-            const url=`${SUPABASE_URL}/rest/v1/${T("supplyitems")}?select=id,record&order=updated_at.desc`;
-            try{const r=await fetch(url,{headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`}});
-              if(!r.ok)throw new Error(`HTTP ${r.status}`);
-              const data=await r.json();
-              const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
-              if(records.length===0){setSupplyItems(INITIAL_SUPPLY_MASTER);dbSync("supplyitems",INITIAL_SUPPLY_MASTER);}
-              else setSupplyItems(records);
-            }catch(e){console.warn("[DB] load supplyitems:",e.message);setSupplyItems(INITIAL_SUPPLY_MASTER);}
-          })(),
+          dbLoad("supplyitems", setSupplyItems),
           dbLoad("requisitions",setRequisitions),
           dbLoad("absences",    setAbsences),
           dbLoad("covers",      setCovers),
@@ -2555,17 +2499,14 @@ export default function App(){
               const data=await r.json();
               const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
               const dbById=Object.fromEntries(records.map(r=>[r.id,r]));
-              if(records.length===0){
-                // First load ever — seed DB with initial staff list
-                setStaff(SEED_STAFF);dbSync("staff",SEED_STAFF);
-              }else{
-                // DB is authoritative: only include seed members that still exist in DB
-                const merged=[
-                  ...SEED_STAFF.filter(s=>dbById[s.id]).map(s=>({...s,...dbById[s.id]})),
-                  ...records.filter(r=>!SEED_STAFF.some(s=>s.id===r.id)&&r.id&&/^st/.test(String(r.id)))
-                ];
-                setStaff(merged);
-              }
+              // Merge: SEED_STAFF as authoritative base, DB fields overlaid on top; extra DB records appended
+              const merged=[
+                ...SEED_STAFF.map(s=>dbById[s.id]?{...s,...dbById[s.id]}:s),
+                ...records.filter(r=>!SEED_STAFF.some(s=>s.id===r.id)&&r.id&&/^st/.test(String(r.id)))
+              ];
+              setStaff(merged);
+              // Write any seed records missing from DB
+              if(!SEED_STAFF.every(s=>dbById[s.id]))dbSync("staff",merged);
             }catch(e){console.warn("[DB] load staff:",e.message);setStaff(SEED_STAFF);}
           })(),
           dbLoad("users",       u => {
@@ -2608,7 +2549,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
