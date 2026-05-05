@@ -151,36 +151,22 @@ const dbLoad = async (table, setter) => {
 
 // Sync an entity array to Supabase via direct REST calls
 const dbSync = async (table, data) => {
+  // UPSERT-ONLY: never delete from DB via sync.
+  // Deletion is handled explicitly via the delete button in the UI.
+  // This prevents data loss from race conditions (multiple tabs, slow loads).
   try {
-    if (!data) return;
+    if (!data || data.length === 0) return;
     const headers = {
       "apikey": SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
       "Content-Type": "application/json",
       "Prefer": "resolution=merge-duplicates,return=minimal"
     };
-    // Upsert all current records
-    if (data.length > 0) {
-      const rows = data.map(r => ({ id: String(r.id), record: r, updated_at: new Date().toISOString() }));
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}`, {
-        method: "POST", headers, body: JSON.stringify(rows)
-      });
-      if (!r.ok) { const e = await r.text(); throw new Error(e); }
-    }
-    // Delete rows no longer in local state
-    const currentIds = data.map(r => String(r.id));
-    if (currentIds.length > 0) {
-      const notIn = currentIds.map(id => `"${id}"`).join(",");
-      await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}?id=not.in.(${notIn})`, {
-        method: "DELETE",
-        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
-      });
-    } else {
-      await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}?id=neq.__NONE__`, {
-        method: "DELETE",
-        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
-      });
-    }
+    const rows = data.map(r => ({ id: String(r.id), record: r, updated_at: new Date().toISOString() }));
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}`, {
+      method: "POST", headers, body: JSON.stringify(rows)
+    });
+    if (!r.ok) { const e = await r.text(); throw new Error(e); }
   } catch(e) { console.warn(`[DB] sync ${table}:`, e.message); }
 };
 
@@ -255,31 +241,95 @@ const INITIAL_USERS=[
 
 
 const SEED_STAFF=[
-  {id:"st1000",name:"Agnes Dung",              category:"Office Staff",   role:"Finance",               site:"Gwarimpa",                                  phone:"0802-715-9968", email:"agnesdung2@gmail.com",              homeAddress:"Army Housing Scheme Phase 2, Hilltop Extension, Kurudu, Abuja",         emergencyContact:"",                  emergencyPhone:"0704-941-0700", emergencyAddress:"",                                                    dob:"1998-01-21", employmentType:"Full Time",  startDate:"2026-02-09", workDays:"Mon–Thu",     bankName:"Access Bank",   accountName:"Dung Agnes Lyop",              accountNumber:"1225193690"},
-  {id:"st1001",name:"Kator Kenneth",            category:"Cleaning Staff", role:"Cleaner",               site:"Wuse 2",                                    phone:"0812-469-7132", email:"kennezo@gmail.com",                homeAddress:"Geshiri Bara Estate, Abuja FCT",                                        emergencyContact:"Vincent",           emergencyPhone:"0815-298-8808", emergencyAddress:"Geshiri, Abuja FCT",                                  dob:"2001-07-27", employmentType:"Full Time",  startDate:"2025-06-27", workDays:"Mon–Sat",     bankName:"Access Bank",   accountName:"Kenneth Kator Mase",           accountNumber:"1848673450"},
-  {id:"st1002",name:"Oluwatobi Olayimika",      category:"Cleaning Staff", role:"Cleaner",               site:"BOI Central Area, Abuja",                   phone:"0902-226-2554", email:"",                                 homeAddress:"Karu, Nepa Quarters, Abuja FCT",                                        emergencyContact:"Bode Ojo",          emergencyPhone:"0813-070-2494", emergencyAddress:"Karu, Nepa Quarters, Abuja FCT",                      dob:"1993-03-20", employmentType:"Full Time",  startDate:"2025-06-02", workDays:"Mon–Fri",     bankName:"Opay",          accountName:"Oluwatobi Olayimika Ojo",      accountNumber:"8149248571"},
-  {id:"st1003",name:"Clement Doki",             category:"Cleaning Staff", role:"Cleaner",               site:"Pelta Spa, Asokoro",                        phone:"0906-635-5946", email:"",                                 homeAddress:"Angwan Jaba, Near Primary School, New Karu, Nasarawa",                  emergencyContact:"Ephraim Ignatius",  emergencyPhone:"0902-006-7371", emergencyAddress:"Angwan Jaba, New Karu, Nasarawa",                     dob:"1999-07-27", employmentType:"Full Time",  startDate:"2025-01-06", workDays:"Mon–Sat",     bankName:"Access Bank",   accountName:"Clement Doki",                 accountNumber:"1577982296"},
-  {id:"st1004",name:"Goodness Igoh",            category:"Cleaning Staff", role:"Cleaner",               site:"Gwaripa",                                   phone:"0901-596-2547", email:"",                                 homeAddress:"Mararaba Kabayi, Nasarawa State",                                       emergencyContact:"Mrs Joy Sunday",    emergencyPhone:"0901-019-8899", emergencyAddress:"Mararaba Kabayi, Nasarawa State",                     dob:"2006-10-03", employmentType:"Full Time",  startDate:"2024-12-13", workDays:"Mon–Sat",     bankName:"Opay",          accountName:"Goodness Igoh",                accountNumber:"9133137506"},
-  {id:"st1005",name:"Elizebeth Na'allah",       category:"Cleaning Staff", role:"Cleaner",               site:"First Ally Management",                     phone:"0916-257-5440", email:"",                                 homeAddress:"Bassa, Airport Road, Abuja",                                            emergencyContact:"Elizebeth Na'allah",emergencyPhone:"0904-286-0851", emergencyAddress:"Bassa, Airport Road, Abuja",                          dob:"2000-12-27", employmentType:"Full Time",  startDate:"2024-11-26", workDays:"Mon–Fri",     bankName:"Opay",          accountName:"Elizebeth Na'allah",           accountNumber:"9042860851"},
-  {id:"st1006",name:"Ogar Jennifer",            category:"Cleaning Staff", role:"Cleaner",               site:"Karimo",                                    phone:"0808-989-6548", email:"ogartiti6@gmail.com",              homeAddress:"Karimo, Our Savior School, Abuja",                                      emergencyContact:"John Princelia",    emergencyPhone:"0703-691-0139", emergencyAddress:"Karimo, Abuja",                                       dob:"1999-12-18", employmentType:"Part Time",  startDate:"2024-11-23", workDays:"Wed, Sat",    bankName:"First Bank",    accountName:"Ogar Jennifer Ekawu",          accountNumber:"3193747044"},
-  {id:"st1007",name:"Ephraim Terlumun",         category:"Cleaning Staff", role:"Cleaner",               site:"Sparkle Apartment, Mabuchi",                phone:"0902-006-7371", email:"ephraimignisius@gmail.com",        homeAddress:"Ado by Angwa Jaba, New Karu, Nasarawa State",                           emergencyContact:"",                  emergencyPhone:"0815-531-3481", emergencyAddress:"Nasarawa State",                                      dob:"2002-06-12", employmentType:"Full Time",  startDate:"2024-10-03", workDays:"Mon–Sat",     bankName:"GT Bank",       accountName:"Ephraim Ignisius Terlumun",    accountNumber:"0528807621"},
-  {id:"st1008",name:"Williams Titus",           category:"Gardening Staff",role:"Gardener",              site:"IFRC Utako",                                phone:"0708-980-4030", email:"williamstitus776@gmail.com",       homeAddress:"Behind Catholic Church, Gishiri, Abuja",                               emergencyContact:"John Williams",     emergencyPhone:"0815-264-9123", emergencyAddress:"Behind Catholic Church, Gishiri, Abuja",              dob:"1988-10-15", employmentType:"Full Time",  startDate:"2023-06-26", workDays:"Mon, Wed, Fri",bankName:"Access Bank",  accountName:"Williams Titus",               accountNumber:"0072351632"},
-  {id:"st1009",name:"Kauna Tanko",              category:"Cleaning Staff", role:"Cleaner",               site:"First Ally Asset Management, Paraquat Estate",phone:"0814-515-5299",email:"",                                homeAddress:"Gidan Zakara, Abuja Keffi Express Road, Karu, Nasarawa",                emergencyContact:"Tanko",             emergencyPhone:"0810-409-1627", emergencyAddress:"Gidan Zakara, Karu, Nasarawa",                        dob:"1997-05-12", employmentType:"Full Time",  startDate:"",           workDays:"Mon–Fri",     bankName:"Eco Bank",      accountName:"Kauna Tanko",                  accountNumber:"4603063957"},
-  {id:"st1010",name:"Abraham Chafa",            category:"Cleaning Staff", role:"Cleaner",               site:"",                                          phone:"0812-130-2495", email:"chafa9979@gmail.com",              homeAddress:"Mararaba, No.3 Voice of the Lord Church, Nasarawa",                     emergencyContact:"Moses",             emergencyPhone:"0906-329-6612", emergencyAddress:"No. 29 Panama Street, Maitama, Abuja",                dob:"1993-11-18", employmentType:"Full Time",  startDate:"2018-01-08", workDays:"Mon, Fri",    bankName:"Access Bank",   accountName:"Abraham Tehide Chafa",         accountNumber:"0098546106"},
-  {id:"st1011",name:"Mary Habila",              category:"Cleaning Staff", role:"Cleaner",               site:"Sparkles Apartments, Mabushi",              phone:"0708-399-6317", email:"",                                 homeAddress:"Hort Road, Gosa, Abuja",                                                emergencyContact:"Margaret",          emergencyPhone:"0705-753-9791", emergencyAddress:"Madala, Niger State",                                 dob:"1977-06-20", employmentType:"Full Time",  startDate:"2024-11-08", workDays:"Tue–Sat",     bankName:"UBA Bank",      accountName:"Mary Habila",                  accountNumber:"2058474963"},
-  {id:"st1012",name:"Dorcas Elisha",            category:"Cleaning Staff", role:"Cleaner",               site:"Spark Apartment, Jahi",                     phone:"0808-568-8711", email:"dorcaselisha37@gmail.com",         homeAddress:"Kado Fish Market, Chief Palace, Abuja",                                 emergencyContact:"Michael Elisha",    emergencyPhone:"0705-576-1153", emergencyAddress:"Mapapa, Abuja",                                       dob:"1999-04-12", employmentType:"Full Time",  startDate:"2024-02-01", workDays:"Mon–Sat",     bankName:"Unity Bank",    accountName:"Elisha Dorcas",                accountNumber:"0053917960"},
-  {id:"st1013",name:"Irimiya Maryam",           category:"Cleaning Staff", role:"Cleaner",               site:"Deloitte, Mabushi",                         phone:"0907-985-9485", email:"irimiyamaryam@gmail.com",          homeAddress:"Angwan Cement, Dape II, FCT",                                           emergencyContact:"Irimiya Danlami",   emergencyPhone:"0705-455-6946", emergencyAddress:"Jiwa, behind ECWA Church, FCT",                       dob:"1998-04-27", employmentType:"Full Time",  startDate:"2019-11-01", workDays:"Mon–Fri",     bankName:"UBA",           accountName:"Irimiya Maryam",               accountNumber:"2170418984"},
-  {id:"st1014",name:"Linda Tanko",              category:"Cleaning Staff", role:"Cleaner",               site:"Sparkles Apartments, Mabushi",              phone:"0901-976-7780", email:"",                                 homeAddress:"Chief Palace, Dape 2, Life Camp, FCT",                                  emergencyContact:"Daniel",            emergencyPhone:"0909-964-1648", emergencyAddress:"Chief Palace, Dape 2, Life Camp, FCT",                dob:"2001-11-25", employmentType:"Part Time",  startDate:"2023-11-02", workDays:"Thu–Sat",     bankName:"Opay",          accountName:"Linda Tanko",                  accountNumber:"9019767780"},
-  {id:"st1015",name:"Oluwasegun Christianah",   category:"Cleaning Staff", role:"Cleaner",               site:"Mobus Property, River Park Estate, Lugbe",  phone:"0706-515-7105", email:"christianahtoloba924@gmail.com",   homeAddress:"Piwoyi Airport Road, Abuja",                                            emergencyContact:"Emmanuel",          emergencyPhone:"0806-318-2552", emergencyAddress:"Piwoyi Airport Road, Abuja",                          dob:"1987-09-17", employmentType:"Part Time",  startDate:"2020-11-17", workDays:"Mon–Fri",     bankName:"First Bank",    accountName:"Oluwasegun Folashade Christianah",accountNumber:"3048231432"},
-  {id:"st1016",name:"Peace Agocha",             category:"Cleaning Staff", role:"Cleaner",               site:"Apo Resettlement, FCT",                     phone:"0806-737-2671", email:"agochapeace4@gmail.com",           homeAddress:"Aso Pada, Karu, Nasarawa",                                              emergencyContact:"Mr. Okpale Fredson",emergencyPhone:"0706-832-4334", emergencyAddress:"Aso Pada, Karu, Nasarawa",                            dob:"1993-12-15", employmentType:"Full Time",  startDate:"2022-02-14", workDays:"Mon, Wed, Sat",bankName:"UBA",          accountName:"Agocha Peace U.",              accountNumber:"2061821596"},
-  {id:"st1017",name:"Jen Dooshima",             category:"Cleaning Staff", role:"Cleaner",               site:"Mobus Property, River Park Estate, Lugbe",  phone:"0806-482-1480", email:"dooshimaestherjen@gmail.com",      homeAddress:"Piwoyi Airport Road, Abuja",                                            emergencyContact:"",                  emergencyPhone:"0806-129-1311", emergencyAddress:"Piwoyi Airport Road, Abuja",                          dob:"1996-09-27", employmentType:"Full Time",  startDate:"2021-06-20", workDays:"Mon–Fri",     bankName:"GTB",           accountName:"Jen Dooshima Esther",          accountNumber:"0163671214"},
-  {id:"st1018",name:"Apeh Veronica",            category:"Cleaning Staff", role:"Cleaner",               site:"AFD, Asokoro",                              phone:"0816-093-9949", email:"apehveronica758@gmail.com",        homeAddress:"Gishiri, Nicon Junction, FCT",                                          emergencyContact:"",                  emergencyPhone:"0905-010-9161", emergencyAddress:"Jayi, Abuja FCT",                                     dob:"1993-11-25", employmentType:"Full Time",  startDate:"2021-06-01", workDays:"Mon–Fri",     bankName:"Access Bank",   accountName:"Apeh Veronica",                accountNumber:"0034443669"},
-  {id:"st1019",name:"Apeh Faith",               category:"Cleaning Staff", role:"Cleaner",               site:"Chayim Diagnostics, Maitama",               phone:"0818-300-6297", email:"",                                 homeAddress:"Ecwa 2 Street, Kabayi, Maraba, Nasarawa State",                         emergencyContact:"",                  emergencyPhone:"0818-166-3502", emergencyAddress:"Ecwa 2 Street, Kabayi, Maraba, Nasarawa State",       dob:"1996-05-15", employmentType:"Full Time",  startDate:"2023-11-01", workDays:"Mon–Sat",     bankName:"Access Bank",   accountName:"Apeh Faith Rabi",              accountNumber:"1402922510"},
-  {id:"st1020",name:"Jacob Janet",              category:"Cleaning Staff", role:"Cleaner",               site:"ISN Medical, Wuse Zone 5",                  phone:"2347-065-5193", email:"",                                 homeAddress:"Life Camp, Abuja FCT",                                                  emergencyContact:"John",              emergencyPhone:"2347-065-5193", emergencyAddress:"Autabalafu, Nassarawa, Abuja FCT",                    dob:"1995-11-24", employmentType:"Full Time",  startDate:"2023-09-29", workDays:"Mon–Fri",     bankName:"Access Bank",   accountName:"Janet Jacob",                  accountNumber:"0076628785"},
-  {id:"st1021",name:"James Paul",               category:"Office Staff",   role:"Technical Supervisor",  site:"Gwarimpa",                                  phone:"0701-307-1421", email:"akpajames30@gmail.com",            homeAddress:"Jikwoyi Phase 3, Zakwoyi Street, Abuja",                                emergencyContact:"Adejoh Paul",       emergencyPhone:"0803-861-0314", emergencyAddress:"Kurudu Phase 3, Abuja",                               dob:"1993-03-25", employmentType:"Full Time",  startDate:"2023-12-01", workDays:"Mon–Fri",     bankName:"Fidelity Bank", accountName:"James Paul Akpa",              accountNumber:"6234591144"},
+  {id:"st1000",name:"Agnes Dung",category:"Office Staff",role:"Finance",site:"Gwarimpa",phone:"0802-715-9968",email:"agnesdung2@gmail.com",homeAddress:"Army Housing Scheme Phase 2 Hilltop Extension Kurudu Abuja",emergencyContact:"7049410700",emergencyPhone:"0704-941-0700",dob:"Jan 21, 1998"},
+  {id:"st1001",name:"Kator Kenneth",category:"Cleaning Staff",role:"Cleaner",site:"Wuse 2",phone:"0812-469-7132",email:"kennezo@gmail.com",homeAddress:"Geshiri bara estate Abuja",emergencyContact:"Vincent",emergencyPhone:"0815-298-8808",dob:"Jul 27, 2001"},
+  {id:"st1002",name:"Oluwatobi Olayimika",category:"Cleaning Staff",role:"Cleaner",site:"Boi central area abuja",phone:"0902-226-2554",email:"",homeAddress:"Karu side back of park block A19 flat B",emergencyContact:"Bode ojo",emergencyPhone:"0813-070-2494",dob:"Mar 20, 1993"},
+  {id:"st1003",name:"Clement Doki",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro",phone:"0906-635-5946",email:"",homeAddress:"Angwan Jaba",emergencyContact:"Ephraim Ignatius",emergencyPhone:"0902-006-7371",dob:"Jul 27, 1999"},
+  {id:"st1004",name:"Goodness Igoh",category:"Cleaning Staff",role:"Cleaner",site:"Gwaripa",phone:"0901-596-2547",email:"",homeAddress:"Mararaba kabayi nasarawa state",emergencyContact:"Mrs joy Sunday",emergencyPhone:"0901-019-8899",dob:"Oct 3, 2006"},
+  {id:"st1005",name:"Elizebeth Na’allah",category:"Cleaning Staff",role:"Cleaner",site:"First Ally management",phone:"0916-257-5440",email:"",homeAddress:"Bassa",emergencyContact:"Elizebeth Na’allah",emergencyPhone:"0904-286-0851",dob:"Dec 27, 2000"},
+  {id:"st1006",name:"OGAR JENNIFER",category:"Cleaning Staff",role:"Cleaner",site:"Karimo",phone:"0808-989-6548",email:"ogartiti6@gmail.com",homeAddress:"Karimo",emergencyContact:"John princelia",emergencyPhone:"0703-691-0139",dob:"Dec 18, 1999"},
+  {id:"st1007",name:"Ephraim Terlumun",category:"Cleaning Staff",role:"Cleaner",site:"Mabuchi",phone:"0902-006-7371",email:"ephraimignisius@gmail.com",homeAddress:"Ado by angwa. Jaba primary school",emergencyContact:"9066355946",emergencyPhone:"0815-531-3481",dob:"Jun 12, 2002"},
+  {id:"st1008",name:"Williams Titus",category:"Gardening Staff",role:"Cleaner",site:"IFRC Utako",phone:"0708-980-4030",email:"williamstitus776@gmail.com",homeAddress:"Behind Catholic Church Gishiri Abuja Abuja",emergencyContact:"John Williams",emergencyPhone:"0815-264-9123",dob:"Oct 15, 1988"},
+  {id:"st1009",name:"Kauna Tanko",category:"Cleaning Staff",role:"Cleaner",site:"Paraquat estate tanba street",phone:"0814-515-5299",email:"",homeAddress:"Gidan zakara along abuja keffi express road",emergencyContact:"Tanko",emergencyPhone:"0810-409-1627",dob:"May 12, 1997"},
+  {id:"st1010",name:"Abraham Chafa",category:"Cleaning Staff",role:"Cleaner",site:"",phone:"0812-130-2495",email:"chafa9979@gmail.com",homeAddress:"Mararaba nasarawa state",emergencyContact:"Moses",emergencyPhone:"0906-329-6612",dob:"Nov 18, 1993"},
+  {id:"st1011",name:"Mary Habila",category:"Cleaning Staff",role:"Cleaner",site:"Mabushi",phone:"0708-399-6317",email:"",homeAddress:"Hort road gosa primary",emergencyContact:"Margaret",emergencyPhone:"0705-753-9791",dob:"Jun 20, 1977"},
+  {id:"st1012",name:"Dorcas Elisha",category:"Cleaning Staff",role:"Cleaner",site:"Jahi",phone:"0808-568-8711",email:"dorcaselisha37@gmail.com",homeAddress:"Kado fish market",emergencyContact:"Michael Elisha",emergencyPhone:"0705-576-1153",dob:"Apr 12, 1999"},
+  {id:"st1013",name:"Irimiya Maryam",category:"Cleaning Staff",role:"Cleaner",site:"Mabushi",phone:"0907-985-9485",email:"irimiyamaryam@gmail.com",homeAddress:"Angwan cement along karmo road FCT Abuja",emergencyContact:"Irimiya Danlami",emergencyPhone:"0705-455-6946",dob:"Apr 27, 1998"},
+  {id:"st1015",name:"Linda Tanko",category:"Cleaning Staff",role:"Cleaner",site:"Plot 572 iduwa ogenyi Street, mabushi district Abuja",phone:"0901-976-7780",email:"",homeAddress:"Chief Palace",emergencyContact:"Daniel",emergencyPhone:"0909-964-1648",dob:"Nov 25, 2001"},
+  {id:"st1016",name:"Oluwasegun Christianah.f.",category:"Cleaning Staff",role:"Cleaner",site:"River Park estate lugbe airport road",phone:"0706-515-7105",email:"christianahtoloba924@gmail.com",homeAddress:"Opposite mosques piwoyi Airport road Abuja",emergencyContact:"Emmanuel",emergencyPhone:"0806-318-2552",dob:"Sep 17, 1987"},
+  {id:"st1017",name:"Peace Agocha",category:"Cleaning Staff",role:"Cleaner",site:"Apo resettlement, FCT",phone:"0806-737-2671",email:"agochapeace4@gmail.com",homeAddress:"Aso pada mararaba Nasarawa",emergencyContact:"Mr.Okpale Fredson",emergencyPhone:"0706-832-4334",dob:"Dec 15, 1993"},
+  {id:"st1018",name:"Jen Dooshima",category:"Cleaning Staff",role:"Cleaner",site:"River park Estate lugbe",phone:"0806-482-1480",email:"dooshimaestherjen@gma.com",homeAddress:"Piwoyi airport road Abuja",emergencyContact:"8061291311",emergencyPhone:"0806-129-1311",dob:"Sep 27, 1996"},
+  {id:"st1019",name:"Apeh Veronica",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro Abuja",phone:"0816-093-9949",email:"apehveronica758@gmail.com",homeAddress:"Gishiri Abuja",emergencyContact:"7039092010",emergencyPhone:"0905-010-9161",dob:"Nov 25, 1993"},
+  {id:"st1020",name:"Apeh Faith",category:"Cleaning Staff",role:"Cleaner",site:"No 34 Euphrates crescent opposite Yoruba mosque maitama, Abuja",phone:"0818-300-6297",email:"",homeAddress:"Ecwa 2 Street after chief palace kabayi",emergencyContact:"9164533131",emergencyPhone:"8038-166-3502",dob:"May 15, 1996"},
+  {id:"st1021",name:"Jacob Janet",category:"Cleaning Staff",role:"Cleaner",site:"Wuse zone5",phone:"2347-065-5193",email:"",homeAddress:"Life camp Abuja",emergencyContact:"John",emergencyPhone:"2347-065-5193",dob:"Nov 24, 1995"},
+  {id:"st1022",name:"James Paul",category:"Office Staff",role:"Technical Supervisor",site:"Gwarimpa",phone:"0701-307-1421",email:"akpajames30@gmail.com",homeAddress:"Jikwoyi phase 3 behind phase 3 police post",emergencyContact:"Adejoh paul",emergencyPhone:"0803-861-0314",dob:"Mar 25, 1993"}
 ];
 
+
 // -- SHARED UI ----------------------------------------------------------------
+
+// Upload photo to Supabase Storage
+const uploadAssessmentPhoto = async (file, assessmentId) => {
+  try {
+    const ext  = file.name.split('.').pop();
+    const path = `${assessmentId}/${Date.now()}.${ext}`;
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/assessment-photos/${path}`, {
+      method: "POST",
+      headers: {
+        "apikey":        SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type":  file.type,
+        "x-upsert":      "true",
+      },
+      body: file,
+    });
+    if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+    return `${SUPABASE_URL}/storage/v1/object/public/assessment-photos/${path}`;
+  } catch(e) {
+    console.warn("[Storage] photo upload:", e.message);
+    return null;
+  }
+};
+
+// Print/download all requisitions as HTML report
+const printAllRequisitions = (requisitions, supplyItems, users) => {
+  const fmt = n => isNaN(Number(n)) ? n : "₦"+Number(n).toLocaleString();
+  const fmtD = d => { try{ return new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return d||"—";}};
+  const w = window.open("", "_blank");
+  const rows = requisitions.map(r => {
+    const items = (r.items||[]).filter(i=>i.qty>0);
+    const total = items.reduce((s,i)=>s+(i.qty*(i.cost||0)),0);
+    return `<tr style="border-bottom:1px solid #e5e7eb">
+      <td style="padding:8px 6px;font-size:11px;color:#6b7280">${r.id||"—"}</td>
+      <td style="padding:8px 6px;font-size:12px;font-weight:600">${r.site||"—"}</td>
+      <td style="padding:8px 6px;font-size:11px">${r.month||""} ${r.year||""}</td>
+      <td style="padding:8px 6px;font-size:11px">${r.submittedBy||"—"}</td>
+      <td style="padding:8px 6px;font-size:11px">${fmtD(r.submittedAt)}</td>
+      <td style="padding:8px 6px;font-size:11px">${items.length} items</td>
+      <td style="padding:8px 6px;font-size:12px;font-weight:bold;color:#1B6B2F">${fmt(total)}</td>
+      <td style="padding:8px 6px"><span style="background:${r.status==="Approved"?"#dcfce7":r.status==="Rejected"?"#fee2e2":"#fff7ed"};color:${r.status==="Approved"?"#166534":r.status==="Rejected"?"#991b1b":"#92400e"};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:bold">${r.status||"Pending"}</span></td>
+    </tr>
+    <tr><td colspan="8" style="padding:4px 6px 12px 20px;font-size:10px;color:#9ca3af">
+      ${items.map(i=>`${i.item||i.name}: ${i.qty} ${i.unit||""} × ${fmt(i.cost||0)} = ${fmt(i.qty*(i.cost||0))}`).join(" &nbsp;|&nbsp; ")}
+    </td></tr>`;
+  }).join("");
+  const total_all = requisitions.reduce((s,r)=>{const items=(r.items||[]).filter(i=>i.qty>0);return s+items.reduce((ss,i)=>ss+(i.qty*(i.cost||0)),0);},0);
+  w.document.write(`<!DOCTYPE html><html><head><title>All Requisitions — Dust & Wipes</title>
+  <style>body{font-family:Arial,sans-serif;padding:24px;color:#1f2937}
+  table{width:100%;border-collapse:collapse}th{background:#0B3518;color:white;padding:10px 6px;font-size:11px;text-align:left;font-weight:bold}
+  @media print{button{display:none}}</style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0B3518;padding-bottom:16px;margin-bottom:16px">
+    <div><h1 style="color:#0B3518;margin:0;font-size:20px">Dust & Wipes Limited</h1><p style="color:#6b7280;margin:4px 0 0;font-size:13px">Supply Requisitions Report — ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</p></div>
+    <div style="text-align:right"><p style="font-size:12px;color:#6b7280">${requisitions.length} requisitions</p><p style="font-size:18px;font-weight:bold;color:#1B6B2F">Total: ${fmt(total_all)}</p></div>
+  </div>
+  <table><thead><tr><th>ID</th><th>Site</th><th>Period</th><th>Submitted By</th><th>Date</th><th>Items</th><th>Value</th><th>Status</th></tr></thead>
+  <tbody>${rows}</tbody></table>
+  <div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center">Generated from Dust & Wipes Operations Hub · app.dustandwipes.com</div>
+  <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+  </body></html>`);
+  w.document.close();
+};
+
 function SBadge({s,custom}){const st=custom||CONTRACT_COLORS[s]||STATUS_COLORS[s]||{bg:"#f9fafb",color:"#6b7280",border:"#e5e7eb"};return <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold whitespace-nowrap border" style={{background:st.bg,color:st.color,borderColor:st.border}}>{s}</span>;}
 function Card({children,className=""}){return <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm ${className}`}>{children}</div>;}
 function Fld({label,children,col=false,required=false}){return <div className={col?"col-span-2":""}><label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">{label}{required&&<span className="text-red-400 ml-1">*</span>}</label>{children}</div>;}
@@ -374,7 +424,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
   const[confirm,confirmEl]=useConfirm();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
-  const save=data=>{if(data.id)setClients(cs=>cs.map(c=>c.id===data.id?data:c));else setClients(cs=>[...cs,{...data,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}]);setModal(null);};
+  const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);setModal(null);};
   const del=id=>confirm("Delete this client?",()=>setClients(cs=>cs.filter(c=>c.id!==id)));
   const can=userRole!=="Technician";
   const filteredContacts=useMemo(()=>{
@@ -510,14 +560,14 @@ function ContractsPage({clients,setClients}){
     <div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}> <strong>Alert Policy:</strong> <span className="font-bold text-amber-600">Amber</span> 60d  <span className="font-bold text-red-600">Red/Critical</span> 30d  SMS &amp; Email to Admin &amp; Supervisor.</div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{stats.map(s=><button key={s.l} onClick={()=>setFilter(filter===s.l?"All":s.l)} className="p-5 rounded-2xl border-2 text-center transition-all bg-white border-gray-100 hover:shadow" style={filter===s.l?{borderColor:s.c,background:s.bg}:{}}><div className="text-3xl font-black" style={{color:s.c}}>{s.v}</div><div className="text-xs font-semibold text-gray-500 mt-1">{s.l}</div></button>)}</div>
     <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Phone","Start","End","Days Left","Value","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{sorted.map(c=>{const dl=dLeft(c.ce);return(<tr key={c.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5"><p className="font-semibold text-gray-800">{c.name}</p><p className="text-xs text-gray-400">{c.cp}</p></td><td className="px-4 py-3.5 text-xs text-gray-500">{c.svc}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{c.phone}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.cs)}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.ce)}</td><td className="px-4 py-3.5">{dl!==null&&<span className={`text-xs font-bold ${dl<0?"text-gray-500":dl<=30?"text-red-600":dl<=60?"text-amber-600":"text-green-600"}`}>{dl<0?`${Math.abs(dl)}d ago`:`${dl}d`}</span>}</td><td className="px-4 py-3.5 font-bold text-gray-700 whitespace-nowrap">{fmt(c.tot)}</td><td className="px-4 py-3.5"><div className="flex items-center gap-2"><SBadge s={c.status}/>{c.status!=="Active"&&<button onClick={()=>setRenewModal({...c})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Renew</button>}</div></td></tr>);})}</tbody></table></div></Card>
-    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{setClients(cs=>cs.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c));setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
+    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{const nc=clients.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c);setClients(nc);dbSync("clients",nc);setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
   </div>);}
 
 // -- SERVICE REQUESTS ---------------------------------------------------------
 function RequestsPage({requests,setRequests,setJobs,clients}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
-  const save=data=>{if(data.id)setRequests(rs=>rs.map(r=>r.id===data.id?data:r));else setRequests(rs=>[...rs,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}]);setModal(null);};
+  const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);setModal(null);};
   const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));};
   const del=id=>confirm("Delete this request?",()=>setRequests(rs=>rs.filter(r=>r.id!==id)));
   const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
@@ -532,7 +582,7 @@ function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
-  const save=data=>{if(data.id)setJobs(js=>js.map(j=>j.id===data.id?data:j));else setJobs(js=>[...js,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}]);setModal(null);};
+  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);setModal(null);};
   const advance=(id,ns)=>setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));
   const del=id=>confirm("Delete this job?",()=>setJobs(js=>js.filter(j=>j.id!==id)));
   const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
@@ -589,9 +639,8 @@ function SchedulePage({schedules,setSchedules,clients,userRole}){
       d.setDate(d.getDate()+RECUR_DAYS[saved.recurrence]);
       saved.dueDate=d.toISOString().split("T")[0];
     }
-    if(saved.id)setSchedules(ss=>ss.map(s=>s.id===saved.id?saved:s));
-    else setSchedules(ss=>[...ss,{...saved,id:Date.now()}]);
-    setModal(null);
+    let ns;if(saved.id)ns=schedules.map(s=>s.id===saved.id?saved:s);else ns=[...schedules,{...saved,id:Date.now()}];
+    setSchedules(ns);dbSync("schedules",ns);setModal(null);
   };
   const del=id=>confirm("Delete this schedule?",()=>setSchedules(ss=>ss.filter(s=>s.id!==id)));
   return(<div className="space-y-5">{confirmEl}
@@ -900,8 +949,11 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
             </div>
           </>}
           {hasOther&&<Fld label="Other Tasks Performed" col><textarea className={inp} rows={2} value={f.otherTasks} onChange={u("otherTasks")}/></Fld>}
-          <Fld label="Crew Members Present" col required>
-            <StaffMultiPicker staff={staff} value={f.crewMembers} onChange={v=>setF(p=>({...p,crewMembers:v}))}/>
+          <Fld label={f.jobType==="One-Time Job"?"Crew Members Present (list names, one per line)":"Crew Members Present"} col required>
+            {f.jobType==="One-Time Job"
+              ?<textarea className={inp} rows={4} value={Array.isArray(f.crewMembers)?f.crewMembers.join("\n"):f.crewMembers||""} onChange={e=>setF(p=>({...p,crewMembers:e.target.value.split("\n")}))} placeholder={"John Doe (Ad-hoc)\nJane Smith\n…"}/>
+              :<StaffMultiPicker staff={staff} value={f.crewMembers} onChange={v=>setF(p=>({...p,crewMembers:v}))}/>
+            }
           </Fld>
           <Fld label="Equipment Used" col><CheckGroup options={EQUIPMENT_OPTS} value={f.equipment} onChange={v=>setF(p=>({...p,equipment:v}))}/></Fld>
           <Fld label="Supplies / Consumables Used" col><CheckGroup options={SUPPLY_OPTS} value={f.supplies} onChange={v=>setF(p=>({...p,supplies:v}))}/></Fld>
@@ -1210,7 +1262,7 @@ function InventoryPage({inventory,setInventory,userRole}){
   const[confirm,confirmEl]=useConfirm();
   const cats=["All",...new Set(inventory.map(i=>i.cat))];
   const filtered=inventory.filter(i=>(filter==="All"||i.cat===filter)&&i.item.toLowerCase().includes(search.toLowerCase()));
-  const save=data=>{if(data.id)setInventory(inv=>inv.map(i=>i.id===data.id?data:i));else setInventory(inv=>[...inv,{...data,id:"i"+Date.now()}]);setModal(null);};
+  const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);setModal(null);};
   const del=id=>confirm("Remove this item?",()=>setInventory(inv=>inv.filter(i=>i.id!==id)));
   const canEdit=userRole!=="Technician";
   return(<div className="space-y-5">{confirmEl}
@@ -1220,32 +1272,29 @@ function InventoryPage({inventory,setInventory,userRole}){
   </div>);}
 
 // -- REQUISITIONS --------------------------------------------------------------
+
 function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyItems,clients,users,user,inventory,setInventory}){
   const[tab,setTab]=useState("reqs");const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[itemModal,setItemModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();
   const canManage=user.role==="Admin"||user.role==="Supervisor";
   const statusColors={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Approved:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},Rejected:{bg:"#fee2e2",color:RED,border:"#fca5a5"},Forwarded:{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"}};
   const approve=(id,status)=>{
-    setRequisitions(rs=>rs.map(r=>{
+    const newRs=requisitions.map(r=>{
       if(r.id!==id) return r;
-      // Auto-add to CONTACTS_DB if newly approved and site not already known
       if(status==="Approved"&&r.site){
         const alreadyInContacts=(window.__DW_CONTACTS__||[]).some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         const alreadyInClients=clients.some(c=>c.name.toLowerCase()===r.site.toLowerCase());
         if(!alreadyInContacts&&!alreadyInClients){
-          // Save to Supabase dw_contacts table
           saveContact({name:r.site,phone:"",email:"",address:""});
-          // Also add to local window cache
-          if(window.__DW_CONTACTS__){
-            window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});
-          }
+          if(window.__DW_CONTACTS__){window.__DW_CONTACTS__.push({name:r.site,phone:"",email:"",address:""});}
         }
       }
       return {...r,status,reviewedBy:user.name,reviewedAt:new Date().toLocaleString("en-GB")};
-    }));
+    });
+    setRequisitions(newRs);dbSync("requisitions",newRs);
   };
   const del=id=>confirm("Delete this requisition?",()=>setRequisitions(rs=>rs.filter(r=>r.id!==id)));
-  const saveItem=data=>{if(data.id)setSupplyItems(si=>si.map(i=>i.id===data.id?data:i));else setSupplyItems(si=>[...si,{...data,id:"s"+Date.now(),active:true}]);setItemModal(null);};
+  const saveItem=data=>{let ns;if(data.id)ns=supplyItems.map(i=>i.id===data.id?data:i);else ns=[...supplyItems,{...data,id:"s"+Date.now(),active:true}];setSupplyItems(ns);dbSync("supplyitems",ns);setItemModal(null);};
   const delItem=id=>confirm("Remove item from catalogue?",()=>setSupplyItems(si=>si.filter(i=>i.id!==id)));
   const cats=["All",...new Set(supplyItems.map(i=>i.cat))];
   const[catFilter,setCatFilter]=useState("All");
@@ -1280,13 +1329,13 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
         const idx=updated.findIndex(i=>i.item.toLowerCase()===item.name.toLowerCase());
         if(idx>-1)updated[idx]={...updated[idx],qty:Math.max(0,updated[idx].qty-item.qty)};
       });
-      setInventory(updated);
+      setInventory(updated);dbSync("inventory",updated);
       approve(deductModal.id,"Forwarded");
       setDeductModal(null);
     }} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Forward & Deduct Stock</button>
   </div>
 </ModalWrap>}
-    {modal?.type==="new"&&<ReqFormModal supplyItems={supplyItems} clients={clients} user={user} canSeeCosts={canManage} onSave={data=>{setRequisitions(rs=>[data,...rs]);setModal(null);}} onClose={()=>setModal(null)}/>}
+    {modal?.type==="new"&&<ReqFormModal supplyItems={supplyItems} clients={clients} user={user} canSeeCosts={canManage} onSave={data=>{const nr=[data,...requisitions];setRequisitions(nr);dbSync("requisitions",nr);setModal(null);}} onClose={()=>setModal(null)}/>}
     {view&&<ReqViewer req={view} canSeeCosts={canManage} onClose={()=>setView(null)}/>}
     {itemModal&&<ModalWrap title={itemModal.id?"Edit Item":"Add to Catalogue"} onClose={()=>setItemModal(null)}><div className="space-y-4"><Fld label="Item Name"><input className={inp} value={itemModal.name||""} onChange={e=>setItemModal(p=>({...p,name:e.target.value}))}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Category"><select className={inp} value={itemModal.cat||"Cleaning"} onChange={e=>setItemModal(p=>({...p,cat:e.target.value}))}>{["Cleaning","Air Care","Consumables","Hygiene","PPE","Equipment","Pest Control"].map(c=><option key={c}>{c}</option>)}</select></Fld><Fld label="Unit"><select className={inp} value={itemModal.unit||"bottle"} onChange={e=>setItemModal(p=>({...p,unit:e.target.value}))}>{["bottle","can","pack","bag","box","tin","piece","roll","sachet","litre","kg"].map(u=><option key={u}>{u}</option>)}</select></Fld><Fld label="Unit Cost ()"><input className={inp} type="number" min="0" value={itemModal.cost||""} onChange={e=>setItemModal(p=>({...p,cost:Number(e.target.value)}))}/></Fld><Fld label="Status"><select className={inp} value={itemModal.active?"Active":"Inactive"} onChange={e=>setItemModal(p=>({...p,active:e.target.value==="Active"}))}><option>Active</option><option>Inactive</option></select></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setItemModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>saveItem(itemModal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{itemModal.id?"Save Changes":"Add Item"}</button></div></ModalWrap>}
   </div>);}
@@ -1353,8 +1402,8 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
   const showList=tab==="all"?allPeople:tab==="users"?users:staff;
   // DOB update only — staff records are managed in the Staff module
   const saveDob=data=>{
-    if(data.src==="user"||data.id?.startsWith("u")){setUsers(us=>us.map(u=>u.id===data.id?{...u,dob:data.dob}:u));}
-    else{setStaff(ss=>ss.map(s=>s.id===data.id?{...s,dob:data.dob}:s));}
+    if(data.src==="user"||data.id?.startsWith("u")){const nu=users.map(u=>u.id===data.id?{...u,dob:data.dob}:u);setUsers(nu);dbSync("users",nu);}
+    else{const ns=staff.map(s=>s.id===data.id?{...s,dob:data.dob}:s);setStaff(ns);dbSync("staff",ns);}
     setModal(null);
   };
   return(<div className="space-y-5">
@@ -1377,134 +1426,168 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
 // -- IMPREST -------------------------------------------------------------------
 function ImprestPage({imprests,setImprests,staff=[]}){
   const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[confirm,confirmEl]=useConfirm();
-  const today=new Date();const thisMonth=today.getMonth();const thisYear=today.getFullYear();
+  const today=new Date();
+  const curMK=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
+  const[selMK,setSelMK]=useState(curMK);
 
-  const del=id=>confirm("Delete this imprest account?",()=>setImprests(im=>im.filter(i=>i.id!==id)));
+  const save=updated=>{setImprests(updated);dbSync("imprests",updated);};
+  const mKey=i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK);
+  const mkLabel=mk=>{const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
 
-  const saveImprests=updated=>{setImprests(updated);dbSync("imprests",updated);};
-  const addExpense=(id,exp)=>saveImprests(imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i));
-  const addTopUp=(id,topup)=>saveImprests(imprests.map(i=>i.id===id?{...i,amount:i.amount+(topup.amount||0),topups:[...(i.topups||[]),topup]}:i));
-  const updateStatus=(id,status)=>saveImprests(imprests.map(i=>i.id===id?{...i,status}:i));
+  const allMonths=useMemo(()=>{
+    const s=new Set(imprests.map(i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK)));
+    s.add(curMK);return[...s].sort().reverse();
+  },[imprests,curMK]);
 
-  const printMonthReport=()=>{
-    const ml=`${MONTHS[thisMonth]} ${thisYear}`;
-    const{tIssued,tSpent,accts}=imprests.reduce((acc,imp)=>{
-      const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
-      const bal=imp.amount-spent;
-      const expHtml=(imp.expenses||[]).length>0
-        ?`<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px"><thead><tr style="background:#f3f4f6"><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Date</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Item</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Category</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Vendor</th><th style="padding:3px 8px;text-align:right;border:1px solid #e5e7eb">Amount (&#x20a6;)</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Notes</th></tr></thead><tbody>${(imp.expenses||[]).map(e=>`<tr><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.date||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.item||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.category||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.vendor||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px;text-align:right">${e.amount.toLocaleString()}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.note||""}</td></tr>`).join("")}</tbody></table>`
-        :`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No expenses recorded</p>`;
-      const topupHtml=(imp.topups||[]).length>0?`<p style="font-size:10px;color:#2563EB;margin:4px 0">Top-ups: ${(imp.topups||[]).map(t=>`+&#x20a6;${t.amount.toLocaleString()} on ${t.date||""}${t.note?` (${t.note})`:""}`).join("; ")}</p>`:"";
-      acc.tIssued+=imp.amount;
-      acc.tSpent+=spent;
-      acc.accts.push(`<div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><div style="background:#1B6B2F;color:white;padding:8px 12px;display:flex;justify-content:space-between"><span style="font-weight:bold">${imp.title}</span><span>Status: ${imp.status}</span></div><div style="background:#f9fafb;padding:6px 12px;display:flex;gap:32px;font-size:11px"><span>Holder: <strong>${imp.holder||"N/A"}</strong></span><span>Issued: <strong style="color:#1B6B2F">&#x20a6;${imp.amount.toLocaleString()}</strong></span><span>Spent: <strong style="color:#E85D04">&#x20a6;${spent.toLocaleString()}</strong></span><span>Balance: <strong style="color:${bal<0?"#DC2626":"#2563EB"}">&#x20a6;${bal.toLocaleString()}</strong></span></div><div style="padding:8px 12px">${topupHtml}${expHtml}</div></div>`);
-      return acc;
-    },{tIssued:0,tSpent:0,accts:[]});
+  const monthRecs=imprests.filter(i=>mKey(i)===selMK);
+
+  const getPrevBal=(holder,beforeMK)=>{
+    const prev=imprests.filter(i=>mKey(i)<beforeMK&&i.holder===holder).sort((a,b)=>mKey(b).localeCompare(mKey(a)));
+    if(!prev.length)return 0;
+    const p=prev[0];const spent=(p.expenses||[]).reduce((s,e)=>s+e.amount,0);
+    return Math.max(0,p.amount-spent);
+  };
+
+  const addExpense=(id,exp)=>save(imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i));
+  const addTopUp=(id,tu)=>save(imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i));
+  const updStatus=(id,status)=>save(imprests.map(i=>i.id===id?{...i,status}:i));
+  const del=id=>confirm("Delete this imprest record?",()=>save(imprests.filter(i=>i.id!==id)));
+
+  const doMonthClose=()=>{
+    const active=monthRecs.filter(i=>i.status==="Active");if(!active.length)return;
+    confirm(`Close all ${active.length} active account(s) for ${mkLabel(selMK)}? You can open next month to carry forward balances.`,()=>{
+      save(imprests.map(i=>mKey(i)===selMK&&i.status==="Active"?{...i,status:"Closed",closedPeriod:mkLabel(selMK)}:i));
+    });
+  };
+
+  const openNextMonth=()=>{
+    const latestMK=allMonths[0];
+    const[y,m]=latestMK.split("-").map(Number);
+    const nd=new Date(y,m,1);
+    const nextMK=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}`;
+    const nextLabel=mkLabel(nextMK);
+    if(imprests.some(i=>mKey(i)===nextMK)){setSelMK(nextMK);return;}
+    const lastRecs=imprests.filter(i=>mKey(i)===latestMK);
+    const holders=[...new Set(lastRecs.map(i=>i.holder).filter(Boolean))];
+    if(!holders.length){confirm(`Open ${nextLabel} with no carry-forward records?`,()=>setSelMK(nextMK));return;}
+    confirm(`Open ${nextLabel}? Closing balances from ${holders.length} fund manager(s) will be carried forward automatically.`,()=>{
+      const ts=Date.now();
+      const carries=holders.map((holder,idx)=>{
+        const bal=getPrevBal(holder,nextMK);
+        const ref=lastRecs.filter(i=>i.holder===holder)[0]||{};
+        return{id:`imp${ts}_${idx}`,month:nextMK,title:`${holder} \u2014 ${nextLabel}`,holder,fundType:ref.fundType||"Field Operations",branch:ref.branch||"",amount:bal,originalAmount:bal,releaseDate:nd.toISOString().split("T")[0],deadline:"",purpose:`Carried forward from ${mkLabel(latestMK)}. Previous closing balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:latestMK,carryForwardAmount:bal,isCarryForward:true};
+      });
+      save([...imprests,...carries]);setSelMK(nextMK);
+    });
+  };
+
+  const printReport=()=>{
+    const ml=mkLabel(selMK);
+    const tIssued=monthRecs.reduce((s,i)=>s+i.amount,0);
+    const tSpent=monthRecs.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
     const tBal=tIssued-tSpent;
-    const html=`<!DOCTYPE html><html><head><title>Imprest Fund Report &mdash; ${ml}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited &mdash; Imprest Fund Report</h1><h2>Period: ${ml} &nbsp;&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</h2><div style="display:flex;gap:40px;margin-bottom:20px;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL ISSUED</p><p style="font-size:22px;font-weight:bold;color:#1B6B2F;margin:2px 0">&#x20a6;${tIssued.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL SPENT</p><p style="font-size:22px;font-weight:bold;color:#E85D04;margin:2px 0">&#x20a6;${tSpent.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">NET BALANCE</p><p style="font-size:22px;font-weight:bold;color:${tBal<0?"#DC2626":"#2563EB"};margin:2px 0">&#x20a6;${tBal.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">ACCOUNTS</p><p style="font-size:22px;font-weight:bold;color:#374151;margin:2px 0">${imprests.length}</p></div></div><h2 style="margin-bottom:10px;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280">Account Breakdown</h2>${accts.join("")}</body></html>`;
+    const accts=monthRecs.map(imp=>{
+      const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);const bal=imp.amount-spent;
+      const expHtml=(imp.expenses||[]).length>0?`<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px"><thead><tr style="background:#f3f4f6"><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Date</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Item</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Category</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Vendor</th><th style="padding:3px 8px;text-align:right;border:1px solid #e5e7eb">Amount (&#x20a6;)</th><th style="padding:3px 8px;text-align:left;border:1px solid #e5e7eb">Notes</th></tr></thead><tbody>${(imp.expenses||[]).map(e=>`<tr><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.date||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.item||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.category||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.vendor||""}</td><td style="border:1px solid #e5e7eb;padding:3px 8px;text-align:right">${e.amount.toLocaleString()}</td><td style="border:1px solid #e5e7eb;padding:3px 8px">${e.note||""}</td></tr>`).join("")}</tbody></table>`:`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No expenses recorded</p>`;
+      const tuHtml=(imp.topups||[]).length>0?`<p style="font-size:10px;color:#2563EB;margin:4px 0">Top-ups: ${(imp.topups||[]).map(t=>`+&#x20a6;${t.amount.toLocaleString()} on ${t.date||""}${t.note?` (${t.note})`:""}`).join("; ")}</p>`:"";
+      return`<div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><div style="background:#1B6B2F;color:white;padding:8px 12px;display:flex;justify-content:space-between"><span style="font-weight:bold">${imp.title}${imp.isCarryForward?" (Carry-forward)":""}</span><span>Status: ${imp.status}</span></div><div style="background:#f9fafb;padding:6px 12px;display:flex;gap:32px;font-size:11px"><span>Holder: <strong>${imp.holder||"N/A"}</strong></span><span>Issued: <strong style="color:#1B6B2F">&#x20a6;${imp.amount.toLocaleString()}</strong></span><span>Spent: <strong style="color:#E85D04">&#x20a6;${spent.toLocaleString()}</strong></span><span>Balance: <strong style="color:${bal<0?"#DC2626":"#2563EB"}">&#x20a6;${bal.toLocaleString()}</strong></span></div><div style="padding:8px 12px">${tuHtml}${expHtml}</div></div>`;
+    });
+    const html=`<!DOCTYPE html><html><head><title>Imprest Fund Report &mdash; ${ml}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited &mdash; Imprest Fund Report</h1><h2>Period: ${ml} &nbsp;&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</h2><div style="display:flex;gap:40px;margin-bottom:20px;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb"><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL ISSUED</p><p style="font-size:22px;font-weight:bold;color:#1B6B2F;margin:2px 0">&#x20a6;${tIssued.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">TOTAL SPENT</p><p style="font-size:22px;font-weight:bold;color:#E85D04;margin:2px 0">&#x20a6;${tSpent.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">NET BALANCE</p><p style="font-size:22px;font-weight:bold;color:${tBal<0?"#DC2626":"#2563EB"};margin:2px 0">&#x20a6;${tBal.toLocaleString()}</p></div><div style="text-align:center"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0">ACCOUNTS</p><p style="font-size:22px;font-weight:bold;color:#374151;margin:2px 0">${monthRecs.length}</p></div></div><h2 style="margin-bottom:10px;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280">Account Breakdown</h2>${accts.join("")}</body></html>`;
     const w=window.open("","_blank","width=920,height=1000");
     if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);}
   };
 
-  const doMonthClose=()=>{
-    const ml=`${MONTHS[thisMonth]} ${thisYear}`;
-    const activeCount=imprests.filter(i=>i.status==="Active").length;
-    if(activeCount===0)return;
-    confirm(`Close all ${activeCount} active imprest account(s) for ${ml}? Positive balances will be carried forward into the next month.`,()=>{
-      const nextD=new Date(thisYear,thisMonth+1,1);
-      const nextML=`${MONTHS[nextD.getMonth()]} ${nextD.getFullYear()}`;
-      const nextDateStr=nextD.toISOString().split("T")[0];
-      const ts=Date.now();
-      const{closed,carries}=imprests.reduce((acc,i,idx)=>{
-        if(i.status!=="Active"){acc.closed.push(i);return acc;}
-        acc.closed.push({...i,status:"Closed",closedPeriod:ml});
-        const spent=(i.expenses||[]).reduce((s,e)=>s+e.amount,0);
-        const bal=i.amount-spent;
-        if(bal>0){const baseTitle=i.title.replace(/\s*--\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s*\d{0,4}$/i,"").trim();acc.carries.push({id:"imp"+ts+"_"+idx,title:`${baseTitle} -- ${nextML}`,holder:i.holder,fundType:i.fundType,branch:i.branch,amount:bal,originalAmount:bal,releaseDate:nextDateStr,deadline:"",purpose:`Carried forward from ${ml}. Previous balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:i.id});}
-        return acc;
-      },{closed:[],carries:[]});
-      saveImprests([...closed,...carries]);
-    });
-  };
-
-  // Mini dashboard per fund manager this month
+  const totalIssued=monthRecs.reduce((s,i)=>s+i.amount,0);
+  const totalSpent=monthRecs.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
   const byManager={};
-  imprests.forEach(imp=>{
-    const key=imp.holder||"Unknown";
-    if(!byManager[key])byManager[key]={name:key,issued:0,spent:0,accounts:0};
-    byManager[key].issued+=imp.amount||0;
-    byManager[key].spent+=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
-    byManager[key].accounts++;
-  });
-  const totalIssued=imprests.reduce((s,i)=>s+i.amount,0);
-  const totalSpent=imprests.reduce((s,i)=>s+(i.expenses||[]).reduce((ss,e)=>ss+e.amount,0),0);
-
-  // Monthly issued this month
-  const monthlyIssued=imprests.filter(i=>{
-    const d=new Date(i.releaseDate||i.created||"");
-    return d.getMonth()===thisMonth&&d.getFullYear()===thisYear;
-  }).reduce((s,i)=>s+i.amount,0);
-
+  monthRecs.forEach(imp=>{const k=imp.holder||"Unknown";if(!byManager[k])byManager[k]={name:k,issued:0,spent:0,accounts:0};byManager[k].issued+=imp.amount||0;byManager[k].spent+=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);byManager[k].accounts++;});
   const SC={"Active":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Pending Reconciliation":{bg:"#fffbeb",color:AMBER,border:"#fde68a"},"Closed":{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"},"Flagged":{bg:"#fee2e2",color:RED,border:"#fca5a5"}};
+  const selLabel=mkLabel(selMK);const isCurMonth=selMK===curMK;
 
   return(<div className="space-y-5">{confirmEl}
-    {/* Mini Dashboard */}
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <KPI icon="" label="Total Issued" value={fmt(totalIssued)} sub="All accounts" bg={GL}/>
-      <KPI icon="" label="This Month" value={fmt(monthlyIssued)} sub={MONTHS[thisMonth]+" disbursements"} bg="#eff6ff"/>
-      <KPI icon="" label="Total Spent" value={fmt(totalSpent)} sub="Across all accounts" bg={OL}/>
-      <KPI icon="" label="Net Balance" value={fmt(totalIssued-totalSpent)} sub={totalIssued-totalSpent<0?" Overspent":"Remaining"} bg={totalIssued-totalSpent<0?"#fee2e2":"#f0f9ff"}/>
+
+    {/* Month Navigator */}
+    <div className="flex items-center gap-2 flex-wrap">
+      {allMonths.map(mk=>{
+        const[y2,m2]=mk.split("-").map(Number);const lbl=`${MONTHS[m2-1].slice(0,3)} ${y2}`;const active=mk===selMK;
+        return(<button key={mk} onClick={()=>setSelMK(mk)} className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${active?"text-white":"text-gray-500 hover:text-gray-700"}`} style={active?{background:G}:{background:"#f3f4f6"}}>{lbl}{mk===curMK?" \u25cf":""}</button>);
+      })}
+      <button onClick={openNextMonth} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white" style={{background:BLUE}}><Plus size={13}/>Open Next Month</button>
     </div>
+
+    {/* KPIs */}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <KPI icon="\u20a6" label="Total Issued" value={fmt(totalIssued)} sub={selLabel} bg={GL}/>
+      <KPI icon="" label="Total Spent" value={fmt(totalSpent)} sub="Expenses logged" bg={OL}/>
+      <KPI icon="" label="Net Balance" value={fmt(totalIssued-totalSpent)} sub={(totalIssued-totalSpent)<0?"Overspent":"Remaining"} bg={(totalIssued-totalSpent)<0?"#fee2e2":"#f0f9ff"}/>
+      <KPI icon="" label="Accounts" value={monthRecs.length} sub={`${monthRecs.filter(i=>i.status==="Active").length} active`} bg="#f9fafb"/>
+    </div>
+
     {/* Per-Manager Summary */}
     {Object.values(byManager).length>0&&<Card className="p-5">
-      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Fund Manager Summary</h3>
+      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Fund Manager Summary \u2014 {selLabel}</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {Object.values(byManager).map(m=>{const bal=m.issued-m.spent;return(<div key={m.name} className="p-3.5 rounded-xl" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
-          <p className="text-sm font-bold text-gray-800 mb-2">{m.name}</p>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div><p className="text-xs font-bold text-gray-400">Issued</p><p className="text-sm font-black" style={{color:G}}>{fmt(m.issued)}</p></div>
-            <div><p className="text-xs font-bold text-gray-400">Spent</p><p className="text-sm font-black" style={{color:O}}>{fmt(m.spent)}</p></div>
-            <div><p className="text-xs font-bold text-gray-400">Balance</p><p className="text-sm font-black" style={{color:bal<0?RED:BLUE}}>{fmt(bal)}</p></div>
+        {Object.values(byManager).map(m=>{const bal=m.issued-m.spent;const prevBal=getPrevBal(m.name,selMK);return(
+          <div key={m.name} className="p-3.5 rounded-xl" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
+            <p className="text-sm font-bold text-gray-800 mb-1">{m.name}</p>
+            {prevBal>0&&<p className="text-xs text-blue-600 mb-2">\u21a9 Carried in from last month: <strong>{fmt(prevBal)}</strong></p>}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div><p className="text-xs font-bold text-gray-400">Issued</p><p className="text-sm font-black" style={{color:G}}>{fmt(m.issued)}</p></div>
+              <div><p className="text-xs font-bold text-gray-400">Spent</p><p className="text-sm font-black" style={{color:O}}>{fmt(m.spent)}</p></div>
+              <div><p className="text-xs font-bold text-gray-400">Balance</p><p className="text-sm font-black" style={{color:bal<0?RED:BLUE}}>{fmt(bal)}</p></div>
+            </div>
           </div>
-        </div>);})}
+        );})}
       </div>
     </Card>}
+
+    {/* Action Bar */}
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-2">
-        <button onClick={printMonthReport} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Download Report</button>
-        {imprests.some(i=>i.status==="Active")&&<button onClick={doMonthClose} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{background:AMBER}}><ClipboardCheck size={14}/>Month-End Close</button>}
+        <button onClick={printReport} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Print Report</button>
+        {monthRecs.some(i=>i.status==="Active")&&<button onClick={doMonthClose} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{background:AMBER}}><ClipboardCheck size={14}/>Month-End Close</button>}
       </div>
-      <button onClick={()=>setModal({type:"new"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Imprest</button>
+      <button onClick={()=>setModal({type:"new",month:selMK})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Imprest</button>
     </div>
-    <Card><div className="divide-y divide-gray-50">{imprests.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No imprest accounts yet</div>}
-      {imprests.map(imp=>{
+
+    {/* Records list */}
+    <Card><div className="divide-y divide-gray-50">
+      {monthRecs.length===0&&<div className="text-center py-12 text-gray-400 text-sm">
+        No imprest records for {selLabel}
+        {isCurMonth&&<p className="text-xs mt-1">Use \u201c+ New Imprest\u201d to add one, or \u201cOpen Next Month\u201d to carry balances forward from the previous month.</p>}
+      </div>}
+      {monthRecs.map(imp=>{
         const spent=(imp.expenses||[]).reduce((s,e)=>s+e.amount,0);
         const topupsTotal=(imp.topups||[]).reduce((s,t)=>s+t.amount,0);
         const bal=imp.amount-spent;
         const overdue=imp.deadline&&new Date(imp.deadline)<TODAY&&imp.status==="Active";
+        const sts=overdue?"Flagged":imp.status;
         return(<div key={imp.id} className="px-5 py-4 hover:bg-gray-50">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:bal<0?RED:G}}></div>
+              <div className="w-9 h-9 rounded-xl text-white text-sm font-bold flex items-center justify-center flex-shrink-0" style={{background:bal<0?RED:G}}>\u20a6</div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-800 text-sm">{imp.title}</p>
-                <p className="text-xs text-gray-500">Holder: {imp.holder}  {imp.fundType||"Field Operations"}  {fmtD(imp.releaseDate)}</p>
-                <p className="text-xs text-gray-400">{imp.purpose}</p>
-                {overdue&&<p className="text-xs text-red-600 font-semibold"> Reconciliation overdue</p>}
-                {(imp.topups||[]).length>0&&<p className="text-xs text-blue-600">+{imp.topups.length} top-up{imp.topups.length!==1?"s":""}  Total received: {fmt(imp.amount)}</p>}
+                <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                  <p className="font-semibold text-gray-800 text-sm">{imp.title}</p>
+                  {imp.isCarryForward&&<span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#eff6ff",color:BLUE}}>\u21a9 Carry-fwd</span>}
+                  <SBadge s={sts} custom={SC[sts]}/>
+                </div>
+                <p className="text-xs text-gray-500">Holder: {imp.holder} \u00b7 {imp.fundType||"Field Operations"} \u00b7 {fmtD(imp.releaseDate)}</p>
+                {imp.purpose&&<p className="text-xs text-gray-400 truncate max-w-sm mt-0.5">{imp.purpose}</p>}
+                {overdue&&<p className="text-xs text-red-600 font-semibold mt-0.5">\u26a0 Reconciliation overdue</p>}
                 <div className="flex gap-4 mt-1.5 text-xs flex-wrap">
-                  <span>Original: <strong>{fmt(imp.originalAmount||imp.amount)}</strong></span>
-                  {(imp.topups||[]).length>0&&<span>Top-ups: <strong style={{color:BLUE}}>{fmt(topupsTotal)}</strong></span>}
-                  <span>Spent: <strong>{fmt(spent)}</strong></span>
-                  <span>Bal: <strong style={{color:bal<0?RED:G}}>{fmt(bal)}</strong></span>
+                  {imp.isCarryForward&&<span>Carry-in: <strong style={{color:BLUE}}>{fmt(imp.carryForwardAmount||0)}</strong></span>}
+                  <span>Issued: <strong>{fmt(imp.originalAmount||imp.amount)}</strong></span>
+                  {topupsTotal>0&&<span>Top-ups: <strong style={{color:BLUE}}>+{fmt(topupsTotal)}</strong></span>}
+                  <span>Spent: <strong style={{color:O}}>{fmt(spent)}</strong></span>
+                  <span>Balance: <strong style={{color:bal<0?RED:G}}>{fmt(bal)}</strong></span>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
-              <SBadge s={overdue?"Flagged":imp.status} custom={SC[overdue?"Flagged":imp.status]}/>
               <button onClick={()=>setView(imp)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100" title="View Details"><Eye size={13}/></button>
               <button onClick={()=>setModal({type:"expense",impId:imp.id,imp})} className="w-7 h-7 flex items-center justify-center rounded-lg text-green-600 hover:bg-green-50 border border-green-100" title="Log Expense"><Plus size={13}/></button>
-              <button onClick={()=>setModal({type:"topup",impId:imp.id,imp})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-100" title="Top Up Fund"></button>
+              <button onClick={()=>setModal({type:"topup",impId:imp.id,imp})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 border border-blue-100" title="Top Up Fund">\u2191</button>
               <button onClick={()=>del(imp.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button>
             </div>
           </div>
@@ -1515,32 +1598,49 @@ function ImprestPage({imprests,setImprests,staff=[]}){
     {/* NEW IMPREST MODAL */}
     {modal?.type==="new"&&<ModalWrap title="Create Imprest Account" onClose={()=>setModal(null)} wide>
       <div className="grid grid-cols-2 gap-4">
-        <Fld label="Title" col><input className={inp} value={modal.title||""} onChange={e=>setModal(p=>({...p,title:e.target.value}))} placeholder="e.g. Site Operations Fund -- April"/></Fld>
-        <Fld label="Fund Type"><select className={inp} value={modal.fundType||"Field Operations"} onChange={e=>setModal(p=>({...p,fundType:e.target.value}))}><option>Field Operations</option><option>Office Operations / Supplies</option></select></Fld>
-        <Fld label="Fund Holder (Staff Name)"><StaffSelect staff={staff} value={modal.holder||""} onChange={v=>setModal(p=>({...p,holder:v}))} placeholder="-- Select staff --"/></Fld>
+        <Fld label="Fund Holder (Staff Name)">
+          <StaffSelect staff={staff} value={modal.holder||""} onChange={v=>{
+            const prev=getPrevBal(v,modal.month||curMK);
+            setModal(p=>({...p,holder:v,_prevBal:prev,amount:p._manual!=null?p._manual:(prev||p.amount||0),title:`${v} \u2014 ${mkLabel(modal.month||curMK)}`}));
+          }} placeholder="-- Select staff --"/>
+        </Fld>
+        <Fld label="Fund Type">
+          <select className={inp} value={modal.fundType||"Field Operations"} onChange={e=>setModal(p=>({...p,fundType:e.target.value}))}><option>Field Operations</option><option>Office Operations / Supplies</option></select>
+        </Fld>
+        <Fld label="Title" col><input className={inp} value={modal.title||""} onChange={e=>setModal(p=>({...p,title:e.target.value}))} placeholder={`e.g. Site Operations Fund \u2014 ${selLabel}`}/></Fld>
+        {modal._prevBal>0&&<div className="col-span-2 flex items-center justify-between p-3 rounded-xl" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+          <span className="text-blue-700 text-xs">\u21a9 <strong>{modal.holder}</strong> has an unspent balance of <strong>{fmt(modal._prevBal)}</strong> from last month \u2014 pre-filled as starting amount.</span>
+          <button onClick={()=>setModal(p=>({...p,amount:p._prevBal,_manual:p._prevBal}))} className="text-xs px-2.5 py-1 rounded-lg font-semibold border border-blue-300 text-blue-700 ml-3 flex-shrink-0">Use Balance</button>
+        </div>}
+        <Fld label="Amount Released (\u20a6)"><input className={inp} type="number" min="0" value={modal.amount||""} onChange={e=>setModal(p=>({...p,amount:Number(e.target.value),_manual:Number(e.target.value)}))}/></Fld>
+        <Fld label="Release Date"><input className={inp} type="date" value={modal.releaseDate||today.toISOString().split("T")[0]} onChange={e=>setModal(p=>({...p,releaseDate:e.target.value}))}/></Fld>
         <Fld label="Branch / Site"><input className={inp} value={modal.branch||""} onChange={e=>setModal(p=>({...p,branch:e.target.value}))}/></Fld>
-        <Fld label="Amount Released ()"><input className={inp} type="number" min="0" value={modal.amount||""} onChange={e=>setModal(p=>({...p,amount:Number(e.target.value)}))}/></Fld>
-        <Fld label="Release Date"><input className={inp} type="date" value={modal.releaseDate||""} onChange={e=>setModal(p=>({...p,releaseDate:e.target.value}))}/></Fld>
         <Fld label="Reconciliation Deadline"><input className={inp} type="date" value={modal.deadline||""} onChange={e=>setModal(p=>({...p,deadline:e.target.value}))}/></Fld>
         <Fld label="Purpose" col><textarea className={inp} rows={2} value={modal.purpose||""} onChange={e=>setModal(p=>({...p,purpose:e.target.value}))}/></Fld>
       </div>
       <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
         <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-        <button onClick={()=>{const newItem={...modal,id:"imp"+Date.now(),originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[]};const newList=[...imprests,newItem];setImprests(newList);dbSync("imprests",newList);setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Create</button>
+        <button onClick={()=>{
+          if(!modal.holder||!modal.amount)return;
+          const prevBal=modal._prevBal||0;const isCarry=prevBal>0;
+          const{_prevBal,_manual,type,...rest}=modal;
+          save([...imprests,{...rest,id:"imp"+Date.now(),month:modal.month||curMK,originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[],carryForwardAmount:isCarry?prevBal:0,isCarryForward:isCarry}]);
+          setModal(null);
+        }} disabled={!modal.holder||!modal.amount} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Create</button>
       </div>
     </ModalWrap>}
 
     {/* LOG EXPENSE MODAL */}
-    {modal?.type==="expense"&&<ModalWrap title={`Log Expense -- ${modal.imp.title}`} onClose={()=>setModal(null)}>
+    {modal?.type==="expense"&&<ModalWrap title={`Log Expense \u2014 ${modal.imp.title}`} onClose={()=>setModal(null)}>
       <div className="space-y-4">
         <div className="p-3 rounded-xl text-sm flex justify-between" style={{background:GL}}>
           <span className="font-bold text-green-700">Available Balance:</span>
           <span className="font-black" style={{color:(modal.imp.amount-(modal.imp.expenses||[]).reduce((s,e)=>s+e.amount,0))<0?RED:G}}>{fmt(modal.imp.amount-(modal.imp.expenses||[]).reduce((s,e)=>s+e.amount,0))}</span>
         </div>
-        <p className="text-xs text-blue-600 font-medium"> Negative balance is permitted -- overspend will be flagged.</p>
+        <p className="text-xs text-blue-600 font-medium">\u2139 Negative balance is permitted \u2014 overspend will be flagged.</p>
         <div className="grid grid-cols-2 gap-4">
           <Fld label="Date"><input className={inp} type="date" value={modal.expDate||TODAY.toISOString().split("T")[0]} onChange={e=>setModal(p=>({...p,expDate:e.target.value}))}/></Fld>
-          <Fld label="Amount ()"><input className={inp} type="number" min="0" value={modal.expAmount||""} onChange={e=>setModal(p=>({...p,expAmount:Number(e.target.value)}))}/></Fld>
+          <Fld label="Amount (\u20a6)"><input className={inp} type="number" min="0" value={modal.expAmount||""} onChange={e=>setModal(p=>({...p,expAmount:Number(e.target.value)}))}/></Fld>
         </div>
         <Fld label="Category"><select className={inp} value={modal.expCat||""} onChange={e=>setModal(p=>({...p,expCat:e.target.value}))}><option value="">-- Select --</option>{IMPREST_CATS.map(c=><option key={c}>{c}</option>)}</select></Fld>
         <Fld label="Item / Service" col><input className={inp} value={modal.expItem||""} onChange={e=>setModal(p=>({...p,expItem:e.target.value}))}/></Fld>
@@ -1549,17 +1649,17 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </div>
       <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
         <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-        <button onClick={()=>{addExpense(modal.impId,{id:"exp"+Date.now(),date:modal.expDate,amount:modal.expAmount||0,category:modal.expCat,item:modal.expItem,vendor:modal.expVendor,note:modal.expNote});setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Log Expense</button>
+        <button onClick={()=>{if(!modal.expAmount||!modal.expItem)return;addExpense(modal.impId,{id:"exp"+Date.now(),date:modal.expDate||TODAY.toISOString().split("T")[0],amount:modal.expAmount||0,category:modal.expCat,item:modal.expItem,vendor:modal.expVendor,note:modal.expNote});setModal(null);}} disabled={!modal.expAmount||!modal.expItem} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Log Expense</button>
       </div>
     </ModalWrap>}
 
     {/* TOP UP MODAL */}
-    {modal?.type==="topup"&&<ModalWrap title={`Top Up -- ${modal.imp.title}`} onClose={()=>setModal(null)}>
+    {modal?.type==="topup"&&<ModalWrap title={`Top Up \u2014 ${modal.imp.title}`} onClose={()=>setModal(null)}>
       <div className="space-y-4">
         <div className="p-3 rounded-xl text-sm" style={{background:GL}}><p className="text-xs font-bold text-green-700 mb-1">Current Fund Total</p><p className="text-lg font-black" style={{color:G}}>{fmt(modal.imp.amount)}</p></div>
         <div className="grid grid-cols-2 gap-4">
           <Fld label="Top-Up Date"><input className={inp} type="date" value={modal.topupDate||TODAY.toISOString().split("T")[0]} onChange={e=>setModal(p=>({...p,topupDate:e.target.value}))}/></Fld>
-          <Fld label="Amount to Add ()"><input className={inp} type="number" min="1" value={modal.topupAmount||""} onChange={e=>setModal(p=>({...p,topupAmount:Number(e.target.value)}))}/></Fld>
+          <Fld label="Amount to Add (\u20a6)"><input className={inp} type="number" min="1" value={modal.topupAmount||""} onChange={e=>setModal(p=>({...p,topupAmount:Number(e.target.value)}))}/></Fld>
         </div>
         <Fld label="Reason / Note" col><input className={inp} value={modal.topupNote||""} onChange={e=>setModal(p=>({...p,topupNote:e.target.value}))} placeholder="e.g. Additional site expenses authorised by admin"/></Fld>
         {modal.topupAmount>0&&<div className="p-3 rounded-xl text-sm" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}><span className="text-blue-700 font-semibold">New total after top-up: </span><span className="font-black text-blue-800">{fmt((modal.imp.amount||0)+(modal.topupAmount||0))}</span></div>}
@@ -1570,28 +1670,32 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </div>
     </ModalWrap>}
 
-    {/* DETAIL VIEW MODAL */}
-    {view&&<ModalWrap title={`Imprest -- ${view.title}`} onClose={()=>setView(null)} xl>
-      <div className="flex justify-between items-center mb-4 pb-4 border-b">
-        <div><p className="font-bold text-gray-800">{view.title}</p><p className="text-xs text-gray-400">Holder: {view.holder}  {view.fundType||"Field Operations"}  Released: {fmtD(view.releaseDate)}</p></div>
+    {/* DETAIL VIEW */}
+    {view&&<ModalWrap title={`Imprest \u2014 ${view.title}`} onClose={()=>setView(null)} xl>
+      <div className="flex justify-between items-center mb-4 pb-4 border-b flex-wrap gap-3">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-bold text-gray-800">{view.title}</p>
+            {view.isCarryForward&&<span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{background:"#eff6ff",color:BLUE}}>\u21a9 Carry-forward</span>}
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5">Holder: {view.holder} \u00b7 {view.fundType||"Field Operations"} \u00b7 Released: {fmtD(view.releaseDate)}</p>
+        </div>
         <div className="flex gap-2">
-          <button onClick={()=>updateStatus(view.id,"Pending Reconciliation")} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-amber-300 text-amber-700">Reconcile</button>
-          <button onClick={()=>updateStatus(view.id,"Closed")} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-gray-300 text-gray-600">Close</button>
+          <button onClick={()=>{updStatus(view.id,"Pending Reconciliation");setView(v=>({...v,status:"Pending Reconciliation"}));}} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-amber-300 text-amber-700">Reconcile</button>
+          <button onClick={()=>{updStatus(view.id,"Closed");setView(v=>({...v,status:"Closed"}));}} className="text-xs px-3 py-1.5 rounded-lg font-semibold border border-gray-300 text-gray-600">Close</button>
         </div>
       </div>
-      {(()=>{const spent=(view.expenses||[]).reduce((s,e)=>s+e.amount,0);const bal=view.amount-spent;return(
+      {(()=>{const spent=(view.expenses||[]).reduce((s,e)=>s+e.amount,0);const bal=view.amount-spent;return(<>
+        {view.isCarryForward&&<div className="p-3 rounded-xl text-sm mb-4" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+          <span className="text-blue-700 text-xs">\u21a9 Balance carried forward from <strong>{view.carriedFrom?mkLabel(view.carriedFrom):""}</strong>: <strong>{fmt(view.carryForwardAmount||0)}</strong></span>
+        </div>}
         <div className="grid grid-cols-3 gap-3 mb-4">
           {[["Issued",view.amount,GL,G],["Spent",spent,OL,O],["Balance",bal,bal<0?"#fee2e2":"#f0f9ff",bal<0?RED:BLUE]].map(([l,v,bg,c])=>
-            <div key={l} className="p-4 rounded-xl text-center" style={{background:bg}}>
-              <p className="text-lg font-black" style={{color:c}}>{fmt(v)}</p>
-              <p className="text-xs font-bold text-gray-500 mt-1">{l}</p>
-            </div>)
-          }
+            <div key={l} className="p-4 rounded-xl text-center" style={{background:bg}}><p className="text-lg font-black" style={{color:c}}>{fmt(v)}</p><p className="text-xs font-bold text-gray-500 mt-1">{l}</p></div>
+          )}
         </div>
-      );})()}
-      {/* Top-ups */}
-      {(view.topups||[]).length>0&&<div className="mb-4"><p className="text-xs font-bold text-blue-600 mb-2">TOP-UPS</p><div className="space-y-1">{(view.topups||[]).map(t=><div key={t.id} className="flex justify-between p-2.5 rounded-lg text-xs" style={{background:"#eff6ff"}}><span>{fmtD(t.date)} -- {t.note||"Top-up"}</span><span className="font-bold text-blue-700">+{fmt(t.amount)}</span></div>)}</div></div>}
-      {/* Expenses */}
+      </>);})()}
+      {(view.topups||[]).length>0&&<div className="mb-4"><p className="text-xs font-bold text-blue-600 mb-2">TOP-UPS</p><div className="space-y-1">{(view.topups||[]).map(t=><div key={t.id} className="flex justify-between p-2.5 rounded-lg text-xs" style={{background:"#eff6ff"}}><span>{fmtD(t.date)} \u2014 {t.note||"Top-up"}</span><span className="font-bold text-blue-700">+{fmt(t.amount)}</span></div>)}</div></div>}
       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Expenses</p>
       <div className="border border-gray-200 rounded-xl overflow-hidden"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Date","Item","Category","Vendor","Amount","Notes"].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead>
         <tbody className="divide-y divide-gray-50">{(view.expenses||[]).length===0?<tr><td colSpan={6} className="text-center py-6 text-gray-400 text-sm">No expenses logged</td></tr>:(view.expenses||[]).map(e=><tr key={e.id} className="hover:bg-gray-50"><td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{fmtD(e.date)}</td><td className="px-3 py-2 font-medium text-gray-800">{e.item}</td><td className="px-3 py-2 text-xs text-gray-500">{e.category}</td><td className="px-3 py-2 text-xs text-gray-500">{e.vendor||"--"}</td><td className="px-3 py-2 font-bold text-gray-800">{fmt(e.amount)}</td><td className="px-3 py-2 text-xs text-gray-400">{e.note||"--"}</td></tr>)}
@@ -1599,7 +1703,6 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </table></div>
     </ModalWrap>}
   </div>);}
-
 
 
 // -- ANALYTICS -----------------------------------------------------------------
@@ -1643,9 +1746,8 @@ function StaffPage({staff,setStaff}){
   const filtered=staff.filter(s=>s.category===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
   const del=id=>confirm("Remove this staff member?",()=>setStaff(ss=>ss.filter(s=>s.id!==id)));
   const save=data=>{
-    if(data.id)setStaff(ss=>ss.map(s=>s.id===data.id?{...s,...data}:s));
-    else setStaff(ss=>[...ss,{...data,id:"st"+Date.now()}]);
-    setModal(null);
+    let ns;if(data.id)ns=staff.map(s=>s.id===data.id?{...s,...data}:s);else ns=[...staff,{...data,id:"st"+Date.now()}];
+    setStaff(ns);dbSync("staff",ns);setModal(null);
   };
   const blank={name:"",category:TAB_MAP[tab],role:"",site:"",phone:"",email:"",homeAddress:"",emergencyContact:"",emergencyPhone:"",emergencyAddress:"",dob:"",employmentType:"Full Time",startDate:"",workDays:"",bankName:"",accountName:"",accountNumber:""};
 
@@ -1746,7 +1848,7 @@ function StaffPage({staff,setStaff}){
 function SettingsPage({users,setUsers,activityLog=[]}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
-  const save=data=>{if(data.id)setUsers(us=>us.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u));else setUsers(us=>[...us,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}]);setModal(null);};
+  const save=data=>{let nu;if(data.id)nu=users.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u);else nu=[...users,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}];setUsers(nu);dbSync("users",nu);setModal(null);};
   const del=id=>confirm("Remove this app user account?",()=>setUsers(us=>us.filter(u=>u.id!==id)));
   return(<div className="space-y-6 max-w-3xl">{confirmEl}
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-4">Company Profile</h3><div className="grid grid-cols-2 gap-4">{[["Company Name","Dust & Wipes Limited"],["App Name","Operations Hub"],["Domain","app.dustandwipes.com"],["Location","Abuja, Nigeria"],["Currency","NGN ()"],["Timezone","WAT (UTC+1)"]].map(([l,v])=><Fld key={l} label={l}><input className={inp+" bg-gray-50"} defaultValue={v} readOnly/></Fld>)}</div></Card>
@@ -1836,34 +1938,12 @@ const SA_CLEAN_SVCS=["Post-construction cleaning","Deep cleaning","Routine janit
 const SA_PEST_SVCS=["Pest control","Fumigation","Rodent control","Termite treatment","Bed bug treatment","Snake control"];
 const SA_OUTDOOR_SVCS=["Facade cleaning","Pressure washing","Gardening/landscaping"];
 const SA_JANITORIAL=["Routine janitorial service"];
-const SA_EQUIP_OPTS=["Vacuum cleaner","Industrial vacuum","Scrubbing machine","Pressure washer","Steam cleaner","Ladder","Scaffolding","Mop sets","Squeegee","Extension poles","Buckets","PPE kit","Generator"];
-const SA_CHEM_OPTS=["Liquid soap","Bleach","Disinfectant","Glass cleaner","Floor polish","Degreaser","Air freshener","Cypress","Cypermethrin","Deltamethrin","Gel bait","Rodenticide"];
+const SA_EQUIP_OPTS=["Vacuum cleaner","Industrial vacuum","Scrubbing machine","Pressure washer","Steam cleaner","Ladder","Scaffolding","Mop sets","Squeegee","Extension poles","Buckets","PPE kit","Generator","Cleaning Towels","Soft Iron Sponge"];
+const SA_CHEM_OPTS=["Liquid Soap","Bleach","Disinfectant","Glass Cleaner","Floor Polish","Degreaser","Air Freshener","Dr. Floor","Formula X","Wood Polish","Multi-Surface Cleaner","Scouring Powder","Scented Camphor","Cypress"];
 const SA_PEST_TYPES=["Cockroaches","Ants","Mosquitoes","Flies","Rodents","Termites","Bed bugs","Snakes","Wall geckos","Spiders","Fleas","Ticks","Other"];
 const SA_TREATMENT=["Spraying","Gel baiting","Fogging","Rodent baiting","Termite drilling/injection","Dusting","Fumigation","Trapping","Exclusion/sealing"];
 const SA_SECTIONS=["Client Info","Service Type","Scope","Site & Risk","Photos","Costing","Recommendation"];
 
-// Upload photo to Supabase Storage
-const uploadAssessmentPhoto = async (file, assessmentId) => {
-  try {
-    const ext  = file.name.split('.').pop();
-    const path = `${assessmentId}/${Date.now()}.${ext}`;
-    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/assessment-photos/${path}`, {
-      method: "POST",
-      headers: {
-        "apikey":        SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type":  file.type,
-        "x-upsert":      "true",
-      },
-      body: file,
-    });
-    if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
-    return `${SUPABASE_URL}/storage/v1/object/public/assessment-photos/${path}`;
-  } catch(e) {
-    console.warn("[Storage] photo upload:", e.message);
-    return null;
-  }
-};
 
 function AssessmentsPage({assessments,setAssessments,user,clients,contacts,requests,setRequests}){
   const[view,setView]=useState(null);
@@ -1931,6 +2011,7 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
       <button onClick={()=>{setEditData(null);setShowForm(true);}} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold whitespace-nowrap" style={{background:G}}>
         <Plus size={14}/>New Assessment
       </button>
+      <button onClick={()=>printAllRequisitions(requisitions,supplyItems,users)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border" style={{borderColor:G,color:G}} title="Download all requisitions as PDF">📥 Download All</button>
     </div>
 
     {/* List */}
@@ -1983,8 +2064,9 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
     {showForm&&<AssessmentForm
       data={editData}
       onSave={data=>{
-        if(data.id)setAssessments(as=>as.map(a=>a.id===data.id?data:a));
-        else setAssessments(as=>[data,...as]);
+        const exists=assessments.some(a=>a.id===data.id);
+        const na=exists?assessments.map(a=>a.id===data.id?data:a):[data,...assessments];
+        setAssessments(na);dbSync("assessments",na);
         setShowForm(false);setEditData(null);
       }}
       onClose={()=>{setShowForm(false);setEditData(null);}}
@@ -2046,8 +2128,6 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}){
 
   const[f,setF]=useState(data?{...blank,...data}:blank);
   const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  const tog=k=>v=>setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
-  const chk=k=>v=>setF(p=>({...p,[k]:!p[k]}));
 
   const hasCleaning=f.services.some(s=>SA_CLEAN_SVCS.includes(s));
   const hasPest    =f.services.some(s=>SA_PEST_SVCS.includes(s));
@@ -2450,7 +2530,7 @@ export default function App(){
   const[page,        setPage]        =useState("dashboard");
   const[sidebar,     setSidebar]     =useState(true);
   const[users,       setUsers]       =useState(INITIAL_USERS);
-  const[staff,       setStaff]       =useState(SEED_STAFF);
+  const[staff,       setStaff]       =useState([]); // loaded from dw_staff
   const[clients,     setClients]     =useState([]);
   const[schedules,   setSchedules]   =useState([]);
   const[requests,    setRequests]    =useState([]);
@@ -2459,7 +2539,7 @@ export default function App(){
   const[siteReports, setSiteReports] =useState([]);
   const[contacts,    setContacts]    =useState([]); // loaded from dw_contacts
   const[activityLog, setActivityLog] =useState([]);
-  const[supplyItems, setSupplyItems] =useState(INITIAL_SUPPLY_MASTER);
+  const[supplyItems, setSupplyItems] =useState([]);
   const[requisitions,setRequisitions]=useState([]);
   const[absences,    setAbsences]    =useState([]);
   const[covers,      setCovers]      =useState([]);
@@ -2486,7 +2566,16 @@ export default function App(){
           loadContacts(setContacts),
           loadActivityLog(setActivityLog),
           dbLoad("inventory",   setInventory),
-          dbLoad("supplyitems", setSupplyItems),
+          (async()=>{
+            const url=`${SUPABASE_URL}/rest/v1/${T("supplyitems")}?select=id,record&order=updated_at.desc`;
+            try{const r=await fetch(url,{headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`}});
+              if(!r.ok)throw new Error(`HTTP ${r.status}`);
+              const data=await r.json();
+              const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
+              if(records.length===0){setSupplyItems(INITIAL_SUPPLY_MASTER);dbSync("supplyitems",INITIAL_SUPPLY_MASTER);}
+              else setSupplyItems(records);
+            }catch(e){console.warn("[DB] load supplyitems:",e.message);setSupplyItems(INITIAL_SUPPLY_MASTER);}
+          })(),
           dbLoad("requisitions",setRequisitions),
           dbLoad("absences",    setAbsences),
           dbLoad("covers",      setCovers),
@@ -2494,19 +2583,19 @@ export default function App(){
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
-            try{const r=await fetch(url,{headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`}});
+            try{
+              const r=await fetch(url,{headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`}});
               if(!r.ok)throw new Error(`HTTP ${r.status}`);
               const data=await r.json();
               const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
-              const dbById=Object.fromEntries(records.map(r=>[r.id,r]));
-              // Merge: SEED_STAFF as authoritative base, DB fields overlaid on top; extra DB records appended
-              const merged=[
-                ...SEED_STAFF.map(s=>dbById[s.id]?{...s,...dbById[s.id]}:s),
-                ...records.filter(r=>!SEED_STAFF.some(s=>s.id===r.id)&&r.id&&/^st/.test(String(r.id)))
-              ];
-              setStaff(merged);
-              // Write any seed records missing from DB
-              if(!SEED_STAFF.every(s=>dbById[s.id]))dbSync("staff",merged);
+              if(records.length===0){
+                // First ever load — write SEED_STAFF to DB once, then use DB from now on
+                setStaff(SEED_STAFF);
+                dbSync("staff",SEED_STAFF);
+              } else {
+                // DB is fully authoritative — show exactly what is in the database
+                setStaff(records);
+              }
             }catch(e){console.warn("[DB] load staff:",e.message);setStaff(SEED_STAFF);}
           })(),
           dbLoad("users",       u => {
@@ -2549,7 +2638,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
