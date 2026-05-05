@@ -2011,7 +2011,6 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
       <button onClick={()=>{setEditData(null);setShowForm(true);}} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold whitespace-nowrap" style={{background:G}}>
         <Plus size={14}/>New Assessment
       </button>
-      <button onClick={()=>printAllRequisitions(requisitions,supplyItems,users)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border" style={{borderColor:G,color:G}} title="Download all requisitions as PDF">📥 Download All</button>
     </div>
 
     {/* List */}
