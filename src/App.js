@@ -149,6 +149,20 @@ const dbLoad = async (table, setter) => {
   } catch(e) { console.warn(`[DB] load ${table}:`, e.message); }
 };
 
+// Delete a single record from Supabase by id
+const dbDelete = async (table, id) => {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}?id=eq.${encodeURIComponent(String(id))}`, {
+      method: "DELETE",
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      }
+    });
+    if (!r.ok) { const e = await r.text(); throw new Error(e); }
+  } catch(e) { console.warn(`[DB] delete ${table}:`, e.message); }
+};
+
 // Sync an entity array to Supabase via direct REST calls
 const dbSync = async (table, data) => {
   // UPSERT-ONLY: never delete from DB via sync.
@@ -830,7 +844,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
 
   const canNext=[
     f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
-    (hasCleaning?f.cleaningTasks.length>0:true)&&(hasPest?f.pestTasks.length>0:true)&&f.crewMembers.trim().length>0,
+    (hasCleaning?f.cleaningTasks.length>0:true)&&(hasPest?f.pestTasks.length>0:true)&&(Array.isArray(f.crewMembers)?f.crewMembers.length>0:f.crewMembers.trim().length>0),
     f.cleanlinessRating>0&&f.adherenceRating>0,
     f.ppeWorn&&f.safeHandling,
     f.clientPresent&&(f.clientPresent==="Yes"?f.satisfactionLevel:true),
@@ -840,7 +854,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
   const canNextInspection=[
     f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
     f.cleanlinessRating>0&&f.adherenceRating>0,
-    f.crewMembers.trim().length>0,
+    (Array.isArray(f.crewMembers)?f.crewMembers.length>0:f.crewMembers.trim().length>0),
     !!f.clientPresent,
     true,
     !!(f.overallAssessment&&f.signatureName),
@@ -951,7 +965,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
           {hasOther&&<Fld label="Other Tasks Performed" col><textarea className={inp} rows={2} value={f.otherTasks} onChange={u("otherTasks")}/></Fld>}
           <Fld label={f.jobType==="One-Time Job"?"Crew Members Present (list names, one per line)":"Crew Members Present"} col required>
             {f.jobType==="One-Time Job"
-              ?<textarea className={inp} rows={4} value={Array.isArray(f.crewMembers)?f.crewMembers.join("\n"):f.crewMembers||""} onChange={e=>setF(p=>({...p,crewMembers:e.target.value.split("\n")}))} placeholder={"John Doe (Ad-hoc)\nJane Smith\n…"}/>
+              ?<textarea className={inp} rows={4} value={Array.isArray(f.crewMembers)?f.crewMembers.join("\n"):f.crewMembers||""} onChange={e=>setF(p=>({...p,crewMembers:e.target.value}))} placeholder={"John Doe (Ad-hoc)\nJane Smith\n…"}/>
               :<StaffMultiPicker staff={staff} value={f.crewMembers} onChange={v=>setF(p=>({...p,crewMembers:v}))}/>
             }
           </Fld>
@@ -1091,7 +1105,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
               ["Site Score",f.cleanlinessRating>0?`${((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}/5.0`:"Not rated"],
               ["Client Present",f.clientPresent||"Not recorded"],
               ["Satisfaction",f.satisfactionLevel||"N/A"],
-              ["Crew",f.crewMembers.split("\n").filter(Boolean).join(", ")],
+              ["Crew",(Array.isArray(f.crewMembers)?f.crewMembers:f.crewMembers.split("\n")).filter(Boolean).join(", ")],
               ["Photos",`${f.photos.length} attached`],
             ].map(([l,v])=>v&&<div key={l} className="flex gap-2"><span className="text-xs font-bold text-gray-400 w-32 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>)}
           </div>
@@ -1154,7 +1168,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
               ["Arrival",`${fmtD(f.arrivalDate)} ${f.arrivalTime}`],
               ["Departure",`${fmtD(f.departureDate)} ${f.departureTime}`],
               ["GPS",f.gpsAcquired?`${f.gpsLat}N, ${f.gpsLng}E`:"Not captured"],
-              ["Crew",f.crewMembers.split("\n").filter(Boolean).join(", ")],
+              ["Crew",(Array.isArray(f.crewMembers)?f.crewMembers:f.crewMembers.split("\n")).filter(Boolean).join(", ")],
               ["Quality Score",f.cleanlinessRating>0?`${((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}/5.0`:"Not rated"],
               ["Client Satisfaction",f.satisfactionLevel||"N/A"],
               ["Photos",`${f.photos.length} attached`],
@@ -1212,7 +1226,7 @@ function SiteReportViewer({report:r,onClose}){
         {r.pesticidesUsed&&row("Pesticides Used",r.pesticidesUsed)}
         {r.activeIngredients&&row("Active Ingredients",r.activeIngredients)}
         {r.otherTasks&&row("Other Tasks",r.otherTasks)}
-        {row("Crew Members",r.crewMembers?.split("\n").filter(Boolean).join(", "))}
+        {row("Crew Members",(Array.isArray(r.crewMembers)?r.crewMembers:r.crewMembers?.split("\n")||[]).filter(Boolean).join(", "))}
         {r.equipment?.length>0&&row("Equipment",r.equipment.join(", "))}
         {r.supplies?.length>0&&row("Supplies",r.supplies.join(", "))}
       </>)}
@@ -1304,7 +1318,7 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
       {[{id:"reqs",label:"Requisitions",n:requisitions.filter(r=>r.status==="Pending").length},{id:"catalogue",label:"Item Catalogue",hide:!canManage,n:supplyItems.length}].filter(t=>!t.hide).map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`pb-3 text-sm font-semibold transition-all flex items-center gap-2 ${tab===t.id?"border-b-2":"text-gray-400 hover:text-gray-600"}`} style={tab===t.id?{borderColor:G,color:G}:{}}>{t.label}{t.n>0&&<span className="text-xs px-1.5 py-0.5 rounded-full font-bold text-white" style={{background:t.id==="reqs"?AMBER:G}}>{t.n}</span>}</button>)}
     </div>
     {tab==="reqs"&&<>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-3 flex-wrap"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{requisitions.filter(r=>r.status==="Pending").length} Pending</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:G}}>{requisitions.filter(r=>r.status==="Approved").length} Approved</div></div><button onClick={()=>setModal({type:"new"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Requisition</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-3 flex-wrap"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{requisitions.filter(r=>r.status==="Pending").length} Pending</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:G}}>{requisitions.filter(r=>r.status==="Approved").length} Approved</div></div><div className="flex items-center gap-2">{canManage&&<button onClick={()=>printAllRequisitions(requisitions,supplyItems,users)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Download All</button>}<button onClick={()=>setModal({type:"new"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Requisition</button></div></div>
       {canManage&&<div className="flex items-center gap-2 p-3 rounded-xl text-xs text-blue-700 font-medium" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}><Info size={13}/>Submitted requisitions trigger email notifications to all Supervisors. (Requires Supabase backend.)</div>}
       <Card><div className="divide-y divide-gray-50">{requisitions.length===0&&<div className="text-center py-12 text-gray-400"><ClipboardCheck size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No requisitions yet</p></div>}{requisitions.map(r=>{const total=r.items?.reduce((s,i)=>s+(i.qty*(i.approvedRate||i.rate||0)),0)||0;const budget=r.budgetCap||0;const pct=budget>0?total/budget:0;return(<div key={r.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.site||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.site} -- {MONTHS[r.month]} {r.year}</p><p className="text-xs text-gray-500">By: {r.submittedBy}  {r.items?.length||0} items</p>{canManage&&budget>0&&<span className="text-xs px-2 py-0.5 rounded-lg font-semibold" style={{background:pct>1?"#fee2e2":pct>0.85?"#fffbeb":"#dcfce7"}}><span className={pct>1?"text-red-700":pct>0.85?"text-amber-700":"text-green-700"}>{fmt(total)} / {fmt(budget)} ({(pct*100).toFixed(0)}%)</span></span>}{r.reviewedBy&&<p className="text-xs text-gray-400 mt-0.5">Reviewed: {r.reviewedBy}</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={r.status} custom={statusColors[r.status]}/><button onClick={()=>setView(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Eye size={13}/></button>{canManage&&r.status==="Pending"&&<><button onClick={()=>approve(r.id,"Approved")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Approve</button><button onClick={()=>approve(r.id,"Rejected")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:RED}}>Reject</button></>}{canManage&&r.status==="Approved"&&<button onClick={()=>setDeductModal(r)} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:BLUE}}>Forward</button>}<button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>);})}</div></Card>
     </>}
@@ -1433,6 +1447,14 @@ function ImprestPage({imprests,setImprests,staff=[]}){
   const save=updated=>{setImprests(updated);dbSync("imprests",updated);};
   const mKey=i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK);
   const mkLabel=mk=>{const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
+
+  // Auto-switch to most recent month with records when current month is empty
+  useEffect(()=>{
+    if(imprests.length>0&&!imprests.some(i=>mKey(i)===selMK)){
+      const keys=[...new Set(imprests.map(i=>mKey(i)))].sort().reverse();
+      if(keys[0])setSelMK(keys[0]);
+    }
+  },[imprests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allMonths=useMemo(()=>{
     const s=new Set(imprests.map(i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK)));
@@ -1743,8 +1765,10 @@ function StaffPage({staff,setStaff}){
   const[search,setSearch]=useState("");
   const CATEGORIES=["Office Staff","Cleaning Staff","Gardening Staff"];
   const TAB_MAP={"office":"Office Staff","cleaning":"Cleaning Staff","gardening":"Gardening Staff"};
-  const filtered=staff.filter(s=>s.category===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
-  const del=id=>confirm("Remove this staff member?",()=>setStaff(ss=>ss.filter(s=>s.id!==id)));
+  // Fallback: infer category from role when the record has no category set
+  const inferCat=s=>s.category||(s.role==="Gardener"||s.role==="Gardening"?"Gardening Staff":s.role==="Supervisor"||s.role==="Technical Supervisor"||s.role==="Finance"||s.category==="Office Staff"?"Office Staff":"Cleaning Staff");
+  const filtered=staff.filter(s=>inferCat(s)===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
+  const del=id=>confirm("Remove this staff member?",()=>{setStaff(ss=>ss.filter(s=>s.id!==id));dbDelete("staff",id);});
   const save=data=>{
     let ns;if(data.id)ns=staff.map(s=>s.id===data.id?{...s,...data}:s);else ns=[...staff,{...data,id:"st"+Date.now()}];
     setStaff(ns);dbSync("staff",ns);setModal(null);
