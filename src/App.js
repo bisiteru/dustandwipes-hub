@@ -469,7 +469,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
   const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);setModal(null);};
-  const del=id=>confirm("Delete this client?",()=>setClients(cs=>cs.filter(c=>c.id!==id)));
+  const del=id=>confirm("Delete this client?",()=>{setClients(cs=>cs.filter(c=>c.id!==id));dbDelete("clients",id);});
   const can=userRole!=="Technician";
   const filteredContacts=useMemo(()=>{
     const db=window.__DW_CONTACTS__||contacts||[];
@@ -613,7 +613,7 @@ function RequestsPage({requests,setRequests,setJobs,clients}){
   const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
   const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);setModal(null);};
   const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));};
-  const del=id=>confirm("Delete this request?",()=>setRequests(rs=>rs.filter(r=>r.id!==id)));
+  const del=id=>confirm("Delete this request?",()=>{setRequests(rs=>rs.filter(r=>r.id!==id));dbDelete("requests",id);});
   const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
   return(<div className="space-y-5">{confirmEl}
     <div className="flex items-center justify-between"><div className="flex gap-3"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{requests.filter(r=>r.status==="Pending").length} Pending</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{requests.filter(r=>r.status==="Converted").length} Converted</div></div><button onClick={()=>setModal(blank)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Log Request</button></div>
@@ -628,7 +628,7 @@ function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
   const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
   const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);setModal(null);};
   const advance=(id,ns)=>setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));
-  const del=id=>confirm("Delete this job?",()=>setJobs(js=>js.filter(j=>j.id!==id)));
+  const del=id=>confirm("Delete this job?",()=>{setJobs(js=>js.filter(j=>j.id!==id));dbDelete("jobs",id);});
   const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
   return(<div className="space-y-5">{confirmEl}
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{["All",...JOB_STATUSES].map(s=><button key={s} onClick={()=>setFilter(s)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all border ${filter===s?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===s?{background:s==="All"?GD:(STATUS_COLORS[s]?.color||G)}:{}}>{s} ({s==="All"?jobs.length:jobs.filter(j=>j.status===s).length})</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Job</button>}</div>
@@ -686,7 +686,7 @@ function SchedulePage({schedules,setSchedules,clients,userRole}){
     let ns;if(saved.id)ns=schedules.map(s=>s.id===saved.id?saved:s);else ns=[...schedules,{...saved,id:Date.now()}];
     setSchedules(ns);dbSync("schedules",ns);setModal(null);
   };
-  const del=id=>confirm("Delete this schedule?",()=>setSchedules(ss=>ss.filter(s=>s.id!==id)));
+  const del=id=>confirm("Delete this schedule?",()=>{setSchedules(ss=>ss.filter(s=>s.id!==id));dbDelete("schedules",id);});
   return(<div className="space-y-5">{confirmEl}
     <div className="flex items-center justify-between"><div className="flex gap-3"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fee2e2",color:RED}}>{ws.filter(s=>s.overdue).length} Overdue</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dbeafe",color:BLUE}}>{ws.filter(s=>!s.overdue).length} Upcoming</div></div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Visit</button>}</div>
     <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Recurrence","Date Done","Next Due","Chemical","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{ws.map(s=><tr key={s.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5 font-semibold text-gray-800">{s.clientName}</td><td className="px-4 py-3.5 text-xs text-gray-600">{s.service}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.recurrence||"--"}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dateCarriedOut)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dueDate)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.chemical?`${s.chemical}${s.chemicalQty?` ${s.chemicalQty}${s.chemicalUnit||"L"}`:""}`:"-"}</td><td className="px-4 py-3.5"><SBadge s={s.overdue?"Overdue":"Upcoming"} custom={s.overdue?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"}}/></td><td className="px-4 py-3.5 text-xs text-gray-400">{s.notes||"--"}</td><td className="px-4 py-3.5">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(s)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>)}</tbody></table></div></Card>
@@ -773,7 +773,7 @@ function ContactSearchSelect({value,onSelect,clients,contacts=[]}){
 function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}){
   const[showForm,setShowForm]=useState(false);const[view,setView]=useState(null);
   const[confirm,confirmEl]=useConfirm();
-  const del=id=>confirm("Delete this report?",()=>setReports(rs=>rs.filter(r=>r.id!==id)));
+  const del=id=>confirm("Delete this report?",()=>{setReports(rs=>rs.filter(r=>r.id!==id));dbDelete("reports",id);});
   return(<div className="space-y-5">{confirmEl}
     <div className="flex items-center justify-between">
       <div className="flex gap-3">
@@ -1307,7 +1307,7 @@ function InventoryPage({inventory,setInventory,userRole}){
   const cats=["All",...new Set(inventory.map(i=>i.cat))];
   const filtered=inventory.filter(i=>(filter==="All"||i.cat===filter)&&i.item.toLowerCase().includes(search.toLowerCase()));
   const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);setModal(null);};
-  const del=id=>confirm("Remove this item?",()=>setInventory(inv=>inv.filter(i=>i.id!==id)));
+  const del=id=>confirm("Remove this item?",()=>{setInventory(inv=>inv.filter(i=>i.id!==id));dbDelete("inventory",id);});
   const canEdit=userRole!=="Technician";
   return(<div className="space-y-5">{confirmEl}
     <div className="flex flex-wrap items-center gap-3"><div className="relative flex-1 min-w-48"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9"} placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2">{cats.map(c=><button key={c} onClick={()=>setFilter(c)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold border ${filter===c?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===c?{background:G}:{}}>{c}</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Item</button>}</div>
@@ -1423,8 +1423,8 @@ function ReqViewer({req:r,canSeeCosts,onClose}){
 // -- ABSENCE & COVER -----------------------------------------------------------
 function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[]}){
   const[tab,setTab]=useState("absences");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
-  const delA=id=>confirm("Delete this absence?",()=>setAbsences(as=>as.filter(a=>a.id!==id)));
-  const delC=id=>confirm("Delete this cover?",()=>setCovers(cs=>cs.filter(c=>c.id!==id)));
+  const delA=id=>confirm("Delete this absence?",()=>{setAbsences(as=>as.filter(a=>a.id!==id));dbDelete("absences",id);});
+  const delC=id=>confirm("Delete this cover?",()=>{setCovers(cs=>cs.filter(c=>c.id!==id));dbDelete("covers",id);});
   const SC={"Absent Logged":{bg:"#fff7ed",color:O,border:"#fed7aa"},"Cover Assigned":{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"},"Completed":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Sent to Finance":{bg:"#fdf4ff",color:"#7c3aed",border:"#ddd6fe"}};
   const advanceAbs=(id,cur)=>setAbsences(as=>as.map(a=>a.id===id?{...a,status:cur==="Absent Logged"?"Cover Assigned":cur==="Cover Assigned"?"Completed":"Sent to Finance"}:a));
   return(<div className="space-y-5">{confirmEl}
@@ -1474,6 +1474,8 @@ function ImprestPage({imprests,setImprests,staff=[]}){
   const[selMK,setSelMK]=useState(curMK);
 
   const save=updated=>{setImprests(updated);dbSync("imprests",updated);};
+  // Sync only the changed record — keeps payload small and prevents full-array race conditions
+  const saveOne=(updated,id)=>{setImprests(updated);const rec=updated.find(i=>i.id===id);if(rec)dbSync("imprests",[rec]);};
   const mKey=i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK);
   const mkLabel=mk=>{const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
 
@@ -1499,9 +1501,9 @@ function ImprestPage({imprests,setImprests,staff=[]}){
     return Math.max(0,p.amount-spent);
   };
 
-  const addExpense=(id,exp)=>save(imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i));
-  const addTopUp=(id,tu)=>save(imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i));
-  const updStatus=(id,status)=>save(imprests.map(i=>i.id===id?{...i,status}:i));
+  const addExpense=(id,exp)=>{const u=imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i);saveOne(u,id);};
+  const addTopUp=(id,tu)=>{const u=imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i);saveOne(u,id);};
+  const updStatus=(id,status)=>{const u=imprests.map(i=>i.id===id?{...i,status}:i);saveOne(u,id);};
   const del=id=>confirm("Delete this imprest record?",()=>{const updated=imprests.filter(i=>i.id!==id);save(updated);dbDelete("imprests",id);});
 
   const doMonthClose=()=>{
@@ -1649,8 +1651,8 @@ function ImprestPage({imprests,setImprests,staff=[]}){
     {/* NEW IMPREST MODAL */}
     {modal?.type==="new"&&<ModalWrap title="Create Imprest Account" onClose={()=>setModal(null)} wide>
       <div className="grid grid-cols-2 gap-4">
-        <Fld label="Fund Holder (Staff Name)">
-          <StaffSelect staff={staff} value={modal.holder||""} onChange={v=>{
+        <Fld label="Fund Holder (Supervisor)">
+          <StaffSelect staff={staff} value={modal.holder||""} filter={s=>s.category==="Office Staff"} placeholder="-- Select supervisor --" onChange={v=>{
             const prev=getPrevBal(v,modal.month||curMK);
             setModal(p=>({...p,holder:v,_prevBal:prev,amount:p._manual!=null?p._manual:(prev||p.amount||0),title:`${v} \u2014 ${mkLabel(modal.month||curMK)}`}));
           }} placeholder="-- Select staff --"/>
@@ -1902,7 +1904,7 @@ function SettingsPage({users,setUsers,activityLog=[]}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
   const save=data=>{let nu;if(data.id)nu=users.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u);else nu=[...users,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}];setUsers(nu);dbSync("users",nu);setModal(null);};
-  const del=id=>confirm("Remove this app user account?",()=>setUsers(us=>us.filter(u=>u.id!==id)));
+  const del=id=>confirm("Remove this app user account?",()=>{setUsers(us=>us.filter(u=>u.id!==id));dbDelete("users",id);});
   return(<div className="space-y-6 max-w-3xl">{confirmEl}
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-4">Company Profile</h3><div className="grid grid-cols-2 gap-4">{[["Company Name","Dust & Wipes Limited"],["App Name","Operations Hub"],["Domain","app.dustandwipes.com"],["Location","Abuja, Nigeria"],["Currency","NGN ()"],["Timezone","WAT (UTC+1)"]].map(([l,v])=><Fld key={l} label={l}><input className={inp+" bg-gray-50"} defaultValue={v} readOnly/></Fld>)}</div></Card>
 
@@ -2007,7 +2009,7 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
   const[filterSvc,setFilterSvc]=useState("All");
   const[confirm,confirmEl]=useConfirm();
 
-  const del=id=>confirm("Delete this assessment?",()=>setAssessments(as=>as.filter(a=>a.id!==id)));
+  const del=id=>confirm("Delete this assessment?",()=>{setAssessments(as=>as.filter(a=>a.id!==id));dbDelete("assessments",id);});
 
   const convertToRequest=(a)=>{
     const newReq={
