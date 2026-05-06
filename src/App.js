@@ -1655,7 +1655,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
           <StaffSelect staff={staff} value={modal.holder||""} filter={s=>s.category==="Office Staff"} placeholder="-- Select supervisor --" onChange={v=>{
             const prev=getPrevBal(v,modal.month||curMK);
             setModal(p=>({...p,holder:v,_prevBal:prev,amount:p._manual!=null?p._manual:(prev||p.amount||0),title:`${v} \u2014 ${mkLabel(modal.month||curMK)}`}));
-          }} placeholder="-- Select staff --"/>
+          }}/>
         </Fld>
         <Fld label="Fund Type">
           <select className={inp} value={modal.fundType||"Field Operations"} onChange={e=>setModal(p=>({...p,fundType:e.target.value}))}><option>Field Operations</option><option>Office Operations / Supplies</option></select>
