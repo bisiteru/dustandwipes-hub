@@ -1473,8 +1473,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
   const curMK=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
   const[selMK,setSelMK]=useState(curMK);
 
-  const save=updated=>{setImprests(updated);dbSync("imprests",updated);};
-  // Sync only the changed record — keeps payload small and prevents full-array race conditions
+  // Sync only the changed record — prevents stale-closure overwrites when multiple sessions are active
   const saveOne=(updated,id)=>{setImprests(updated);const rec=updated.find(i=>i.id===id);if(rec)dbSync("imprests",[rec]);};
   const mKey=i=>i.month||(i.releaseDate?i.releaseDate.slice(0,7):curMK);
   const mkLabel=mk=>{const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
@@ -1504,12 +1503,14 @@ function ImprestPage({imprests,setImprests,staff=[]}){
   const addExpense=(id,exp)=>{const u=imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i);saveOne(u,id);};
   const addTopUp=(id,tu)=>{const u=imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i);saveOne(u,id);};
   const updStatus=(id,status)=>{const u=imprests.map(i=>i.id===id?{...i,status}:i);saveOne(u,id);};
-  const del=id=>confirm("Delete this imprest record?",()=>{const updated=imprests.filter(i=>i.id!==id);save(updated);dbDelete("imprests",id);});
+  const del=id=>confirm("Delete this imprest record?",()=>{setImprests(prev=>prev.filter(i=>i.id!==id));dbDelete("imprests",id);});
 
   const doMonthClose=()=>{
     const active=monthRecs.filter(i=>i.status==="Active");if(!active.length)return;
     confirm(`Close all ${active.length} active account(s) for ${mkLabel(selMK)}? You can open next month to carry forward balances.`,()=>{
-      save(imprests.map(i=>mKey(i)===selMK&&i.status==="Active"?{...i,status:"Closed",closedPeriod:mkLabel(selMK)}:i));
+      const closed=active.map(i=>({...i,status:"Closed",closedPeriod:mkLabel(selMK)}));
+      setImprests(prev=>prev.map(i=>{const c=closed.find(cc=>cc.id===i.id);return c||i;}));
+      dbSync("imprests",closed);
     });
   };
 
@@ -1530,7 +1531,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
         const ref=lastRecs.filter(i=>i.holder===holder)[0]||{};
         return{id:`imp${ts}_${idx}`,month:nextMK,title:`${holder} \u2014 ${nextLabel}`,holder,fundType:ref.fundType||"Field Operations",branch:ref.branch||"",amount:bal,originalAmount:bal,releaseDate:nd.toISOString().split("T")[0],deadline:"",purpose:`Carried forward from ${mkLabel(latestMK)}. Previous closing balance: \u20a6${bal.toLocaleString()}`,status:"Active",expenses:[],topups:[],carriedFrom:latestMK,carryForwardAmount:bal,isCarryForward:true};
       });
-      save([...imprests,...carries]);setSelMK(nextMK);
+      setImprests(prev=>[...prev,...carries]);dbSync("imprests",carries);setSelMK(nextMK);
     });
   };
 
@@ -1677,7 +1678,8 @@ function ImprestPage({imprests,setImprests,staff=[]}){
           if(!modal.holder||!modal.amount)return;
           const prevBal=modal._prevBal||0;const isCarry=prevBal>0;
           const{_prevBal,_manual,type,...rest}=modal;
-          save([...imprests,{...rest,id:"imp"+Date.now(),month:modal.month||curMK,originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[],carryForwardAmount:isCarry?prevBal:0,isCarryForward:isCarry}]);
+          const newRec={...rest,id:"imp"+Date.now(),month:modal.month||curMK,originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[],carryForwardAmount:isCarry?prevBal:0,isCarryForward:isCarry};
+          setImprests(prev=>[...prev,newRec]);dbSync("imprests",[newRec]);
           setModal(null);
         }} disabled={!modal.holder||!modal.amount} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Create</button>
       </div>
@@ -2685,7 +2687,8 @@ export default function App(){
   useEffect(() => { debouncedSync("requisitions", requisitions);}, [requisitions,debouncedSync]);
   useEffect(() => { debouncedSync("absences",     absences);    }, [absences,    debouncedSync]);
   useEffect(() => { debouncedSync("covers",       covers);      }, [covers,      debouncedSync]);
-  useEffect(() => { debouncedSync("imprests",     imprests);    }, [imprests,    debouncedSync]);
+  // imprests intentionally excluded: ImprestPage uses targeted single-record syncs (saveOne/dbSync)
+  // to prevent stale-session overwrites. A broad debounce here would re-upload stale full arrays.
   useEffect(() => { debouncedSync("assessments", assessments); }, [assessments, debouncedSync]);
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
@@ -2700,7 +2703,9 @@ export default function App(){
         clearTimeout(syncTimers.current[table]);
         delete syncTimers.current[table];
       });
-      Object.entries(latestStateRef.current).forEach(([table, data]) => dbSync(table, data));
+      // Skip imprests: all imprest writes use targeted single-record syncs;
+      // flushing the full array here could overwrite other sessions' expenses with stale data.
+      Object.entries(latestStateRef.current).forEach(([table, data]) => { if (table !== "imprests") dbSync(table, data); });
     };
     const onVisChange = () => { if (document.visibilityState === "hidden") flush(); };
     document.addEventListener("visibilitychange", onVisChange);
