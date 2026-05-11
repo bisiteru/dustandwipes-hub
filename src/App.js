@@ -555,19 +555,26 @@ function LoginScreen({onLogin,users,clients}){
     if(busy||!em.trim()||!pw)return;
     setBusy(true);setErr("");
     try{
-      // 1. Try Supabase Auth (email + password — works once account is created in Supabase dashboard)
+      // 1. Try Supabase Auth (email + password)
       const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{
         method:"POST",
         headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
         body:JSON.stringify({email:em.trim(),password:pw})
       });
+      const d=await r.json(); // always parse — we need error body too
       if(r.ok){
-        const d=await r.json();
         const profile=users.find(u=>u.email===d.user?.email||u.username===em.trim());
         onLogin({...(profile||{}),id:d.user.id,email:d.user?.email||em.trim(),name:profile?.name||d.user?.email||em.trim(),role:profile?.role||"Technician",initial:(profile?.name||d.user?.email||"?")[0].toUpperCase(),accessToken:d.access_token});
         return;
       }
-      // 2. Supabase Auth failed — try local hash-based auth (set via Settings → Users)
+      // Supabase returned an error — read what it actually said
+      const sbMsg=(d?.error_description||d?.msg||d?.message||"").toLowerCase();
+      console.warn("[Auth] Supabase error:",r.status,d?.error_description||d?.message);
+      if(sbMsg.includes("email not confirmed")){
+        setErr("Your email address hasn't been confirmed yet. The Admin must open the Supabase dashboard → Authentication → Users → find your account → click Confirm.");
+        return;
+      }
+      // 2. Local hash-based auth (password set via Settings → Users in the app)
       const localUser=users.find(u=>(u.email&&u.email===em.trim())||(u.username&&u.username===em.trim()));
       if(localUser){
         if(localUser.pwHash){
@@ -575,14 +582,15 @@ function LoginScreen({onLogin,users,clients}){
           if(h===localUser.pwHash){onLogin(localUser);return;}
           setErr("Incorrect password.");return;
         }
-        // Technician phone-number login (no password set — username match is sufficient)
+        // Technician phone-number login (no password hash set — username match is sufficient)
         if(localUser.username&&localUser.username===em.trim()){onLogin(localUser);return;}
-        // Email user exists but has no local password set yet
-        setErr("No password set for this account. Ask your Admin to set one in Settings → Users.");return;
+        // Known email but no local password: give Supabase's actual reason
+        setErr(d?.error_description||d?.message||"Login failed. Check your password or ask Admin to reset it.");
+        return;
       }
-      setErr("Account not found. Check your email or phone number, or contact admin.");
+      setErr("Account not found. Check your email address or ask Admin.");
     }catch{
-      // Network error — allow local fallback for Admin emergency access
+      // Network error — allow Admin emergency local access
       const fallback=users.find(u=>u.email===em.trim()||u.username===em.trim());
       if(fallback&&fallback.role==="Admin"){onLogin(fallback);return;}
       setErr("Network error — check your connection and try again.");
@@ -3271,15 +3279,16 @@ export default function App(){
 
   const handleLogin=u=>{setUser(u);setPage("dashboard");};
 
-
-  if(!user) return <LoginScreen onLogin={handleLogin} users={users} clients={clients}/>;
-
+  // Show loading screen FIRST so users[] is fully populated from DB before login renders.
+  // This ensures the local-hash fallback has access to pwHash stored in Supabase.
   if(dbLoading) return(
     <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
       <img src={LOGO} alt="D&W" className="w-14 rounded-xl bg-white p-1 shadow-md animate-pulse"/>
       <p className="text-sm font-semibold text-gray-500">Loading Operations Hub…</p>
     </div>
   );
+
+  if(!user) return <LoginScreen onLogin={handleLogin} users={users} clients={clients}/>;
 
   const NAV=[
     {id:"dashboard",   label:"Dashboard",       icon:Home,          roles:["Admin","Supervisor"]},
