@@ -1,7 +1,7 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
-import React, { useState, useMemo, useEffect, useRef, useCallback, createContext, Component } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback, Component } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, CreditCard, Download, WifiOff } from "lucide-react";
+import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const TODAY=new Date(); // always uses current date
@@ -389,6 +389,7 @@ function RadioG({value,onChange,options,danger=[]}){return <div className="flex 
 
 // Save button with built-in async loading state
 // Usage: <SaveBtn onClick={asyncFn} label="Save" savingLabel="Saving…" color={G}/>
+// eslint-disable-next-line no-unused-vars
 function SaveBtn({onClick,label="Save",savingLabel,disabled=false,color,className=""}){
   const[busy,setBusy]=useState(false);
   const go=async()=>{
@@ -409,8 +410,6 @@ function SaveBtn({onClick,label="Save",savingLabel,disabled=false,color,classNam
 // ── GLOBAL TOAST SYSTEM ──────────────────────────────────────────────────────
 // Usage: const toast = useToast();  then  toast.success("Saved!") / toast.error("Failed")
 // The <Toaster/> component must be rendered once at the app root.
-const ToastCtx = createContext(null);
-
 function Toaster(){
   const[toasts,setToasts]=useState([]);
   const add=useCallback((msg,type="success")=>{
