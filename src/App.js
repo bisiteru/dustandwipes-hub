@@ -224,6 +224,14 @@ const drainOfflineQueue=(setJobsFn)=>{
   }catch(e){console.warn("[Offline] Queue drain:",e.message);return 0;}
 };
 
+// SHA-256 password hash (Web Crypto API — no extra library, salted with userId)
+const hashPw=async(pw,salt="dw")=>{
+  try{
+    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${salt}:${pw}`));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  }catch{return null;}
+};
+
 const cStatus=end=>{if(!end)return"Unknown";const d=Math.ceil((new Date(end)-TODAY)/86400000);return d<0?"Expired":d<=30?"Critical":d<=60?"Expiring Soon":"Active";};
 const dLeft=end=>end?Math.ceil((new Date(end)-TODAY)/86400000):null;
 const fmt=n=>""+Number(n||0).toLocaleString("en-NG",{maximumFractionDigits:0});
@@ -547,7 +555,7 @@ function LoginScreen({onLogin,users,clients}){
     if(busy||!em.trim()||!pw)return;
     setBusy(true);setErr("");
     try{
-      // 1. Try Supabase Auth (real hashed password check)
+      // 1. Try Supabase Auth (email + password — works once account is created in Supabase dashboard)
       const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{
         method:"POST",
         headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
@@ -555,17 +563,26 @@ function LoginScreen({onLogin,users,clients}){
       });
       if(r.ok){
         const d=await r.json();
-        // Fetch role profile from dw_users table by email
         const profile=users.find(u=>u.email===d.user?.email||u.username===em.trim());
         onLogin({...(profile||{}),id:d.user.id,email:d.user?.email||em.trim(),name:profile?.name||d.user?.email||em.trim(),role:profile?.role||"Technician",initial:(profile?.name||d.user?.email||"?")[0].toUpperCase(),accessToken:d.access_token});
         return;
       }
-      // 2. Supabase Auth failed — try username-based match (phone login) against local DB cache
-      const byUsername=users.find(u=>u.username===em.trim());
-      if(byUsername){onLogin(byUsername);return;}
-      setErr((await r.json().catch(()=>({}))).msg||"Invalid email or password.");
+      // 2. Supabase Auth failed — try local hash-based auth (set via Settings → Users)
+      const localUser=users.find(u=>(u.email&&u.email===em.trim())||(u.username&&u.username===em.trim()));
+      if(localUser){
+        if(localUser.pwHash){
+          const h=await hashPw(pw,localUser.id);
+          if(h===localUser.pwHash){onLogin(localUser);return;}
+          setErr("Incorrect password.");return;
+        }
+        // Technician phone-number login (no password set — username match is sufficient)
+        if(localUser.username&&localUser.username===em.trim()){onLogin(localUser);return;}
+        // Email user exists but has no local password set yet
+        setErr("No password set for this account. Ask your Admin to set one in Settings → Users.");return;
+      }
+      setErr("Account not found. Check your email or phone number, or contact admin.");
     }catch{
-      // Network error or Supabase offline — allow local admin bypass for emergency access
+      // Network error — allow local fallback for Admin emergency access
       const fallback=users.find(u=>u.email===em.trim()||u.username===em.trim());
       if(fallback&&fallback.role==="Admin"){onLogin(fallback);return;}
       setErr("Network error — check your connection and try again.");
@@ -580,8 +597,14 @@ function LoginScreen({onLogin,users,clients}){
         headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
         body:JSON.stringify({email:fpEmail.trim()})
       });
-      if(r.ok||r.status===200)setFpSent(true);
-      else setFpErr("Could not send reset link. Check the email address or contact admin.");
+      if(r.ok||r.status===200){setFpSent(true);}
+      else{
+        // Supabase Auth doesn't know this email — user hasn't been created there yet
+        const isLocal=users.some(u=>u.email===fpEmail.trim());
+        setFpErr(isLocal
+          ?"This account uses local password login. Ask your Admin to set a new password in Settings → Users → Edit."
+          :"Email not recognised. Check for typos or contact bisit@dustandwipes.com.");
+      }
     }catch{setFpErr("Network error. Please try again.");}
     finally{setFpBusy(false);}
   };
@@ -589,27 +612,96 @@ function LoginScreen({onLogin,users,clients}){
   const portStr=totalPortfolio>=1e9?`₦${(totalPortfolio/1e9).toFixed(1)}B`:totalPortfolio>=1e6?`₦${(totalPortfolio/1e6).toFixed(1)}M`:totalPortfolio>=1e3?`₦${(totalPortfolio/1e3).toFixed(0)}K`:totalPortfolio>0?`₦${totalPortfolio}`:"--";
   const roleCount=[...new Set(users.map(u=>u.role))].length||3;
   const loginStats=[[clients.length||"--","Clients"],["15","Modules"],[portStr,"Portfolio"],[roleCount,"User Roles"]];
-  return(<div className="min-h-screen flex" style={{background:`linear-gradient(145deg,${GD} 0%,#1B5E2F 60%,${GD} 100%)`}}>
-    <div className="hidden lg:flex flex-1 flex-col justify-center p-16 text-white">
-      <img src={LOGO} alt="D&W" className="w-24 mb-4 drop-shadow-lg bg-white rounded-xl p-1"/>
-      <h1 className="text-5xl font-black mb-1" style={{fontFamily:"Georgia,serif",letterSpacing:"-1px"}}>Operations Hub</h1>
-      <p className="text-green-200 text-lg mt-1">Dust &amp; Wipes Limited</p>
-      <p className="text-green-400 italic text-sm mt-1">"Restoring a Clean World"</p>
-      <div className="mt-10 grid grid-cols-2 gap-3 w-72">{loginStats.map(([v,l])=><div key={l} className="rounded-2xl p-4 text-center" style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.1)"}}><div className="text-2xl font-black" style={{color:O}}>{v}</div><div className="text-green-200 text-xs mt-1">{l}</div></div>)}</div>
-    </div>
-    <div className="flex-1 flex items-center justify-center p-8">
-      <div className="bg-white rounded-3xl p-10 w-full max-w-md shadow-2xl">
-        <div className="text-center mb-6"><img src={LOGO} alt="D&W" className="w-14 mx-auto mb-3 bg-white rounded-xl p-1"/><h2 className="text-2xl font-black text-gray-800">Welcome Back</h2><p className="text-gray-400 text-sm">Sign in to Operations Hub</p></div>
-        {err&&<div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm mb-4"><AlertTriangle size={14}/>{err}</div>}
-        <div className="space-y-4">
-          <Fld label="Email or Username"><input className={inp} type="text" value={em} onChange={e=>{setEm(e.target.value);setErr("");}} placeholder="email@dustandwipes.com or phone"/></Fld>
-          <Fld label="Password"><div className="relative"><input className={inp+" pr-10"} type={sp?"text":"password"} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="********"/><button type="button" onClick={()=>setSp(p=>!p)} className="absolute right-3 top-2.5 text-gray-400">{sp?<EyeOff size={16}/>:<Eye size={16}/>}</button></div><button onClick={()=>setForgot(true)} className="text-xs mt-2 text-green-700 hover:underline float-right">Forgot password?</button></Fld>
-          <button onClick={go} disabled={busy||!em.trim()||!pw} className="w-full py-3 rounded-xl text-white font-bold text-sm mt-2 clear-both flex items-center justify-center gap-2 disabled:opacity-60" style={{background:`linear-gradient(135deg,${G},#2D8A45)`}}>{busy&&<span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{busy?"Signing in…":"Sign In →"}</button>
+  return(
+    <div className="min-h-screen relative flex overflow-hidden">
+      {/* ── Full-screen background image ── */}
+      <div className="absolute inset-0" style={{backgroundImage:"url('/login-bg.jpg')",backgroundSize:"cover",backgroundPosition:"center center",backgroundRepeat:"no-repeat"}}/>
+      {/* Gradient overlay — deeper on right to keep card readable, lighter on left to show image */}
+      <div className="absolute inset-0" style={{background:"linear-gradient(110deg,rgba(11,53,24,0.55) 0%,rgba(11,53,24,0.35) 45%,rgba(0,0,0,0.60) 100%)"}}/>
+
+      {/* ── Content layer ── */}
+      <div className="relative z-10 flex w-full min-h-screen">
+
+        {/* Left branding panel — desktop only */}
+        <div className="hidden lg:flex flex-1 flex-col justify-between p-14 text-white">
+          <div>
+            <img src={LOGO} alt="D&W" className="w-20 mb-8 drop-shadow-xl rounded-2xl bg-white/10 backdrop-blur-sm p-1.5 border border-white/20"/>
+            <h1 className="text-5xl font-black leading-tight mb-2" style={{fontFamily:"Georgia,serif",letterSpacing:"-1.5px",textShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>Operations Hub</h1>
+            <p className="text-green-200 text-xl font-light mt-1">Dust &amp; Wipes Limited</p>
+            <p className="text-green-300/80 italic text-sm mt-2">"Restoring a Clean World"</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 w-72 mb-4">
+            {loginStats.map(([v,l])=>(
+              <div key={l} className="rounded-2xl p-4 text-center backdrop-blur-sm" style={{background:"rgba(255,255,255,0.10)",border:"1px solid rgba(255,255,255,0.15)"}}>
+                <div className="text-2xl font-black" style={{color:O,textShadow:"0 1px 6px rgba(0,0,0,0.3)"}}>{v}</div>
+                <div className="text-green-200 text-xs mt-1">{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right login card */}
+        <div className="flex-1 flex items-center justify-center p-5 sm:p-8 lg:max-w-md lg:ml-auto">
+          <div className="w-full max-w-md">
+            {/* Mobile-only logo */}
+            <div className="flex flex-col items-center mb-6 lg:hidden">
+              <img src={LOGO} alt="D&W" className="w-16 mb-3 rounded-2xl bg-white/10 backdrop-blur-sm p-1.5 border border-white/20 drop-shadow-xl"/>
+              <h2 className="text-2xl font-black text-white" style={{textShadow:"0 2px 12px rgba(0,0,0,0.5)"}}>Operations Hub</h2>
+              <p className="text-green-200 text-sm">Dust &amp; Wipes Limited</p>
+            </div>
+
+            {/* Card */}
+            <div className="bg-white/95 backdrop-blur-md rounded-3xl p-8 sm:p-10 shadow-2xl" style={{border:"1px solid rgba(255,255,255,0.3)"}}>
+              <div className="hidden lg:block text-center mb-7">
+                <img src={LOGO} alt="D&W" className="w-12 mx-auto mb-3 rounded-xl bg-gray-50 p-1 shadow-sm"/>
+                <h2 className="text-2xl font-black text-gray-800">Welcome Back</h2>
+                <p className="text-gray-400 text-sm mt-0.5">Sign in to Operations Hub</p>
+              </div>
+              <div className="lg:hidden text-center mb-6">
+                <h2 className="text-xl font-black text-gray-800">Sign In</h2>
+                <p className="text-gray-400 text-sm mt-0.5">Enter your credentials to continue</p>
+              </div>
+
+              {err&&<div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm mb-4"><AlertTriangle size={14} className="flex-shrink-0 mt-0.5"/><span>{err}</span></div>}
+
+              <div className="space-y-4">
+                <Fld label="Email or Username">
+                  <input className={inp} type="text" value={em} onChange={e=>{setEm(e.target.value);setErr("");}} placeholder="email@dustandwipes.com or phone number" autoComplete="username"/>
+                </Fld>
+                <Fld label="Password">
+                  <div className="relative">
+                    <input className={inp+" pr-10"} type={sp?"text":"password"} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••" autoComplete="current-password"/>
+                    <button type="button" onClick={()=>setSp(p=>!p)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">{sp?<EyeOff size={16}/>:<Eye size={16}/>}</button>
+                  </div>
+                  <button onClick={()=>setForgot(true)} className="text-xs mt-1.5 text-green-700 hover:underline float-right">Forgot password?</button>
+                </Fld>
+                <button onClick={go} disabled={busy||!em.trim()||!pw} className="w-full py-3 rounded-xl text-white font-bold text-sm mt-2 clear-both flex items-center justify-center gap-2 disabled:opacity-60 transition-opacity" style={{background:`linear-gradient(135deg,${G} 0%,#2D8A45 100%)`,boxShadow:"0 4px 14px rgba(11,53,24,0.35)"}}>{busy&&<span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{busy?"Signing in…":"Sign In →"}</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* ── Forgot password modal ── */}
+      {forgot&&(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="font-bold text-gray-800 mb-1">Reset Password</h3>
+            <p className="text-xs text-gray-400 mb-5">Enter your email and we'll send a password reset link.</p>
+            {fpSent
+              ?<div className="p-4 rounded-xl text-sm text-green-700 font-medium" style={{background:"#f0fdf4",border:"1px solid #bbf7d0"}}> Reset link sent to <strong>{fpEmail}</strong>. Check your inbox (including spam folder).</div>
+              :<div className="space-y-4">
+                {fpErr&&<div className="p-3 rounded-xl text-xs text-red-700" style={{background:"#fee2e2"}}>{fpErr}</div>}
+                <Fld label="Email Address"><input className={inp} type="email" value={fpEmail} onChange={e=>{setFpEmail(e.target.value);setFpErr("");}} placeholder="your@dustandwipes.com"/></Fld>
+                <button onClick={sendReset} disabled={!fpEmail.trim()||fpBusy} className="w-full py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{background:G}}>{fpBusy&&<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{fpBusy?"Sending…":"Send Reset Link"}</button>
+              </div>
+            }
+            <button onClick={()=>{setForgot(false);setFpSent(false);setFpEmail("");setFpErr("");}} className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600">← Back to sign in</button>
+          </div>
+        </div>
+      )}
     </div>
-    {forgot&&(<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl"><h3 className="font-bold text-gray-800 mb-1">Reset Password</h3><p className="text-xs text-gray-400 mb-5">Enter your email and we'll send a password reset link.</p>{fpSent?<div className="p-4 rounded-xl text-sm text-green-700 font-medium" style={{background:"#f0fdf4",border:"1px solid #bbf7d0"}}> Reset link sent to <strong>{fpEmail}</strong>. Check your inbox (including spam folder).</div>:<div className="space-y-4">{fpErr&&<div className="p-3 rounded-xl text-xs text-red-700" style={{background:"#fee2e2"}}>{fpErr}</div>}<Fld label="Email Address"><input className={inp} type="email" value={fpEmail} onChange={e=>{setFpEmail(e.target.value);setFpErr("");}} placeholder="your@dustandwipes.com"/></Fld><button onClick={sendReset} disabled={!fpEmail.trim()||fpBusy} className="w-full py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{background:G}}>{fpBusy&&<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{fpBusy?"Sending…":"Send Reset Link"}</button></div>}<button onClick={()=>{setForgot(false);setFpSent(false);setFpEmail("");setFpErr("");}} className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600"> Back to sign in</button></div></div>)}
-  </div>);}
+  );}
 
 // -- DASHBOARD ----------------------------------------------------------------
 function Dashboard({clients,jobs,requests,inventory,users,staff,onNav}){
@@ -2257,7 +2349,17 @@ function StaffPage({staff,setStaff}){
 function SettingsPage({users,setUsers,activityLog=[]}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
-  const save=data=>{let nu;if(data.id)nu=users.map(u=>u.id===data.id?{...u,...data,initial:(data.name||"?")[0].toUpperCase()}:u);else nu=[...users,{...data,id:"u"+Date.now(),initial:(data.name||"?")[0].toUpperCase()}];setUsers(nu);dbSync("users",nu);setModal(null);};
+  const save=async data=>{
+    const pw=data.password;
+    const clean={...data};delete clean.password; // never persist plain text
+    if(pw){clean.pwHash=await hashPw(pw,data.id||("u"+Date.now()));}
+    const id=clean.id||("u"+Date.now());
+    const entry={...clean,id,initial:(clean.name||"?")[0].toUpperCase()};
+    let nu;
+    if(data.id)nu=users.map(u=>u.id===data.id?{...u,...entry}:u);
+    else nu=[...users,entry];
+    setUsers(nu);dbSync("users",nu);setModal(null);
+  };
   const del=id=>confirm("Remove this app user account?",()=>{setUsers(us=>us.filter(u=>u.id!==id));dbDelete("users",id);});
   return(<div className="space-y-6 max-w-3xl">{confirmEl}
     <Card className="p-6"><h3 className="font-bold text-gray-800 mb-4">Company Profile</h3><div className="grid grid-cols-2 gap-4">{[["Company Name","Dust & Wipes Limited"],["App Name","Operations Hub"],["Domain","app.dustandwipes.com"],["Location","Abuja, Nigeria"],["Currency","NGN ()"],["Timezone","WAT (UTC+1)"]].map(([l,v])=><Fld key={l} label={l}><input className={inp+" bg-gray-50"} defaultValue={v} readOnly/></Fld>)}</div></Card>
@@ -2322,7 +2424,11 @@ function SettingsPage({users,setUsers,activityLog=[]}){
         <Fld label="Role"><select className={inp} value={modal.role||"Technician"} onChange={e=>setModal(p=>({...p,role:e.target.value}))}><option>Admin</option><option>Supervisor</option><option>Technician</option></select></Fld>
         <Fld label="Email (leave blank for technicians)"><input className={inp} type="email" value={modal.email||""} onChange={e=>setModal(p=>({...p,email:e.target.value}))} placeholder="name@dustandwipes.com"/></Fld>
         <Fld label="Username / Phone (for technicians without email)"><input className={inp} value={modal.username||""} onChange={e=>setModal(p=>({...p,username:e.target.value}))} placeholder="e.g. 08031234567"/></Fld>
-        {!modal.id&&<Fld label="Temporary Password"><input className={inp} type="password" value={modal.password||""} onChange={e=>setModal(p=>({...p,password:e.target.value}))}/></Fld>}
+        <Fld label={modal.id?"Set New Password (leave blank to keep current)":"Password"}>
+          <input className={inp} type="password" value={modal.password||""} onChange={e=>setModal(p=>({...p,password:e.target.value}))} placeholder={modal.id?"Enter new password to change it…":"Set initial password for this user"}/>
+        </Fld>
+        {modal.id&&modal.pwHash&&<p className="text-xs text-green-700 -mt-2">✓ Password is set — enter a new one above to change it</p>}
+        {modal.id&&!modal.pwHash&&<p className="text-xs text-amber-600 -mt-2">⚠ No password set — this user cannot log in without one</p>}
       </div>
       <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
         <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
