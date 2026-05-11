@@ -1,5 +1,5 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback, createContext, Component } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, CreditCard, Download, WifiOff } from "lucide-react";
 
@@ -409,7 +409,7 @@ function SaveBtn({onClick,label="Save",savingLabel,disabled=false,color,classNam
 // ── GLOBAL TOAST SYSTEM ──────────────────────────────────────────────────────
 // Usage: const toast = useToast();  then  toast.success("Saved!") / toast.error("Failed")
 // The <Toaster/> component must be rendered once at the app root.
-const ToastCtx = React.createContext(null);
+const ToastCtx = createContext(null);
 
 function Toaster(){
   const[toasts,setToasts]=useState([]);
@@ -507,7 +507,7 @@ function GlobalSearch({clients=[],jobs=[],staff=[],inventory=[],requests=[],onNa
 }
 
 // -- ERROR BOUNDARY ------------------------------------------------------------
-class ErrorBoundary extends React.Component{
+class ErrorBoundary extends Component{
   constructor(props){super(props);this.state={hasError:false,error:null};}
   static getDerivedStateFromError(error){return{hasError:true,error};}
   componentDidCatch(error,info){console.error("[ErrorBoundary]",error,info);}
