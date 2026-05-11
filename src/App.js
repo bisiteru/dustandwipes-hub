@@ -590,7 +590,12 @@ function LoginScreen({onLogin,users,clients}){
       }
       setErr("Account not found. Check your email address or ask Admin.");
     }catch{
-      // Network error — allow Admin emergency local access
+      // Network/config error — diagnose before falling back
+      if(!SUPABASE_URL||!SUPABASE_ANON_KEY){
+        setErr("Supabase environment variables are not configured on this deployment. Contact the developer to set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in Vercel project settings.");
+        return;
+      }
+      // Genuine network outage — allow Admin emergency local access
       const fallback=users.find(u=>u.email===em.trim()||u.username===em.trim());
       if(fallback&&fallback.role==="Admin"){onLogin(fallback);return;}
       setErr("Network error — check your connection and try again.");
@@ -3285,6 +3290,29 @@ export default function App(){
     <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
       <img src={LOGO} alt="D&W" className="w-14 rounded-xl bg-white p-1 shadow-md animate-pulse"/>
       <p className="text-sm font-semibold text-gray-500">Loading Operations Hub…</p>
+    </div>
+  );
+
+  // ── Supabase config gate ──────────────────────────────────────────────────
+  // If environment variables are not set (e.g. Vercel project settings missing),
+  // every dbLoad call fails silently and all data appears empty.
+  // Show an actionable error screen so the issue is immediately obvious.
+  if(!SUPABASE_URL||!SUPABASE_ANON_KEY) return(
+    <div className="flex h-screen items-center justify-center bg-red-50 flex-col gap-5 p-8 text-center">
+      <AlertTriangle size={48} className="text-red-500"/>
+      <div>
+        <h2 className="text-2xl font-black text-red-800 mb-1">Supabase Not Configured</h2>
+        <p className="text-red-600 max-w-md mx-auto text-sm">The database connection environment variables are missing. No data can load until these are set.</p>
+      </div>
+      <div className="bg-white rounded-2xl p-5 text-left text-sm max-w-lg w-full shadow border border-red-100">
+        <p className="font-bold text-gray-700 mb-3">Set these in Vercel → Project Settings → Environment Variables:</p>
+        <div className="space-y-2 font-mono">
+          <div className="bg-gray-50 rounded-lg px-3 py-2 text-blue-700 border border-gray-200">REACT_APP_SUPABASE_URL</div>
+          <div className="bg-gray-50 rounded-lg px-3 py-2 text-blue-700 border border-gray-200">REACT_APP_SUPABASE_ANON_KEY</div>
+        </div>
+        <p className="text-gray-500 text-xs mt-3">After adding them, go to Vercel → Deployments → Redeploy (without clearing cache).</p>
+      </div>
+      <p className="text-red-400 text-xs">Values are in <span className="font-mono">.env.local</span> on the developer machine.</p>
     </div>
   );
 
