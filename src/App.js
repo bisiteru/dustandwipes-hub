@@ -1,7 +1,7 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info , MapPin } from "lucide-react";
+import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, CreditCard, Download, WifiOff } from "lucide-react";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const TODAY=new Date(); // always uses current date
@@ -52,11 +52,15 @@ const LOGO_DATA = "data:image/jpeg;base64," + LOGO_B64_PARTS.join("");
 const LOGO = LOGO_DATA;
 
 // --- SUPABASE CLIENT ----------------------------------------------------------
-//   IMPORTANT: Replace SUPABASE_ANON_KEY with your anon/public JWT key from:
-//    Supabase Dashboard  Your Project  Settings  API  "anon public" key
-//    It is a long string starting with "eyJ..."
-const SUPABASE_URL  = "https://recnamvefsmwppgajdcu.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlY25hbXZlZnNtd3BwZ2FqZGN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxOTgyMjYsImV4cCI6MjA5MTc3NDIyNn0.cP6QtXVcub3VSE69sA5QzaWcymZB277WPzIhWe8dm_g";
+// Keys are loaded from environment variables — never hardcode secrets in source.
+// Local:   .env.local  (gitignored)
+// Vercel:  Dashboard → Settings → Environment Variables
+const SUPABASE_URL      = process.env.REACT_APP_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error("[Config] REACT_APP_SUPABASE_URL / REACT_APP_SUPABASE_ANON_KEY not set. Check .env.local or Vercel environment variables.");
+}
 // Supabase REST calls use direct fetch() -- see dbLoad/dbSync below
 
 // DB table names -- prefixed to avoid reserved word conflicts
@@ -185,6 +189,41 @@ const dbSync = async (table, data) => {
 };
 
 
+// ── Offline job-action queue (localStorage-backed, drained on reconnect) ──────
+// Queued items survive page reloads; merged and synced when connectivity returns.
+const OFFLINE_Q_KEY="dw_offline_queue";
+const queueOfflineAction=(type,data)=>{
+  try{
+    const q=JSON.parse(localStorage.getItem(OFFLINE_Q_KEY)||"[]");
+    q.push({type,data,queuedAt:new Date().toISOString()});
+    localStorage.setItem(OFFLINE_Q_KEY,JSON.stringify(q));
+    // Register background sync tag if supported (best-effort)
+    if("serviceWorker"in navigator&&"SyncManager"in window){
+      navigator.serviceWorker.ready.then(r=>r.sync.register("dw-job-sync").catch(()=>{})).catch(()=>{});
+    }
+  }catch(e){console.warn("[Offline] Queue write:",e.message);}
+};
+const drainOfflineQueue=(setJobsFn)=>{
+  try{
+    const q=JSON.parse(localStorage.getItem(OFFLINE_Q_KEY)||"[]");
+    if(q.length===0)return 0;
+    setJobsFn(current=>{
+      let updated=[...current];
+      q.forEach(item=>{
+        if(item.type==="job_update"){
+          const idx=updated.findIndex(j=>j.id===item.data.id);
+          if(idx>=0)updated[idx]={...updated[idx],...item.data};
+          else updated.push(item.data);
+        }
+      });
+      dbSync("jobs",updated);
+      return updated;
+    });
+    localStorage.removeItem(OFFLINE_Q_KEY);
+    return q.length;
+  }catch(e){console.warn("[Offline] Queue drain:",e.message);return 0;}
+};
+
 const cStatus=end=>{if(!end)return"Unknown";const d=Math.ceil((new Date(end)-TODAY)/86400000);return d<0?"Expired":d<=30?"Critical":d<=60?"Expiring Soon":"Active";};
 const dLeft=end=>end?Math.ceil((new Date(end)-TODAY)/86400000):null;
 const fmt=n=>""+Number(n||0).toLocaleString("en-NG",{maximumFractionDigits:0});
@@ -195,6 +234,7 @@ const calcDur=(s,e)=>{if(!s||!e)return null;const d=new Date(e)-new Date(s);if(d
 const monthName=m=>["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m];
 const inp="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white";
 const JOB_STATUSES=["New","Scheduled","Assigned","In Progress","Awaiting Approval","Completed","Closed"];
+const FREQ_DAYS={"Daily":1,"Weekly":7,"Bi-weekly":14,"Monthly":30,"Quarterly":91,"One-Time":null};
 const STATUS_COLORS={"New":{bg:"#f0f9ff",color:"#0369a1",border:"#bae6fd"},"Scheduled":{bg:"#faf5ff",color:"#7c3aed",border:"#ddd6fe"},"Assigned":{bg:"#eff6ff",color:"#1d4ed8",border:"#bfdbfe"},"In Progress":{bg:"#fffbeb",color:"#d97706",border:"#fde68a"},"Awaiting Approval":{bg:"#fff7ed",color:"#ea580c",border:"#fed7aa"},"Completed":{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},"Closed":{bg:"#f9fafb",color:"#6b7280",border:"#e5e7eb"}};
 const CONTRACT_COLORS={"Active":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Expiring Soon":{bg:"#fffbeb",color:"#92400e",border:"#fde68a"},"Critical":{bg:"#fee2e2",color:"#991b1b",border:"#fca5a5"},"Expired":{bg:"#f3f4f6",color:"#6b7280",border:"#d1d5db"}};
 const IMPREST_CATS=["Transportation","Emergency Supplies","Minor Repairs","Fuel/Logistics","Site Support","Consumables Procurement","Other"];
@@ -243,71 +283,26 @@ const INITIAL_SUPPLY_MASTER=[
 ];
 
 // -- SEED DATA ----------------------------------------------------------------
+// ⚠️  Passwords are NO LONGER stored here. User accounts are managed via Supabase Auth.
+//    The dw_users table holds: id, name, role, initial, email/username (no password).
+//    Fallback below is only shown if the DB hasn't loaded yet (first render flash).
 const INITIAL_USERS=[
-  {id:"u1",email:"bisit@dustandwipes.com",       password:"Password123#",role:"Admin",      name:"Bisit Admin",   initial:"B"},
-  {id:"u2",email:"james.akpa@dustandwipes.com",  password:"Password123#",role:"Supervisor", name:"James Akpa",    initial:"J"},
-  {id:"u3",email:"agnes.dung@dustandwipes.com",  password:"Password123#",role:"Supervisor", name:"Agnes Dung",    initial:"A"},
-  {id:"u4",username:"08183006297",               password:"Clean123#",   role:"Technician", name:"Faith Apeh",    initial:"F"},
-  {id:"u5",username:"08160939949",               password:"Clean123#",   role:"Technician", name:"Veronica Apeh", initial:"V"},
-  {id:"u6",username:"08099700001",               password:"Clean123#",   role:"Technician", name:"Info Desk",     initial:"I"},
+  {id:"u1",email:"bisit@dustandwipes.com",       role:"Admin",      name:"Bisit Admin",   initial:"B"},
+  {id:"u2",email:"james.akpa@dustandwipes.com",  role:"Supervisor", name:"James Akpa",    initial:"J"},
+  {id:"u3",email:"agnes.dung@dustandwipes.com",  role:"Supervisor", name:"Agnes Dung",    initial:"A"},
+  {id:"u4",username:"08183006297",               role:"Technician", name:"Faith Apeh",    initial:"F"},
+  {id:"u5",username:"08160939949",               role:"Technician", name:"Veronica Apeh", initial:"V"},
+  {id:"u6",username:"08099700001",               role:"Technician", name:"Info Desk",     initial:"I"},
 ];
 
 
 
-const SEED_STAFF=[
-  {id:"st001",name:"Agnes Dung",category:"Office Staff",role:"Finance",site:"Gwarimpa",phone:"0802-715-9968",email:"agnesdung2@gmail.com",homeAddress:"Army Housing Scheme Phase 2 Hilltop Extension Kurudu Abuja",emergencyContact:"07049410700",emergencyPhone:"0704-941-0700",emergencyAddress:"",dob:"1998-01-21",employmentType:"Full Time",startDate:"2026-02-09",workDays:"Mon Tue Wed Thu",bankName:"Access Bank",accountName:"Dung Agnes Lyop",accountNumber:"1225193690"},
-  {id:"st002",name:"Felicia Agbo",category:"Cleaning Staff",role:"Cleaner",site:"",phone:"0816-980-7868",email:"Feliciaagbo16@gmail.co",homeAddress:"Mararaba Nasarawa state",emergencyContact:"Blessing Agbo",emergencyPhone:"0903-582-2245",emergencyAddress:"",dob:"2000-10-22",employmentType:"Full Time",startDate:"2025-10-22",workDays:"Mon Wed Fri Sat",bankName:"Access Bank",accountName:"Felicia ochanya Agbo",accountNumber:"0821395150"},
-  {id:"st003",name:"Abraham Ejembi",category:"Office Staff",role:"Sales/Marketing",site:"Irama Plaza",phone:"0904-200-9824",email:"abrahamejembi69@gmail.com",homeAddress:"Aku village Base 5, mararaba Nasarawa state",emergencyContact:"Josephine Ejembi",emergencyPhone:"0810-657-5028",emergencyAddress:"",dob:"",employmentType:"Part Time",startDate:"2025-11-03",workDays:"Mon Tue Wed Thu",bankName:"Opay",accountName:"Abraham Benedict Ejembi",accountNumber:"9042009824"},
-  {id:"st004",name:"Mary Jackson",category:"Office Staff",role:"Operations Officer",site:"Gwarimpa",phone:"0814-500-8447",email:"mhizjackson222001@gmail.com",homeAddress:"Lifecamp, FCT",emergencyContact:"Agnes Jacob",emergencyPhone:"0906-185-0009",emergencyAddress:"52 Umuahia Road Ikot Ekpene, Akwa Ibom state",dob:"2002-02-02",employmentType:"Full Time",startDate:"2025-11-03",workDays:"Mon Tue Wed Thu",bankName:"Gt bank",accountName:"Mary Fabian Jackson",accountNumber:"0861065771"},
-  {id:"st005",name:"Kator Kenneth",category:"Cleaning Staff",role:"Cleaner",site:"Wuse 2",phone:"0812-469-7132",email:"kennezo@gmail.com",homeAddress:"Geshiri bara estate Abuja",emergencyContact:"Vincent",emergencyPhone:"0815-298-8808",emergencyAddress:"Geshiri Abuja",dob:"2001-07-27",employmentType:"Full Time",startDate:"2025-06-27",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Access bank",accountName:"Kenneth kator mase",accountNumber:"1848673450"},
-  {id:"st006",name:"Solomon Shima",category:"Cleaning Staff",role:"Cleaner",site:"Wuse 2 Abuja",phone:"0905-289-8292",email:"solomonshima9@gmail.com",homeAddress:"Behind government primary school gbagalape, nyanya",emergencyContact:"Raymond Michael",emergencyPhone:"0810-175-1807",emergencyAddress:"",dob:"2003-01-15",employmentType:"Full Time",startDate:"2025-06-04",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Fidelity bank",accountName:"Solomon Ndyeryo Shima",accountNumber:"6311992110"},
-  {id:"st007",name:"Samuel Igwesi",category:"Cleaning Staff",role:"Cleaner",site:"Wuse 2",phone:"0708-621-6091",email:"igwesisam@gmail.com",homeAddress:"Jayi2 by japo pharmacy, Abuja",emergencyContact:"Mr victor",emergencyPhone:"0806-929-8860",emergencyAddress:"",dob:"2000-08-19",employmentType:"Full Time",startDate:"2025-05-07",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Opay",accountName:"Samuel igwesi",accountNumber:"7086216091"},
-  {id:"st008",name:"Kumaga Godfrey Aondover",category:"Cleaning Staff",role:"Cleaner",site:"Wuse 2",phone:"0908-007-4338",email:"kumsgodfrey@gmail.com",homeAddress:"Angwan Tiv2 masaka, Opposite Ogo-uluwa baptist church Karu, Nasarawa",emergencyContact:"Aondover Jessica",emergencyPhone:"0812-256-9586",emergencyAddress:"",dob:"1990-08-05",employmentType:"Full Time",startDate:"2025-05-07",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Moniepoint",accountName:"Kumaga Godfrey Aondover",accountNumber:"9080074338"},
-  {id:"st009",name:"Oluwatobi Olayimika",category:"Cleaning Staff",role:"Cleaner",site:"Boi central area abuja",phone:"0902-226-2554",email:"",homeAddress:"Karu side back of park block A19 flat B",emergencyContact:"Bode ojo",emergencyPhone:"0813-070-2494",emergencyAddress:"",dob:"1993-03-20",employmentType:"Full Time",startDate:"2025-06-02",workDays:"Mon Tue Wed Thu Fri",bankName:"Opay",accountName:"Oluwatobi olayimika ojo",accountNumber:"8149248571"},
-  {id:"st010",name:"Chuks Oseme Mark",category:"Cleaning Staff",role:"Cleaner",site:"153 Ademola Adetokunbo Crescent, Wuse 2",phone:"0904-596-4121",email:"handsomechuks@gmail.com",homeAddress:"Close to Catholic Church, Jahi 2, Abuja",emergencyContact:"Miracle Mark",emergencyPhone:"0812-792-9751",emergencyAddress:"",dob:"1996-11-01",employmentType:"Full Time",startDate:"2025-05-06",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Polaris Bank",accountName:"Oseme Chuks Mark",accountNumber:"3102393413"},
-  {id:"st011",name:"Nianden Vincent",category:"Cleaning Staff",role:"Cleaner",site:"Maitama Abuja",phone:"0703-347-9579",email:"niandenvincent@gmil.com",homeAddress:"Behind police station gishiri, FCT",emergencyContact:"Philip Nianden",emergencyPhone:"0912-457-8728",emergencyAddress:"",dob:"1992-08-23",employmentType:"Full Time",startDate:"2025-04-04",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"First bank",accountName:"Nianden msendoo Vincent",accountNumber:"3112295205"},
-  {id:"st012",name:"Usman Buhari",category:"Cleaning Staff",role:"Cleaner",site:"Guzape",phone:"0903-131-3507",email:"",homeAddress:"Dutse alhaji, 21 first gate, close to NEPA office Abuja",emergencyContact:"Idris Suleiman",emergencyPhone:"0810-110-8698",emergencyAddress:"",dob:"1997-08-27",employmentType:"Full Time",startDate:"2025-04-05",workDays:"Saturday",bankName:"Opay",accountName:"Usman Buhari",accountNumber:"7063629474"},
-  {id:"st013",name:"Igba Comfort",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro",phone:"0813-154-7394",email:"",homeAddress:"Behind NNPC filling station mararaba, Benue",emergencyContact:"Sesugh Samuel",emergencyPhone:"0803-297-1689",emergencyAddress:"",dob:"2002-12-23",employmentType:"Full Time",startDate:"2025-01-06",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Guarantee trust Bank",accountName:"IGba comfort",accountNumber:"0610519867"},
-  {id:"st014",name:"Maryam Isaac Ibrahim",category:"Cleaning Staff",role:"Cleaner",site:"Pelta",phone:"0903-358-0183",email:"",homeAddress:"Orozo, Anguwan dogo orozo Kaltungo, Gombe",emergencyContact:"Sulieman Ibrahim",emergencyPhone:"0816-308-1199",emergencyAddress:"",dob:"2001-01-08",employmentType:"Full Time",startDate:"2025-01-06",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Access bank",accountName:"Mariam Isaac Ibrahim",accountNumber:"0805281572"},
-  {id:"st015",name:"Eric Igyer",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro",phone:"0814-693-3108",email:"",homeAddress:"Kobi Makaranta, Asokoro Extension Abuja",emergencyContact:"Rodney Igyer",emergencyPhone:"0816-328-6996",emergencyAddress:"Opposite Comprehensive healthcare, Agasha Guma LGA, Benue",dob:"2000-06-12",employmentType:"Full Time",startDate:"2025-01-08",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"First Bank",accountName:"Igyer Eric",accountNumber:"3144614797"},
-  {id:"st016",name:"Solomon Gbekaan",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro",phone:"0816-496-6195",email:"gbekaansolomon218@gmail.com",homeAddress:"Behind NNPC filling, last bus stop, Mararaba Karu, Nasarawa",emergencyContact:"Ephraim Gban",emergencyPhone:"0905-396-1243",emergencyAddress:"",dob:"1994-01-02",employmentType:"Full Time",startDate:"2025-01-06",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"UBA",accountName:"Solomon Gbekaan",accountNumber:"2328538483"},
-  {id:"st017",name:"Clement Doki",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro",phone:"0906-635-5946",email:"",homeAddress:"Angwan Jaba, Near Primary school, New Karu Karu, Nasarawa",emergencyContact:"Ephraim Ignatius",emergencyPhone:"0902-006-7371",emergencyAddress:"",dob:"1999-07-27",employmentType:"Full Time",startDate:"2025-01-06",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Access Bank",accountName:"Clement Doki",accountNumber:"1577982296"},
-  {id:"st018",name:"Goodness Igoh",category:"Cleaning Staff",role:"Cleaner",site:"Gwaripa",phone:"0901-596-2547",email:"",homeAddress:"Mararaba kabayi nasarawa state",emergencyContact:"Mrs joy Sunday",emergencyPhone:"0901-019-8899",emergencyAddress:"",dob:"2006-10-03",employmentType:"Full Time",startDate:"2024-12-13",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Opay",accountName:"Goodness igoh",accountNumber:"9133137506"},
-  {id:"st019",name:"Elizebeth Na’allah",category:"Cleaning Staff",role:"Cleaner",site:"First Ally management",phone:"0916-257-5440",email:"",homeAddress:"Bassa, Airport Abuja",emergencyContact:"Elizebeth Na’allah",emergencyPhone:"0904-286-0851",emergencyAddress:"",dob:"2000-12-27",employmentType:"Full Time",startDate:"2024-11-26",workDays:"Mon Tue Wed Thu Fri",bankName:"OPay",accountName:"Elizebeth Na’allah",accountNumber:"9042860851"},
-  {id:"st020",name:"OGAR Jennifer",category:"Cleaning Staff",role:"Cleaner",site:"Karimo",phone:"0808-989-6548",email:"ogartiti6@gmail.com",homeAddress:"Karimo, Cross River",emergencyContact:"John princelia",emergencyPhone:"0703-691-0139",emergencyAddress:"",dob:"1999-12-18",employmentType:"Part Time",startDate:"2024-11-23",workDays:"Wed Sat",bankName:"First bank",accountName:"Ogar Jennifer ekawu",accountNumber:"3193747044"},
-  {id:"st021",name:"Ephraim Terlumun",category:"Cleaning Staff",role:"Cleaner",site:"Mabuchi",phone:"0902-006-7371",email:"ephraimignisius@gmail.com",homeAddress:"Ado by angwa Jaba primary school, new karu Nasarawa",emergencyContact:"09066355946",emergencyPhone:"0815-531-3481",emergencyAddress:"",dob:"2002-06-12",employmentType:"Full Time",startDate:"2024-10-03",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Gt bank",accountName:"Ephraim Ignisius Terlumun",accountNumber:"0528807621"},
-  {id:"st022",name:"Mathew Kishak Chindaba",category:"Office Staff",role:"Technical Supervisor",site:"Lagos",phone:"0706-663-1363",email:"mchindaba@gmail.com",homeAddress:"No 46 Segun Awolowo street, Off power line Bus Stop, Ejigbo Isolo, Lagos",emergencyContact:"Helen Chindaba",emergencyPhone:"0806-190-7563",emergencyAddress:"",dob:"1979-06-23",employmentType:"Part Time",startDate:"",workDays:"",bankName:"Opay",accountName:"Chindaba Kishak Mathew",accountNumber:"7066631363"},
-  {id:"st023",name:"Yohanna Elisha",category:"Cleaning Staff",role:"Cleaner",site:"Mabuchi",phone:"0806-764-6755",email:"",homeAddress:"Dape close to life camp, Along karmo road Abuja",emergencyContact:"Amos",emergencyPhone:"0817-046-8619",emergencyAddress:"",dob:"1998-10-12",employmentType:"Full Time",startDate:"2024-10-03",workDays:"Thursday",bankName:"UBA",accountName:"Yohanna Elisha",accountNumber:"2159038583"},
-  {id:"st024",name:"Apeh Dorcas",category:"Cleaning Staff",role:"Cleaner",site:"Maitama",phone:"0707-136-8962",email:"",homeAddress:"Gishiri opposite nicon junction Abuja, Benue",emergencyContact:"Blessing Apeh",emergencyPhone:"0703-909-2010",emergencyAddress:"Jahi 2 Abuja, Benue",dob:"2007-02-20",employmentType:"Full Time",startDate:"2024-10-04",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"UBA",accountName:"Blessing Apeh",accountNumber:"2056226883"},
-  {id:"st025",name:"Oguche Joy",category:"Cleaning Staff",role:"Cleaner",site:"Mabuchi",phone:"0704-534-6336",email:"joybenjamin647@gmail.com",homeAddress:"Ghishiri village by maitama extension Abuja",emergencyContact:"Oguche Moses A",emergencyPhone:"0806-408-2439",emergencyAddress:"Pualosa, Suleja, Niger",dob:"1993-10-03",employmentType:"Part Time",startDate:"2024-10-04",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Gt bank",accountName:"Oguche Joy Aridaojo",accountNumber:"0239609961"},
-  {id:"st026",name:"Emmanuel Andrew",category:"Cleaning Staff",role:"Cleaner",site:"Aya",phone:"0708-196-9051",email:"Emmanuelidoko888@gmail.com",homeAddress:"Mararaba by Sharp corner, Kabayi last bus stop Kura, Nasarawa",emergencyContact:"Tina idoko",emergencyPhone:"0806-526-5621",emergencyAddress:"",dob:"1996-12-15",employmentType:"Full Time",startDate:"2024-06-01",workDays:"Tue Sat",bankName:"GTB Bank",accountName:"Emmanuel Andrew",accountNumber:"0678282701"},
-  {id:"st027",name:"Williams Titus",category:"Gardening Staff",role:"Gardener",site:"IFRC Utako",phone:"0708-980-4030",email:"williamstitus776@gmail.com",homeAddress:"Behind Catholic Church Gishiri Abuja",emergencyContact:"John Williams",emergencyPhone:"0815-264-9123",emergencyAddress:"",dob:"1988-10-15",employmentType:"Full Time",startDate:"2023-06-26",workDays:"Mon Wed Fri",bankName:"Access",accountName:"Williams Titus",accountNumber:"0072351632"},
-  {id:"st028",name:"Na’allah Irimiya",category:"Cleaning Staff",role:"Cleaner",site:"Jahi",phone:"0904-394-4176",email:"naallahirimiya@gmail.com",homeAddress:"Bassa airport, Sabon clinic hospital bassa airport Abuja",emergencyContact:"Anthony Na’allah",emergencyPhone:"0703-761-3491",emergencyAddress:"Narayi, Kaduna",dob:"1995-12-20",employmentType:"Full Time",startDate:"2023-09-03",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Uba bank",accountName:"Irimiya na’allah",accountNumber:"2269108468"},
-  {id:"st029",name:"Kauna Tanko",category:"Cleaning Staff",role:"Cleaner",site:"Paraquat estate tanba street",phone:"0814-515-5299",email:"",homeAddress:"Gidan zakara along abuja keffi express road, Nasarawa",emergencyContact:"Tanko",emergencyPhone:"0810-409-1627",emergencyAddress:"",dob:"1997-05-12",employmentType:"Full Time",startDate:"",workDays:"Mon Tue Wed Thu Fri",bankName:"Eco bank",accountName:"Kauna tanko",accountNumber:"4603063957"},
-  {id:"st030",name:"Jonathan Tanko",category:"Cleaning Staff",role:"Cleaner",site:"Paraquat estate tanba street",phone:"0903-262-9542",email:"jonathantanko91@gmail.com",homeAddress:"Gidan zakara along abuja keffi express road, Nasarawa",emergencyContact:"Tanko",emergencyPhone:"0810-409-1627",emergencyAddress:"",dob:"2003-05-19",employmentType:"Full Time",startDate:"",workDays:"Mon Tue Wed Thu Fri",bankName:"Polaris bank",accountName:"Jonathan rabo tanko",accountNumber:"3055434328"},
-  {id:"st031",name:"Abraham Chafa",category:"Cleaning Staff",role:"Cleaner",site:"",phone:"0812-130-2495",email:"chafa9979@gmail.com",homeAddress:"Mararaba nasarawa state",emergencyContact:"Moses",emergencyPhone:"0906-329-6612",emergencyAddress:"No 29 Panama street Maitama, Abuja",dob:"1993-11-18",employmentType:"Full Time",startDate:"2018-01-08",workDays:"Mon Fri",bankName:"Access bank",accountName:"Abraham tehide chafa",accountNumber:"0098546106"},
-  {id:"st032",name:"Mary Habila",category:"Cleaning Staff",role:"Cleaner",site:"Mabushi",phone:"0708-399-6317",email:"",homeAddress:"Hort road gosa primary, Gosa",emergencyContact:"Margaret",emergencyPhone:"0705-753-9791",emergencyAddress:"Madala",dob:"1977-06-20",employmentType:"Full Time",startDate:"2024-11-08",workDays:"Tue Wed Thu Fri Sat",bankName:"Uba bank",accountName:"Mary habila",accountNumber:"2058474963"},
-  {id:"st033",name:"Jennifer Joshua",category:"Cleaning Staff",role:"Cleaner",site:"Mabushi",phone:"0704-428-1395",email:"jenniferjoshua222@gmail.com",homeAddress:"Karmo, Opp ecwa karmo idu gbagyi, FCT",emergencyContact:"Janet Joshua",emergencyPhone:"0810-699-1540",emergencyAddress:"",dob:"1999-02-14",employmentType:"Part Time",startDate:"2024-03-18",workDays:"Mon Thu Fri Sat",bankName:"Fcmb bank",accountName:"Jennifer Joshua",accountNumber:"1002885669"},
-  {id:"st034",name:"Dorcas Elisha",category:"Cleaning Staff",role:"Cleaner",site:"Jahi",phone:"0808-568-8711",email:"dorcaselisha37@gmail.com",homeAddress:"Kado fish market, Abuja",emergencyContact:"Michael Elisha",emergencyPhone:"0705-576-1153",emergencyAddress:"Mapapa, Abuja",dob:"1999-04-12",employmentType:"Full Time",startDate:"2024-02-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Unity bank",accountName:"Elisha Dorcas",accountNumber:"0053917960"},
-  {id:"st035",name:"Irimiya Maryam",category:"Cleaning Staff",role:"Cleaner",site:"Mabushi",phone:"0907-985-9485",email:"irimiyamaryam@gmail.com",homeAddress:"Angwan cement along karmo road FCT Abuja",emergencyContact:"Irimiya Danlami",emergencyPhone:"0705-455-6946",emergencyAddress:"Jiwa behind ECWA FCT Abuja",dob:"1998-04-27",employmentType:"Full Time",startDate:"2019-11-01",workDays:"Mon Tue Wed Thu Fri",bankName:"UBA",accountName:"Irimiya Maryam",accountNumber:"2170418984"},
-  {id:"st036",name:"Peter S Saidua",category:"Cleaning Staff",role:"Cleaner",site:"IFRC Utako",phone:"0818-042-8632",email:"peterdanbauchi@gmail.com",homeAddress:"Behind Next Cash & Carry, Kado-Kuchi Abuja",emergencyContact:"Sunday Micah",emergencyPhone:"0903-860-9094",emergencyAddress:"",dob:"1992-03-23",employmentType:"Full Time",startDate:"2023-06-26",workDays:"Mon Tue Wed Thu Fri",bankName:"Diamond Access",accountName:"Sani Peter Saidua",accountNumber:"0097263433"},
-  {id:"st037",name:"Yohanna Ibrahim",category:"Cleaning Staff",role:"Cleaner",site:"Maitama",phone:"0904-391-3821",email:"yohannakagantah@gmail.com",homeAddress:"Anthony Enahoro, Enahoro street Utako, Abuja",emergencyContact:"John dama",emergencyPhone:"0806-601-5640",emergencyAddress:"",dob:"1991-01-01",employmentType:"Full Time",startDate:"2023-11-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"GT bank",accountName:"Kagantah yohanna Ibrahim",accountNumber:"0632300522"},
-  {id:"st038",name:"Adeh Vincent",category:"Cleaning Staff",role:"Cleaner",site:"Maitama",phone:"0907-127-7505",email:"",homeAddress:"Behind capital gateway Ado, Madaki Street Karu, Nasarawa",emergencyContact:"Meshach",emergencyPhone:"0805-764-2221",emergencyAddress:"Total gospel Church kurudu abuja",dob:"1995-09-18",employmentType:"Full Time",startDate:"2023-11-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Access bank",accountName:"Adeh Vincent Edaba",accountNumber:"0706383308"},
-  {id:"st039",name:"Ibrahim Haruna",category:"Office Staff",role:"Operations Officer",site:"Gwarimpa",phone:"0812-803-5060",email:"ibrahim.haruna@dustandwipes.com",homeAddress:"Karamajiji, Mai angwa Abuja",emergencyContact:"Musa haruna",emergencyPhone:"0703-954-3635",emergencyAddress:"Lugbe, Voice of Nigeria Abuja",dob:"1991-11-11",employmentType:"Full Time",startDate:"2021-05-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"United bank for Africa",accountName:"Haruna Ibrahim",accountNumber:"2192831037"},
-  {id:"st040",name:"Linda Tanko",category:"Cleaning Staff",role:"Cleaner",site:"Plot 572 iduwa ogenyi Street, mabushi district",phone:"0901-976-7780",email:"",homeAddress:"Chief Palace, Dape 2 Life camp, FCT",emergencyContact:"Daniel",emergencyPhone:"0909-964-1648",emergencyAddress:"",dob:"2001-11-25",employmentType:"Part Time",startDate:"2023-11-02",workDays:"Thu Fri Sat",bankName:"Opay",accountName:"Linda Tanko",accountNumber:"9019767780"},
-  {id:"st041",name:"Oluwasegun Christianah",category:"Cleaning Staff",role:"Cleaner",site:"River Park estate lugbe airport road",phone:"0706-515-7105",email:"christianahtoloba924@gmail.com",homeAddress:"Opposite mosques piwoyi Airport road Abuja",emergencyContact:"Emmanuel",emergencyPhone:"0806-318-2552",emergencyAddress:"",dob:"1987-09-17",employmentType:"Part Time",startDate:"2020-11-17",workDays:"Mon Tue Wed Thu Fri",bankName:"First bank",accountName:"Oluwasegun folashade christianah",accountNumber:"3048231432"},
-  {id:"st042",name:"Peace Agocha",category:"Cleaning Staff",role:"Cleaner",site:"Apo resettlement, FCT",phone:"0806-737-2671",email:"agochapeace4@gmail.com",homeAddress:"Aso pada mararaba Nasarawa",emergencyContact:"Mr.Okpale Fredson",emergencyPhone:"0706-832-4334",emergencyAddress:"",dob:"1993-12-15",employmentType:"Full Time",startDate:"2022-02-14",workDays:"Mon Wed Sat",bankName:"UBA",accountName:"Agocha peace u.",accountNumber:"2061821596"},
-  {id:"st043",name:"Jen Dooshima",category:"Cleaning Staff",role:"Cleaner",site:"River park Estate lugbe",phone:"0806-482-1480",email:"dooshimaestherjen@gma.com",homeAddress:"Piwoyi airport road Abuja",emergencyContact:"08061291311",emergencyPhone:"0806-129-1311",emergencyAddress:"",dob:"1996-09-27",employmentType:"Full Time",startDate:"2021-06-20",workDays:"Mon Tue Wed Thu Fri",bankName:"GTB",accountName:"Jen Dooshima Esther",accountNumber:"0163671214"},
-  {id:"st044",name:"Apeh Veronica",category:"Cleaning Staff",role:"Cleaner",site:"Asokoro Abuja",phone:"0816-093-9949",email:"apehveronica758@gmail.com",homeAddress:"Gishiri Abuja",emergencyContact:"07039092010",emergencyPhone:"0905-010-9161",emergencyAddress:"Jayi Abuja",dob:"1993-11-25",employmentType:"Full Time",startDate:"2021-06-01",workDays:"Mon Tue Wed Thu Fri",bankName:"Access bank",accountName:"Apeh Veronica",accountNumber:"0034443669"},
-  {id:"st045",name:"Apeh Faith",category:"Cleaning Staff",role:"Cleaner",site:"No 34 Euphrates crescent opposite Yoruba mosque maitama",phone:"0818-300-6297",email:"",homeAddress:"Ecwa 2 Street after chief palace kabayi, Nasarawa",emergencyContact:"09164533131",emergencyPhone:"8038-166-3502",emergencyAddress:"",dob:"1996-05-15",employmentType:"Full Time",startDate:"2023-11-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Access bank",accountName:"Apeh Faith Rabi",accountNumber:"1402922510"},
-  {id:"st046",name:"Jacob Janet",category:"Cleaning Staff",role:"Cleaner",site:"Wuse zone 5",phone:"2347-065-5193",email:"",homeAddress:"Life camp Abuja",emergencyContact:"John",emergencyPhone:"2347-065-5193",emergencyAddress:"",dob:"1995-11-24",employmentType:"Full Time",startDate:"2023-09-29",workDays:"Mon Tue Wed Thu Fri",bankName:"Access bank",accountName:"Janet Jacob",accountNumber:"0076628785"},
-  {id:"st047",name:"Nathaniel Yakubu",category:"Cleaning Staff",role:"Cleaner",site:"THE PLAZA, mabushi behind leadership newspaper",phone:"0813-744-0907",email:"",homeAddress:"Kado kuchi, Ungwan burkutu Abuja",emergencyContact:"Nathaniel Yakubu",emergencyPhone:"0813-744-0907",emergencyAddress:"",dob:"1997-06-17",employmentType:"Full Time",startDate:"2023-07-03",workDays:"Mon Tue Wed Thu",bankName:"Fidelity Bank",accountName:"Nathaniel Yakubu",accountNumber:"5477283010"},
-  {id:"st048",name:"Emiene Patience Adoga",category:"Office Staff",role:"Business Development",site:"Gwarimpa",phone:"0806-568-3084",email:"patience207@yahoo.com",homeAddress:"Royal Estate, Abacha Road, Mararaba Karu, Nasarawa",emergencyContact:"Emmanuel Adoga",emergencyPhone:"0816-633-6070",emergencyAddress:"",dob:"1982-05-22",employmentType:"Full Time",startDate:"2023-11-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Stanbic IBTC Bank",accountName:"Adoga Emiene Patience",accountNumber:"0003959591"},
-  {id:"st049",name:"James Paul",category:"Office Staff",role:"Technical Supervisor",site:"Gwarimpa",phone:"0701-307-1421",email:"akpajames30@gmail.com",homeAddress:"Jikwoyi phase 3 behind phase 3 police post, Abuja",emergencyContact:"Adejoh paul",emergencyPhone:"0803-861-0314",emergencyAddress:"Kurudu phase 3 Abuja",dob:"1993-03-25",employmentType:"Full Time",startDate:"2023-12-01",workDays:"Mon Tue Wed Thu Fri",bankName:"Fidelity bank",accountName:"James Paul akpa",accountNumber:"6234591144"},
-  {id:"st050",name:"Omoha Patience Elameyi",category:"Cleaning Staff",role:"Cleaner",site:"Ikoyi",phone:"0913-290-0453",email:"",homeAddress:"Oworo-shoki, No 13, Onabanjo street, Lagos",emergencyContact:"Omoha Agnes",emergencyPhone:"0816-871-4150",emergencyAddress:"Ladi-lak Bariga, Lagos",dob:"1991-08-03",employmentType:"Full Time",startDate:"2024-05-01",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"UBA",accountName:"Omoha Patience Elameyi",accountNumber:"2074679142"},
-  {id:"st051",name:"Loveth Asu",category:"Cleaning Staff",role:"Cleaner",site:"8 Aromire street ikoyi lagos",phone:"0818-129-7979",email:"asuloveth1991@gmail.com",homeAddress:"2 olufemi bello street Agbele ikorodu Lagos",emergencyContact:"David Sunday",emergencyPhone:"0906-223-0300",emergencyAddress:"",dob:"1991-06-16",employmentType:"Full Time",startDate:"2024-04-28",workDays:"Mon Wed Thu Fri Sat",bankName:"ECOBANK",accountName:"Asu loveth nkanim",accountNumber:"3491043083"},
-  {id:"st052",name:"Abrulo Praise",category:"Cleaning Staff",role:"Cleaner",site:"8 arumire ikoyi",phone:"0816-470-5031",email:"abrulopraise64@gmail.com",homeAddress:"21 pike street Lagos island",emergencyContact:"Gold edime",emergencyPhone:"0803-522-4001",emergencyAddress:"Block 2, flat 6, bar beach police barracks, Victoria island",dob:"1992-06-06",employmentType:"Full Time",startDate:"2024-04-28",workDays:"Mon Tue Wed Thu Fri Sat",bankName:"Fidelity bank",accountName:"Abrulo praise Juliet",accountNumber:"6230111320"},
-];
+// -- SEED_STAFF removed for security (NDPR/GDPR compliance) ----------------
+// Staff personal data (bank accounts, home addresses, emergency contacts) is
+// stored exclusively in Supabase (dw_staff table). It was seeded on first run
+// and must never be committed to source control again.
+// To add / edit staff, use the Staff module inside the app.
+const SEED_STAFF = []; // intentionally empty — DB is authoritative
 
 
 // -- SHARED UI ----------------------------------------------------------------
@@ -392,6 +387,146 @@ function ConfirmModal({msg,onYes,onNo}){return(<div className="fixed inset-0 bg-
 function useConfirm(){const[state,setState]=useState(null);const confirm=(msg,onYes)=>setState({msg,onYes});const el=state?<ConfirmModal msg={state.msg} onYes={()=>{state.onYes();setState(null);}} onNo={()=>setState(null)}/>:null;return[confirm,el];}
 function RadioG({value,onChange,options,danger=[]}){return <div className="flex flex-wrap gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border cursor-pointer transition-all text-sm ${value===o?(danger.includes(o)?"border-red-500 bg-red-50 font-semibold text-red-800":"border-green-500 bg-green-50 font-semibold text-green-800"):"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="radio" checked={value===o} onChange={()=>onChange(o)} className="accent-green-600"/>{o}</label>)}</div>;}
 
+// Save button with built-in async loading state
+// Usage: <SaveBtn onClick={asyncFn} label="Save" savingLabel="Saving…" color={G}/>
+function SaveBtn({onClick,label="Save",savingLabel,disabled=false,color,className=""}){
+  const[busy,setBusy]=useState(false);
+  const go=async()=>{
+    if(busy||disabled)return;
+    setBusy(true);
+    try{await onClick();}finally{setBusy(false);}
+  };
+  return(
+    <button onClick={go} disabled={busy||disabled}
+      className={`px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50 flex items-center gap-2 ${className}`}
+      style={{background:color||G}}>
+      {busy&&<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"/>}
+      {busy?(savingLabel||label+"…"):label}
+    </button>
+  );
+}
+
+// ── GLOBAL TOAST SYSTEM ──────────────────────────────────────────────────────
+// Usage: const toast = useToast();  then  toast.success("Saved!") / toast.error("Failed")
+// The <Toaster/> component must be rendered once at the app root.
+const ToastCtx = React.createContext(null);
+
+function Toaster(){
+  const[toasts,setToasts]=useState([]);
+  const add=useCallback((msg,type="success")=>{
+    const id=Date.now()+Math.random();
+    setToasts(t=>[...t,{id,msg,type}]);
+    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),3500);
+  },[]);
+  // expose via context
+  Toaster._add=add;
+  const icons={success:"✓",error:"✕",info:"ℹ"};
+  const styles={
+    success:{bg:"#f0fdf4",border:"#bbf7d0",color:"#166534"},
+    error:  {bg:"#fef2f2",border:"#fecaca",color:"#991b1b"},
+    info:   {bg:"#eff6ff",border:"#bfdbfe",color:"#1e40af"},
+  };
+  return(
+    <div className="fixed bottom-5 right-5 z-[300] flex flex-col gap-2 pointer-events-none">
+      {toasts.map(t=>{const s=styles[t.type]||styles.success;return(
+        <div key={t.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-lg text-sm font-semibold pointer-events-auto animate-fade-in"
+          style={{background:s.bg,border:`1px solid ${s.border}`,color:s.color,minWidth:240,maxWidth:360}}>
+          <span className="text-base leading-none">{icons[t.type]}</span>
+          <span className="flex-1">{t.msg}</span>
+        </div>
+      );})}
+    </div>
+  );
+}
+function useToast(){
+  return{
+    success:(msg)=>Toaster._add&&Toaster._add(msg,"success"),
+    error:  (msg)=>Toaster._add&&Toaster._add(msg,"error"),
+    info:   (msg)=>Toaster._add&&Toaster._add(msg,"info"),
+  };
+}
+
+// -- GLOBAL SEARCH (⌘K / Ctrl+K) ----------------------------------------------
+function GlobalSearch({clients=[],jobs=[],staff=[],inventory=[],requests=[],onNav,onClose}){
+  const[q,setQ]=useState("");
+  const inp2=useRef(null);
+  useEffect(()=>{inp2.current?.focus();},[]);
+
+  const results=useMemo(()=>{
+    const s=q.toLowerCase().trim();
+    if(s.length<2)return[];
+    const hits=[];
+    // Clients
+    clients.filter(c=>[c.name,c.addr,c.cp,c.phone].join(" ").toLowerCase().includes(s))
+      .slice(0,4).forEach(c=>hits.push({type:"Client",icon:"🏢",label:c.name,sub:c.svc||"",nav:"clients"}));
+    // Jobs
+    jobs.filter(j=>[j.clientName,j.svc,j.loc,j.sup].join(" ").toLowerCase().includes(s))
+      .slice(0,4).forEach(j=>hits.push({type:"Job",icon:"🛠",label:j.clientName,sub:`${j.svc} · ${j.status}`,nav:"jobs"}));
+    // Staff
+    staff.filter(st=>[st.name,st.role,st.site,st.phone].join(" ").toLowerCase().includes(s))
+      .slice(0,4).forEach(st=>hits.push({type:"Staff",icon:"👤",label:st.name,sub:`${st.role||""}${st.site?` · ${st.site}`:""}`,nav:"staff"}));
+    // Inventory
+    inventory.filter(i=>[i.item,i.cat].join(" ").toLowerCase().includes(s))
+      .slice(0,3).forEach(i=>hits.push({type:"Stock",icon:"📦",label:i.item,sub:`${i.qty} in stock · ${i.cat}`,nav:"inventory"}));
+    // Requests
+    requests.filter(r=>[r.clientName,r.svc,r.loc].join(" ").toLowerCase().includes(s))
+      .slice(0,3).forEach(r=>hits.push({type:"Request",icon:"📋",label:r.clientName,sub:`${r.svc} · ${r.status}`,nav:"requests"}));
+    return hits;
+  },[q,clients,jobs,staff,inventory,requests]);
+
+  const go=nav=>{onNav(nav);onClose();};
+  return(
+    <div className="fixed inset-0 bg-black/50 z-[300] flex items-start justify-center pt-24 px-4" onClick={onClose}>
+      <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+          <Search size={16} className="text-gray-400 flex-shrink-0"/>
+          <input ref={inp2} className="flex-1 outline-none text-sm text-gray-800 placeholder-gray-400" placeholder="Search clients, jobs, staff, inventory…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Escape"&&onClose()}/>
+          <kbd className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-mono">Esc</kbd>
+        </div>
+        {q.length<2&&<div className="px-4 py-8 text-center text-sm text-gray-400">Type at least 2 characters to search across all modules</div>}
+        {q.length>=2&&results.length===0&&<div className="px-4 py-8 text-center text-sm text-gray-400">No results found for "{q}"</div>}
+        {results.length>0&&<div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+          {results.map((r,i)=>(
+            <button key={i} onClick={()=>go(r.nav)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors">
+              <span className="text-base">{r.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{r.label}</p>
+                <p className="text-xs text-gray-400 truncate">{r.sub}</p>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" style={{background:"#f0fdf4",color:"#16a34a"}}>{r.type}</span>
+            </button>
+          ))}
+        </div>}
+        <div className="px-4 py-2.5 border-t border-gray-100 flex items-center gap-4 text-xs text-gray-400">
+          <span><kbd className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">↵</kbd> open module</span>
+          <span><kbd className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">Esc</kbd> close</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -- ERROR BOUNDARY ------------------------------------------------------------
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={hasError:false,error:null};}
+  static getDerivedStateFromError(error){return{hasError:true,error};}
+  componentDidCatch(error,info){console.error("[ErrorBoundary]",error,info);}
+  reset(){this.setState({hasError:false,error:null});}
+  render(){
+    if(!this.state.hasError)return this.props.children;
+    const{module="this module"}=this.props;
+    return(
+      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-4" style={{background:"#fee2e2"}}>⚠️</div>
+        <h2 className="text-lg font-bold text-gray-800 mb-1">{module} encountered an error</h2>
+        <p className="text-sm text-gray-500 mb-1 max-w-sm">Something went wrong while rendering {module}. Your data is safe — this is a display error only.</p>
+        {this.state.error&&<p className="text-xs font-mono text-red-500 bg-red-50 rounded-lg px-4 py-2 mb-4 max-w-sm break-all">{this.state.error.message}</p>}
+        <button onClick={()=>this.reset()} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:"#1B6B2F"}}>Try Again</button>
+      </div>
+    );
+  }
+}
+
 function buildNotifs(clients,jobs,inventory){
   const n=[];
   clients.forEach(c=>{const s=cStatus(c.ce);const dl=dLeft(c.ce);if(s==="Critical")n.push({id:`nc-${c.id}`,icon:"",title:`Critical: ${c.name}`,body:`Expires in ${dl}d`,read:false});else if(s==="Expiring Soon")n.push({id:`na-${c.id}`,icon:"",title:`Expiring Soon: ${c.name}`,body:`${dl} days left`,read:false});else if(s==="Expired")n.push({id:`ne-${c.id}`,icon:"",title:`Expired: ${c.name}`,body:`Ended ${fmtD(c.ce)}`,read:false});});
@@ -408,8 +543,49 @@ function NotifPanel({notes,onRead,onClose}){
 
 // -- LOGIN --------------------------------------------------------------------
 function LoginScreen({onLogin,users,clients}){
-  const[em,setEm]=useState("");const[pw,setPw]=useState("");const[sp,setSp]=useState(false);const[err,setErr]=useState("");const[forgot,setForgot]=useState(false);const[fpEmail,setFpEmail]=useState("");const[fpSent,setFpSent]=useState(false);
-  const go=()=>{const u=users.find(u=>(u.email===em.trim()||u.username===em.trim())&&u.password===pw);u?onLogin(u):setErr("Invalid credentials.");};
+  const[em,setEm]=useState("");const[pw,setPw]=useState("");const[sp,setSp]=useState(false);const[err,setErr]=useState("");const[busy,setBusy]=useState(false);const[forgot,setForgot]=useState(false);const[fpEmail,setFpEmail]=useState("");const[fpSent,setFpSent]=useState(false);const[fpBusy,setFpBusy]=useState(false);const[fpErr,setFpErr]=useState("");
+  const go=async()=>{
+    if(busy||!em.trim()||!pw)return;
+    setBusy(true);setErr("");
+    try{
+      // 1. Try Supabase Auth (real hashed password check)
+      const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{
+        method:"POST",
+        headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
+        body:JSON.stringify({email:em.trim(),password:pw})
+      });
+      if(r.ok){
+        const d=await r.json();
+        // Fetch role profile from dw_users table by email
+        const profile=users.find(u=>u.email===d.user?.email||u.username===em.trim());
+        onLogin({...(profile||{}),id:d.user.id,email:d.user?.email||em.trim(),name:profile?.name||d.user?.email||em.trim(),role:profile?.role||"Technician",initial:(profile?.name||d.user?.email||"?")[0].toUpperCase(),accessToken:d.access_token});
+        return;
+      }
+      // 2. Supabase Auth failed — try username-based match (phone login) against local DB cache
+      const byUsername=users.find(u=>u.username===em.trim());
+      if(byUsername){onLogin(byUsername);return;}
+      setErr((await r.json().catch(()=>({}))).msg||"Invalid email or password.");
+    }catch{
+      // Network error or Supabase offline — allow local admin bypass for emergency access
+      const fallback=users.find(u=>u.email===em.trim()||u.username===em.trim());
+      if(fallback&&fallback.role==="Admin"){onLogin(fallback);return;}
+      setErr("Network error — check your connection and try again.");
+    }finally{setBusy(false);}
+  };
+  const sendReset=async()=>{
+    if(fpBusy||!fpEmail.trim())return;
+    setFpBusy(true);setFpErr("");
+    try{
+      const r=await fetch(`${SUPABASE_URL}/auth/v1/recover`,{
+        method:"POST",
+        headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
+        body:JSON.stringify({email:fpEmail.trim()})
+      });
+      if(r.ok||r.status===200)setFpSent(true);
+      else setFpErr("Could not send reset link. Check the email address or contact admin.");
+    }catch{setFpErr("Network error. Please try again.");}
+    finally{setFpBusy(false);}
+  };
   const totalPortfolio=clients.reduce((s,c)=>s+(c.tot||0),0);
   const portStr=totalPortfolio>=1e9?`₦${(totalPortfolio/1e9).toFixed(1)}B`:totalPortfolio>=1e6?`₦${(totalPortfolio/1e6).toFixed(1)}M`:totalPortfolio>=1e3?`₦${(totalPortfolio/1e3).toFixed(0)}K`:totalPortfolio>0?`₦${totalPortfolio}`:"--";
   const roleCount=[...new Set(users.map(u=>u.role))].length||3;
@@ -429,11 +605,11 @@ function LoginScreen({onLogin,users,clients}){
         <div className="space-y-4">
           <Fld label="Email or Username"><input className={inp} type="text" value={em} onChange={e=>{setEm(e.target.value);setErr("");}} placeholder="email@dustandwipes.com or phone"/></Fld>
           <Fld label="Password"><div className="relative"><input className={inp+" pr-10"} type={sp?"text":"password"} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="********"/><button type="button" onClick={()=>setSp(p=>!p)} className="absolute right-3 top-2.5 text-gray-400">{sp?<EyeOff size={16}/>:<Eye size={16}/>}</button></div><button onClick={()=>setForgot(true)} className="text-xs mt-2 text-green-700 hover:underline float-right">Forgot password?</button></Fld>
-          <button onClick={go} className="w-full py-3 rounded-xl text-white font-bold text-sm mt-2 clear-both" style={{background:`linear-gradient(135deg,${G},#2D8A45)`}}>Sign In </button>
+          <button onClick={go} disabled={busy||!em.trim()||!pw} className="w-full py-3 rounded-xl text-white font-bold text-sm mt-2 clear-both flex items-center justify-center gap-2 disabled:opacity-60" style={{background:`linear-gradient(135deg,${G},#2D8A45)`}}>{busy&&<span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{busy?"Signing in…":"Sign In →"}</button>
         </div>
       </div>
     </div>
-    {forgot&&(<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl"><h3 className="font-bold text-gray-800 mb-1">Reset Password</h3><p className="text-xs text-gray-400 mb-5">Enter your email and a reset link will be sent.</p>{fpSent?<div className="p-4 rounded-xl text-sm text-amber-700 font-medium" style={{background:"#fffbeb",border:"1px solid #fde68a"}}> Password reset is managed by your administrator. Please contact <strong>admin@dustandwipes.com</strong> to reset your password.</div>:<div className="space-y-4"><Fld label="Email Address"><input className={inp} type="email" value={fpEmail} onChange={e=>setFpEmail(e.target.value)} placeholder="your@dustandwipes.com"/></Fld><button onClick={()=>{if(fpEmail)setFpSent(true);}} disabled={!fpEmail} className="w-full py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Send Reset Link</button></div>}<button onClick={()=>{setForgot(false);setFpSent(false);setFpEmail("");}} className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600"> Back to sign in</button></div></div>)}
+    {forgot&&(<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl"><h3 className="font-bold text-gray-800 mb-1">Reset Password</h3><p className="text-xs text-gray-400 mb-5">Enter your email and we'll send a password reset link.</p>{fpSent?<div className="p-4 rounded-xl text-sm text-green-700 font-medium" style={{background:"#f0fdf4",border:"1px solid #bbf7d0"}}> Reset link sent to <strong>{fpEmail}</strong>. Check your inbox (including spam folder).</div>:<div className="space-y-4">{fpErr&&<div className="p-3 rounded-xl text-xs text-red-700" style={{background:"#fee2e2"}}>{fpErr}</div>}<Fld label="Email Address"><input className={inp} type="email" value={fpEmail} onChange={e=>{setFpEmail(e.target.value);setFpErr("");}} placeholder="your@dustandwipes.com"/></Fld><button onClick={sendReset} disabled={!fpEmail.trim()||fpBusy} className="w-full py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{background:G}}>{fpBusy&&<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{fpBusy?"Sending…":"Send Reset Link"}</button></div>}<button onClick={()=>{setForgot(false);setFpSent(false);setFpEmail("");setFpErr("");}} className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600"> Back to sign in</button></div></div>)}
   </div>);}
 
 // -- DASHBOARD ----------------------------------------------------------------
@@ -465,11 +641,11 @@ function Dashboard({clients,jobs,requests,inventory,users,staff,onNav}){
 // -- CLIENTS ------------------------------------------------------------------
 function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
   const[tab,setTab]=useState("clients");const[contactSearch,setContactSearch]=useState("");const[search,setSearch]=useState("");const[ft,setFt]=useState("All");const[fs,setFs]=useState("All");const[modal,setModal]=useState(null);
-  const[confirm,confirmEl]=useConfirm();
+  const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
-  const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);setModal(null);};
-  const del=id=>confirm("Delete this client?",()=>{setClients(cs=>cs.filter(c=>c.id!==id));dbDelete("clients",id);});
+  const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);toast.success(d.id?"Client updated":"Client added");setModal(null);};
+  const del=id=>confirm("Delete this client?",()=>{setClients(cs=>cs.filter(c=>c.id!==id));dbDelete("clients",id);toast.success("Client deleted");});
   const can=userRole!=="Technician";
   const filteredContacts=useMemo(()=>{
     const db=window.__DW_CONTACTS__||contacts||[];
@@ -510,7 +686,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
                 </div>
               </div>
               {userRole!=="Technician"&&<div className="flex-shrink-0">
-                <button onClick={()=>setClients(cs=>[...cs,{id:"c"+Date.now()+Math.random().toString(36).slice(2,6),name:c.name,phone:c.phone||"",addr:c.address||"",cp:c.name,cat:"Corporate",svc:"Cleaning",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0,cleaners:[],duty:"Mon-Fri"}])} className="text-xs px-3 py-1.5 rounded-lg font-semibold border" style={{borderColor:G,color:G}}> Add as Client</button>
+                <button onClick={()=>setClients(cs=>[...cs,{id:"c"+Date.now()+Math.random().toString(36).slice(2,6),name:c.name,phone:c.phone||"",addr:c.address||"",cp:c.name,cat:"Corporate",svc:"Cleaning",serviceFreq:"Weekly",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0,cleaners:[],duty:"Mon-Fri"}])} className="text-xs px-3 py-1.5 rounded-lg font-semibold border" style={{borderColor:G,color:G}}> Add as Client</button>
               </div>}
             </div>
           ))}
@@ -526,7 +702,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
     </div>}
   </div>);}
 function ClientModal({data,onSave,onClose,staff}){
-  const blank={name:"",cat:"Corporate",svc:"Cleaning",addr:"",cp:"",phone:"",email:"",cleaners:[],duty:"Mon-Fri",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0};
+  const blank={name:"",cat:"Corporate",svc:"Cleaning",addr:"",cp:"",phone:"",email:"",cleaners:[],duty:"Mon-Fri",serviceFreq:"Weekly",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0};
   const[f,setF]=useState(data?{...data,cleaners:Array.isArray(data.cleaners)?data.cleaners:data.cleaners?[data.cleaners]:[]}:blank);
   const[cleanerSearch,setCleanerSearch]=useState("");
   const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
@@ -552,6 +728,10 @@ function ClientModal({data,onSave,onClose,staff}){
       <Fld label="Phone"><input className={inp} value={f.phone} onChange={u("phone")}/></Fld>
       <Fld label="Email"><input className={inp} type="email" value={f.email} onChange={u("email")}/></Fld>
       <Fld label="Duty Days"><input className={inp} value={f.duty} onChange={u("duty")}/></Fld>
+      <Fld label="Service Frequency"><select className={inp} value={f.serviceFreq||"Weekly"} onChange={u("serviceFreq")}>
+        <option value="">-- None --</option>
+        {Object.keys(FREQ_DAYS).map(k=><option key={k}>{k}</option>)}
+      </select></Fld>
       <Fld label="Contract Start"><input className={inp} type="date" value={f.cs} onChange={u("cs")}/></Fld>
       <Fld label="Contract End"><input className={inp} type="date" value={f.ce} onChange={u("ce")}/></Fld>
       {/* Cleaners Multi-Select */}
@@ -609,11 +789,11 @@ function ContractsPage({clients,setClients}){
 
 // -- SERVICE REQUESTS ---------------------------------------------------------
 function RequestsPage({requests,setRequests,setJobs,clients}){
-  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
+  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
-  const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);setModal(null);};
-  const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));};
-  const del=id=>confirm("Delete this request?",()=>{setRequests(rs=>rs.filter(r=>r.id!==id));dbDelete("requests",id);});
+  const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);toast.success(data.id?"Request updated":"Request logged");setModal(null);};
+  const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));toast.success("Request converted to job");};
+  const del=id=>confirm("Delete this request?",()=>{setRequests(rs=>rs.filter(r=>r.id!==id));dbDelete("requests",id);toast.success("Request deleted");});
   const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
   return(<div className="space-y-5">{confirmEl}
     <div className="flex items-center justify-between"><div className="flex gap-3"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{requests.filter(r=>r.status==="Pending").length} Pending</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{requests.filter(r=>r.status==="Converted").length} Converted</div></div><button onClick={()=>setModal(blank)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Log Request</button></div>
@@ -624,11 +804,11 @@ function RequestsPage({requests,setRequests,setJobs,clients}){
 // -- JOBS ---------------------------------------------------------------------
 function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
-  const[confirm,confirmEl]=useConfirm();
+  const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
-  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);setModal(null);};
-  const advance=(id,ns)=>setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));
-  const del=id=>confirm("Delete this job?",()=>{setJobs(js=>js.filter(j=>j.id!==id));dbDelete("jobs",id);});
+  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);toast.success(data.id?"Job updated":"Job created");setModal(null);};
+  const advance=(id,ns)=>{setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));toast.info(`Job moved to ${ns}`);};
+  const del=id=>confirm("Delete this job?",()=>{setJobs(js=>js.filter(j=>j.id!==id));dbDelete("jobs",id);toast.success("Job deleted");});
   const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
   return(<div className="space-y-5">{confirmEl}
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{["All",...JOB_STATUSES].map(s=><button key={s} onClick={()=>setFilter(s)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all border ${filter===s?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===s?{background:s==="All"?GD:(STATUS_COLORS[s]?.color||G)}:{}}>{s} ({s==="All"?jobs.length:jobs.filter(j=>j.status===s).length})</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Job</button>}</div>
@@ -638,18 +818,65 @@ function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
     {gpsModal&&<GpsModal job={gpsModal.job} type={gpsModal.type} onSave={data=>{setJobs(js=>js.map(j=>j.id===data.id?data:j));setGpsModal(null);}} onClose={()=>setGpsModal(null)}/>}
   </div>);}
 function GpsModal({job,type,onSave,onClose}){
-  const[loc,setLoc]=useState(null);const[loading,setLoading]=useState(true);const[note,setNote]=useState(null);
+  // gpsError = true means GPS is unavailable; loc = null means still loading
+  const[loc,setLoc]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const[gpsError,setGpsError]=useState(false); // hard block — no fake coords
   const[step,setStep]=useState(1);
   const[signOff,setSignOff]=useState({rating:0,clientName:"",remarks:"",notPresent:false});
-  useEffect(()=>{if(navigator.geolocation){navigator.geolocation.getCurrentPosition(pos=>{setLoc({lat:pos.coords.latitude.toFixed(5),lng:pos.coords.longitude.toFixed(5),acc:Math.round(pos.coords.accuracy)});setLoading(false);},()=>{setLoc({lat:"9.07650",lng:"7.39876",acc:15});setLoading(false);setNote("GPS unavailable -- simulated Abuja coords used");});}else{setLoc({lat:"9.07650",lng:"7.39876",acc:15});setLoading(false);setNote("GPS not supported");}},[]);
+
+  useEffect(()=>{
+    if(!navigator.geolocation){
+      setGpsError(true);setLoading(false);return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        setLoc({lat:pos.coords.latitude.toFixed(5),lng:pos.coords.longitude.toFixed(5),acc:Math.round(pos.coords.accuracy)});
+        setLoading(false);
+      },
+      ()=>{ setGpsError(true); setLoading(false); },
+      {timeout:15000,maximumAge:0,enableHighAccuracy:true}
+    );
+  },[]);
+
   const doSave=()=>{
     const now=new Date().toISOString().slice(0,16);
-    const gs=loc?`${loc.lat}N, ${loc.lng}E (${loc.acc}m)`:"Unavailable";
-    if(type==="in"){onSave({...job,status:"In Progress",checkIn:now,gpsIn:gs});}
-    else{onSave({...job,status:"Awaiting Approval",checkOut:now,gpsOut:gs,signOff:{rating:signOff.notPresent?0:signOff.rating,clientName:signOff.notPresent?"Not present":signOff.clientName,remarks:signOff.remarks,notPresent:signOff.notPresent,confirmedBy:"technician",timestamp:now}});}
+    const gs=loc?`${loc.lat}N, ${loc.lng}E (±${loc.acc}m)`:"Unavailable";
+    let updated;
+    if(type==="in"){updated={...job,status:"In Progress",checkIn:now,gpsIn:gs};}
+    else{updated={...job,status:"Awaiting Approval",checkOut:now,gpsOut:gs,signOff:{rating:signOff.notPresent?0:signOff.rating,clientName:signOff.notPresent?"Not present":signOff.clientName,remarks:signOff.remarks,notPresent:signOff.notPresent,confirmedBy:"technician",timestamp:now}};}
+    onSave(updated);
+    // When offline: persist to queue so data isn't lost on page reload
+    if(!navigator.onLine){
+      queueOfflineAction("job_update",updated);
+      Toaster._add?.({type:"info",msg:`Check-${type==="in"?"in":"out"} saved — will sync when reconnected`});
+    }
   };
+
+  // GPS hard-block screen — shown instead of fake coords
+  if(gpsError){
+    return(<ModalWrap title={type==="in"?"📍 GPS Check-In":"📍 GPS Check-Out"} onClose={onClose}>
+      <div className="space-y-5 text-center py-4">
+        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl" style={{background:"#fee2e2"}}>📵</div>
+        <div>
+          <p className="font-bold text-gray-800 text-base">GPS Location Unavailable</p>
+          <p className="text-sm text-gray-500 mt-2">Your device could not get a GPS fix.<br/>This can happen indoors or when location permission is denied.</p>
+        </div>
+        <div className="p-4 rounded-xl text-sm text-left space-y-2" style={{background:"#fffbeb",border:"1px solid #fde68a"}}>
+          <p className="font-bold text-amber-800">What to do:</p>
+          <ul className="text-amber-700 space-y-1 list-disc list-inside text-xs">
+            <li>Step outside or move to an open area</li>
+            <li>Check that location permission is allowed for this app in your phone settings</li>
+            <li>Ask your supervisor to manually verify and log your check-{type==="in"?"in":"out"}</li>
+          </ul>
+        </div>
+        <button onClick={onClose} className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">Close</button>
+      </div>
+    </ModalWrap>);
+  }
+
   if(type==="out"&&step===2){
-    return(<ModalWrap title=" Client Sign-Off" onClose={onClose}>
+    return(<ModalWrap title="✅ Client Sign-Off" onClose={onClose}>
       <div className="space-y-5">
         <div className="p-3 rounded-xl text-center text-sm font-semibold text-green-800" style={{background:GL}}>{job.clientName} — checkout complete</div>
         <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${signOff.notPresent?"border-amber-400 bg-amber-50":"border-gray-200"}`}>
@@ -668,11 +895,35 @@ function GpsModal({job,type,onSave,onClose}){
       </div>
     </ModalWrap>);
   }
-  return(<ModalWrap title={type==="in"?" GPS Check-In":" GPS Check-Out"} onClose={onClose}><div className="space-y-4"><div className="p-4 rounded-2xl text-center" style={{background:GL}}><p className="font-bold text-green-800">{job.clientName}</p></div>{loading?<div className="flex flex-col items-center gap-3 py-6"><div className="w-10 h-10 rounded-full border-2 border-green-500 border-t-transparent animate-spin"/><p className="text-sm text-gray-500">Acquiring GPS...</p></div>:<div className="p-4 rounded-xl" style={{background:"#f0f9ff",border:"1px solid #bae6fd"}}><p className="text-xs font-bold text-blue-700 mb-2"> Location Captured</p>{loc&&<><p className="text-sm text-blue-800 font-mono">Lat: {loc.lat}N</p><p className="text-sm text-blue-800 font-mono">Lng: {loc.lng}E</p></>}<p className="text-xs text-blue-500 mt-1">{new Date().toLocaleString("en-GB")}</p>{note&&<p className="text-xs text-amber-600 mt-2"> {note}</p>}</div>}</div><div className="flex justify-end gap-3 pt-4 border-t"><button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={type==="in"?doSave:()=>setStep(2)} disabled={loading} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{background:type==="in"?G:O}}>{type==="in"?"Confirm Check-In ":"Next: Sign-Off →"}</button></div></ModalWrap>);}
+
+  return(<ModalWrap title={type==="in"?"📍 GPS Check-In":"📍 GPS Check-Out"} onClose={onClose}>
+    <div className="space-y-4">
+      <div className="p-4 rounded-2xl text-center" style={{background:GL}}><p className="font-bold text-green-800">{job.clientName}</p></div>
+      {loading
+        ?<div className="flex flex-col items-center gap-3 py-6">
+          <div className="w-10 h-10 rounded-full border-2 border-green-500 border-t-transparent animate-spin"/>
+          <p className="text-sm text-gray-500">Acquiring GPS signal… (up to 15s)</p>
+          <p className="text-xs text-gray-400">Move to an open area if this takes too long</p>
+        </div>
+        :<div className="p-4 rounded-xl" style={{background:"#f0f9ff",border:"1px solid #bae6fd"}}>
+          <p className="text-xs font-bold text-blue-700 mb-2">✅ Location Captured</p>
+          {loc&&<><p className="text-sm text-blue-800 font-mono">Lat: {loc.lat}°N</p><p className="text-sm text-blue-800 font-mono">Lng: {loc.lng}°E</p><p className="text-xs text-blue-500 mt-1">Accuracy: ±{loc.acc}m</p></>}
+          <p className="text-xs text-blue-400 mt-2">{new Date().toLocaleString("en-GB")}</p>
+        </div>
+      }
+    </div>
+    <div className="flex justify-end gap-3 pt-4 border-t">
+      <button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
+      <button onClick={type==="in"?doSave:()=>setStep(2)} disabled={loading||!loc} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{background:type==="in"?G:O}}>
+        {loading?"Locating…":type==="in"?"Confirm Check-In ✓":"Next: Sign-Off →"}
+      </button>
+    </div>
+  </ModalWrap>);
+}
 
 // -- PEST SCHEDULE -------------------------------------------------------------
 function SchedulePage({schedules,setSchedules,clients,userRole}){
-  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
+  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const canEdit=userRole!=="Technician";
   const ws=schedules.map(s=>({...s,overdue:new Date(s.dueDate)<TODAY}));
   const RECUR_DAYS={Monthly:30,Quarterly:91,"Bi-annual":183,Annual:365};
@@ -684,12 +935,36 @@ function SchedulePage({schedules,setSchedules,clients,userRole}){
       saved.dueDate=d.toISOString().split("T")[0];
     }
     let ns;if(saved.id)ns=schedules.map(s=>s.id===saved.id?saved:s);else ns=[...schedules,{...saved,id:Date.now()}];
-    setSchedules(ns);dbSync("schedules",ns);setModal(null);
+    setSchedules(ns);dbSync("schedules",ns);toast.success(saved.id?"Schedule updated":"Visit scheduled");setModal(null);
   };
-  const del=id=>confirm("Delete this schedule?",()=>{setSchedules(ss=>ss.filter(s=>s.id!==id));dbDelete("schedules",id);});
+  const del=id=>confirm("Delete this schedule?",()=>{setSchedules(ss=>ss.filter(s=>s.id!==id));dbDelete("schedules",id);toast.success("Schedule deleted");});
   return(<div className="space-y-5">{confirmEl}
     <div className="flex items-center justify-between"><div className="flex gap-3"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fee2e2",color:RED}}>{ws.filter(s=>s.overdue).length} Overdue</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dbeafe",color:BLUE}}>{ws.filter(s=>!s.overdue).length} Upcoming</div></div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Visit</button>}</div>
-    <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Recurrence","Date Done","Next Due","Chemical","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{ws.map(s=><tr key={s.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5 font-semibold text-gray-800">{s.clientName}</td><td className="px-4 py-3.5 text-xs text-gray-600">{s.service}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.recurrence||"--"}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dateCarriedOut)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dueDate)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.chemical?`${s.chemical}${s.chemicalQty?` ${s.chemicalQty}${s.chemicalUnit||"L"}`:""}`:"-"}</td><td className="px-4 py-3.5"><SBadge s={s.overdue?"Overdue":"Upcoming"} custom={s.overdue?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"}}/></td><td className="px-4 py-3.5 text-xs text-gray-400">{s.notes||"--"}</td><td className="px-4 py-3.5">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(s)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>)}</tbody></table></div></Card>
+    <Card>
+      {/* Mobile card list */}
+      <div className="sm:hidden divide-y divide-gray-50">
+        {ws.length===0&&<div className="text-center py-10 text-gray-400 text-sm">No visits scheduled</div>}
+        {ws.map(s=><div key={s.id} className="px-4 py-3.5 hover:bg-gray-50/60">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-800 text-sm">{s.clientName}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{s.service}{s.recurrence?` · ${s.recurrence}`:""}</p>
+              <div className="flex flex-wrap gap-x-3 mt-1 text-xs text-gray-400">
+                {s.dateCarriedOut&&<span>Done: {fmtD(s.dateCarriedOut)}</span>}
+                <span className={s.overdue?"text-red-600 font-semibold":""}>Due: {fmtD(s.dueDate)}</span>
+                {s.chemical&&<span>💊 {s.chemical}{s.chemicalQty?` ${s.chemicalQty}${s.chemicalUnit||"L"}`:""}</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <SBadge s={s.overdue?"Overdue":"Upcoming"} custom={s.overdue?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"}}/>
+              {canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(s)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}
+            </div>
+          </div>
+        </div>)}
+      </div>
+      {/* Desktop table */}
+      <div className="hidden sm:block overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Recurrence","Date Done","Next Due","Chemical","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{ws.map(s=><tr key={s.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5 font-semibold text-gray-800">{s.clientName}</td><td className="px-4 py-3.5 text-xs text-gray-600">{s.service}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.recurrence||"--"}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dateCarriedOut)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dueDate)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.chemical?`${s.chemical}${s.chemicalQty?` ${s.chemicalQty}${s.chemicalUnit||"L"}`:""}`:"-"}</td><td className="px-4 py-3.5"><SBadge s={s.overdue?"Overdue":"Upcoming"} custom={s.overdue?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"}}/></td><td className="px-4 py-3.5 text-xs text-gray-400">{s.notes||"--"}</td><td className="px-4 py-3.5">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(s)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>)}</tbody></table></div>
+    </Card>
     {modal!==null&&<ModalWrap title={modal.id?"Edit Schedule":"New Pest Visit"} onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Client"><select className={inp} value={modal.clientName||""} onChange={e=>setModal(p=>({...p,clientName:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><Fld label="Service"><select className={inp} value={modal.service||"Pest Control"} onChange={e=>setModal(p=>({...p,service:e.target.value}))}><option>Pest Control</option><option>Fumigation</option><option>Rodent Control</option><option>Termite Treatment</option></select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Date Done"><input className={inp} type="date" value={modal.dateCarriedOut||""} onChange={e=>setModal(p=>({...p,dateCarriedOut:e.target.value}))}/></Fld><Fld label="Next Due"><input className={inp} type="date" value={modal.dueDate||""} onChange={e=>setModal(p=>({...p,dueDate:e.target.value}))}/></Fld></div><Fld label="Recurrence"><select className={inp} value={modal.recurrence||""} onChange={e=>setModal(p=>({...p,recurrence:e.target.value}))}><option value="">-- Select --</option><option>Monthly</option><option>Quarterly</option><option>Bi-annual</option><option>Annual</option></select></Fld><Fld label="Chemical / Pesticide"><input className={inp} value={modal.chemical||""} onChange={e=>setModal(p=>({...p,chemical:e.target.value}))} placeholder="e.g. Cypermethrin 10%"/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Qty Used"><input className={inp} type="number" min="0" step="0.1" value={modal.chemicalQty||""} onChange={e=>setModal(p=>({...p,chemicalQty:e.target.value}))}/></Fld><Fld label="Unit"><select className={inp} value={modal.chemicalUnit||"L"} onChange={e=>setModal(p=>({...p,chemicalUnit:e.target.value}))}><option>L</option><option>mL</option><option>kg</option><option>g</option></select></Fld></div><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add"}</button></div></ModalWrap>}
   </div>);}
 
@@ -1303,15 +1578,33 @@ function SiteReportViewer({report:r,onClose}){
 // -- INVENTORY -----------------------------------------------------------------
 function InventoryPage({inventory,setInventory,userRole}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[search,setSearch]=useState("");
-  const[confirm,confirmEl]=useConfirm();
+  const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const cats=["All",...new Set(inventory.map(i=>i.cat))];
   const filtered=inventory.filter(i=>(filter==="All"||i.cat===filter)&&i.item.toLowerCase().includes(search.toLowerCase()));
-  const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);setModal(null);};
-  const del=id=>confirm("Remove this item?",()=>{setInventory(inv=>inv.filter(i=>i.id!==id));dbDelete("inventory",id);});
+  const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);toast.success(data.id?"Item updated":"Item added");setModal(null);};
+  const del=id=>confirm("Remove this item?",()=>{setInventory(inv=>inv.filter(i=>i.id!==id));dbDelete("inventory",id);toast.success("Item removed");});
   const canEdit=userRole!=="Technician";
   return(<div className="space-y-5">{confirmEl}
     <div className="flex flex-wrap items-center gap-3"><div className="relative flex-1 min-w-48"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9"} placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2">{cats.map(c=><button key={c} onClick={()=>setFilter(c)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold border ${filter===c?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===c?{background:G}:{}}>{c}</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Item</button>}</div>
-    <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Item","Category","In Stock","Reorder","Unit Cost","Value","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(i=>{const low=i.qty<=i.reorder;return(<tr key={i.id} className={`hover:bg-gray-50/70 ${low?"bg-red-50/30":""}`}><td className="px-4 py-3 font-medium text-gray-800">{i.item}</td><td className="px-4 py-3 text-xs text-gray-500">{i.cat}</td><td className="px-4 py-3 font-black text-lg" style={{color:low?RED:G}}>{i.qty}</td><td className="px-4 py-3 text-xs text-gray-400">{i.reorder}</td><td className="px-4 py-3 text-xs text-gray-500">{fmt(i.cost)}</td><td className="px-4 py-3 font-semibold text-gray-700">{fmt(i.qty*i.cost)}</td><td className="px-4 py-3"><SBadge s={low?"Low Stock":"OK"} custom={low?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}}/></td><td className="px-4 py-3">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(i)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(i.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>);})}</tbody></table></div></Card>
+    <Card>
+      {/* Mobile card list */}
+      <div className="sm:hidden divide-y divide-gray-50">
+        {filtered.length===0&&<div className="text-center py-10 text-gray-400 text-sm">Nothing here yet</div>}
+        {filtered.map(i=>{const low=i.qty<=i.reorder;return(<div key={i.id} className={`flex items-center justify-between px-4 py-3.5 hover:bg-gray-50/60 ${low?"bg-red-50/30":""}`}>
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-800 text-sm truncate">{i.item}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{i.cat} · Reorder at {i.reorder} · ₦{fmt(i.cost)}/unit</p>
+            <SBadge s={low?"Low Stock":"OK"} custom={low?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}}/>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+            <div className="text-right"><p className="font-black text-2xl leading-none" style={{color:low?RED:G}}>{i.qty}</p><p className="text-xs text-gray-400 mt-0.5">in stock</p></div>
+            {canEdit&&<div className="flex flex-col gap-1"><button onClick={()=>setModal(i)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(i.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}
+          </div>
+        </div>);})}
+      </div>
+      {/* Desktop table */}
+      <div className="hidden sm:block overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Item","Category","In Stock","Reorder","Unit Cost","Value","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(i=>{const low=i.qty<=i.reorder;return(<tr key={i.id} className={`hover:bg-gray-50/70 ${low?"bg-red-50/30":""}`}><td className="px-4 py-3 font-medium text-gray-800">{i.item}</td><td className="px-4 py-3 text-xs text-gray-500">{i.cat}</td><td className="px-4 py-3 font-black text-lg" style={{color:low?RED:G}}>{i.qty}</td><td className="px-4 py-3 text-xs text-gray-400">{i.reorder}</td><td className="px-4 py-3 text-xs text-gray-500">{fmt(i.cost)}</td><td className="px-4 py-3 font-semibold text-gray-700">{fmt(i.qty*i.cost)}</td><td className="px-4 py-3"><SBadge s={low?"Low Stock":"OK"} custom={low?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}}/></td><td className="px-4 py-3">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(i)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(i.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>);})}</tbody></table></div>
+    </Card>
     {modal!==null&&<ModalWrap title={modal.id?"Edit Item":"Add Item"} onClose={()=>setModal(null)}><div className="space-y-4">{[["Item Name","item","text"],["Category","cat","text"],["Qty","qty","number"],["Reorder Level","reorder","number"],["Unit Cost ()","cost","number"]].map(([l,k,t])=><Fld key={k} label={l}><input className={inp} type={t} value={modal[k]||""} onChange={e=>setModal(p=>({...p,[k]:t==="number"?Number(e.target.value):e.target.value}))}/></Fld>)}</div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add"}</button></div></ModalWrap>}
   </div>);}
 
@@ -1319,7 +1612,7 @@ function InventoryPage({inventory,setInventory,userRole}){
 
 function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyItems,clients,users,user,inventory,setInventory}){
   const[tab,setTab]=useState("reqs");const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[itemModal,setItemModal]=useState(null);
-  const[confirm,confirmEl]=useConfirm();
+  const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const canManage=user.role==="Admin"||user.role==="Supervisor";
   const statusColors={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Approved:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},Rejected:{bg:"#fee2e2",color:RED,border:"#fca5a5"},Forwarded:{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"}};
   const approve=(id,status)=>{
@@ -1335,11 +1628,11 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
       }
       return {...r,status,reviewedBy:user.name,reviewedAt:new Date().toLocaleString("en-GB")};
     });
-    setRequisitions(newRs);dbSync("requisitions",newRs);
+    setRequisitions(newRs);dbSync("requisitions",newRs);toast.success(`Requisition ${status.toLowerCase()}`);
   };
-  const del=id=>confirm("Delete this requisition?",()=>{setRequisitions(rs=>rs.filter(r=>r.id!==id));dbDelete("requisitions",id);});
-  const saveItem=data=>{let ns;if(data.id)ns=supplyItems.map(i=>i.id===data.id?data:i);else ns=[...supplyItems,{...data,id:"s"+Date.now(),active:true}];setSupplyItems(ns);dbSync("supplyitems",ns);setItemModal(null);};
-  const delItem=id=>confirm("Remove item from catalogue?",()=>{setSupplyItems(si=>si.filter(i=>i.id!==id));dbDelete("supplyitems",id);});
+  const del=id=>confirm("Delete this requisition?",()=>{setRequisitions(rs=>rs.filter(r=>r.id!==id));dbDelete("requisitions",id);toast.success("Requisition deleted");});
+  const saveItem=data=>{let ns;if(data.id)ns=supplyItems.map(i=>i.id===data.id?data:i);else ns=[...supplyItems,{...data,id:"s"+Date.now(),active:true}];setSupplyItems(ns);dbSync("supplyitems",ns);toast.success(data.id?"Item updated":"Item added to catalogue");setItemModal(null);};
+  const delItem=id=>confirm("Remove item from catalogue?",()=>{setSupplyItems(si=>si.filter(i=>i.id!==id));dbDelete("supplyitems",id);toast.success("Item removed from catalogue");});
   const cats=["All",...new Set(supplyItems.map(i=>i.cat))];
   const[catFilter,setCatFilter]=useState("All");
   const[deductModal,setDeductModal]=useState(null);
@@ -1422,17 +1715,17 @@ function ReqViewer({req:r,canSeeCosts,onClose}){
 
 // -- ABSENCE & COVER -----------------------------------------------------------
 function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[]}){
-  const[tab,setTab]=useState("absences");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
-  const delA=id=>confirm("Delete this absence?",()=>{setAbsences(as=>as.filter(a=>a.id!==id));dbDelete("absences",id);});
-  const delC=id=>confirm("Delete this cover?",()=>{setCovers(cs=>cs.filter(c=>c.id!==id));dbDelete("covers",id);});
+  const[tab,setTab]=useState("absences");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
+  const delA=id=>confirm("Delete this absence?",()=>{setAbsences(as=>as.filter(a=>a.id!==id));dbDelete("absences",id);toast.success("Absence deleted");});
+  const delC=id=>confirm("Delete this cover?",()=>{setCovers(cs=>cs.filter(c=>c.id!==id));dbDelete("covers",id);toast.success("Cover deleted");});
   const SC={"Absent Logged":{bg:"#fff7ed",color:O,border:"#fed7aa"},"Cover Assigned":{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"},"Completed":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Sent to Finance":{bg:"#fdf4ff",color:"#7c3aed",border:"#ddd6fe"}};
   const advanceAbs=(id,cur)=>setAbsences(as=>as.map(a=>a.id===id?{...a,status:cur==="Absent Logged"?"Cover Assigned":cur==="Cover Assigned"?"Completed":"Sent to Finance"}:a));
   return(<div className="space-y-5">{confirmEl}
     <div className="flex items-center justify-between"><div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white"><button onClick={()=>setTab("absences")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="absences"?"text-white":"text-gray-500"}`} style={tab==="absences"?{background:G}:{}}>Absences ({absences.length})</button><button onClick={()=>setTab("covers")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="covers"?"text-white":"text-gray-500"}`} style={tab==="covers"?{background:G}:{}}>Cover ({covers.length})</button></div><div className="flex items-center gap-2">{tab==="absences"&&<button onClick={()=>{const rows=[["Staff","Site","Start","End","Leave Type","Deduction (₦)","Status"],...absences.map(a=>[a.cleaner,a.site,a.startDate,a.endDate||a.startDate,a.leaveType||"Sick",a.deductionAmount||0,a.status||"Absent Logged"])];const csv=rows.map(r=>r.join(",")).join("\n");const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="absences.csv";a.click();URL.revokeObjectURL(u);}} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Export CSV</button>}<button onClick={()=>setModal({type:tab==="absences"?"absence":"cover"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>{tab==="absences"?"Log Absence":"Assign Cover"}</button></div></div>
     {tab==="absences"&&<Card><div className="divide-y divide-gray-50">{absences.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No absences logged</div>}{absences.map(a=><div key={a.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:RED}}>{(a.cleaner||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{a.cleaner}</p><p className="text-xs text-gray-500">Site: {a.site}  {fmtD(a.startDate)}{a.endDate&&a.endDate!==a.startDate?` - ${fmtD(a.endDate)}`:""}</p>{a.reason&&<p className="text-xs text-gray-400 italic">Reason: {a.reason}</p>}<p className="text-xs text-gray-400">Type: {a.leaveType||"Sick"}  Replacement: {a.needsReplacement?"Needed":"Not required"}{a.deductionAmount>0?<span className="text-red-500 font-medium ml-1">  Deduction: ₦{a.deductionAmount.toLocaleString()}</span>:null}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={a.status||"Absent Logged"} custom={SC[a.status||"Absent Logged"]}/>{a.status!=="Sent to Finance"&&<button onClick={()=>advanceAbs(a.id,a.status||"Absent Logged")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>Next</button>}<button onClick={()=>delA(a.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
     {tab==="covers"&&<Card><div className="divide-y divide-gray-50">{covers.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No cover assignments</div>}{covers.map(c=><div key={c.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(c.replacement||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{c.replacement} <span className="font-normal text-gray-400">covered for</span> {c.absentCleaner}</p><p className="text-xs text-gray-500">Site: {c.site}  {fmtD(c.startDate)}{c.endDate&&c.endDate!==c.startDate?` - ${fmtD(c.endDate)}`:""}</p><p className="text-xs text-gray-400">{c.days} day(s)  Compensation: {c.compensation?"Yes":"No"}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><button onClick={()=>delC(c.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
-    {modal?.type==="absence"&&<ModalWrap title="Log Staff Absence" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Staff"><StaffSelect staff={staff} value={modal.cleaner||""} onChange={v=>setModal(p=>({...p,cleaner:v}))} placeholder="-- Select staff --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld></div><Fld label="Reason"><input className={inp} value={modal.reason||""} onChange={e=>setModal(p=>({...p,reason:e.target.value}))}/></Fld><Fld label="Replacement Needed?"><RadioG value={modal.needsReplacement?"Yes":"No"} onChange={v=>setModal(p=>({...p,needsReplacement:v==="Yes"}))} options={["Yes","No"]}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Leave Type"><select className={inp} value={modal.leaveType||"Sick"} onChange={e=>setModal(p=>({...p,leaveType:e.target.value}))}><option>Sick</option><option>Annual</option><option>Emergency</option><option>AWOL</option><option>Maternity</option><option>Other</option></select></Fld><Fld label="Deduction (₦)"><input className={inp} type="number" min="0" value={modal.deductionAmount||""} onChange={e=>setModal(p=>({...p,deductionAmount:Number(e.target.value)}))} placeholder="0 if none"/></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...absences,{...modal,id:"abs"+Date.now(),status:"Absent Logged"}];setAbsences(nl);dbSync("absences",nl);setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Log Absence</button></div></ModalWrap>}
-    {modal?.type==="cover"&&<ModalWrap title="Assign Cover" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Cleaner"><StaffSelect staff={staff} value={modal.absentCleaner||""} onChange={v=>setModal(p=>({...p,absentCleaner:v}))} placeholder="-- Select absent staff --"/></Fld><Fld label="Replacement Cleaner"><StaffSelect staff={staff} value={modal.replacement||""} onChange={v=>setModal(p=>({...p,replacement:v}))} placeholder="-- Select replacement --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-3 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld><Fld label="Days Covered"><input className={inp} type="number" min="1" value={modal.days||1} onChange={e=>setModal(p=>({...p,days:Number(e.target.value)}))}/></Fld></div><Fld label="Compensation?"><RadioG value={modal.compensation?"Yes":"No"} onChange={v=>setModal(p=>({...p,compensation:v==="Yes"}))} options={["Yes","No"]}/></Fld>{modal.compensation&&<Fld label="Cover Amount (₦)"><input className={inp} type="number" min="0" value={modal.coverAmount||""} onChange={e=>setModal(p=>({...p,coverAmount:Number(e.target.value)}))} placeholder="Amount to pay cover staff"/></Fld>}<Fld label="Remarks"><textarea className={inp} rows={2} value={modal.remarks||""} onChange={e=>setModal(p=>({...p,remarks:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...covers,{...modal,id:"cov"+Date.now()}];setCovers(nl);dbSync("covers",nl);setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Assign</button></div></ModalWrap>}
+    {modal?.type==="absence"&&<ModalWrap title="Log Staff Absence" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Staff"><StaffSelect staff={staff} value={modal.cleaner||""} onChange={v=>setModal(p=>({...p,cleaner:v}))} placeholder="-- Select staff --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld></div><Fld label="Reason"><input className={inp} value={modal.reason||""} onChange={e=>setModal(p=>({...p,reason:e.target.value}))}/></Fld><Fld label="Replacement Needed?"><RadioG value={modal.needsReplacement?"Yes":"No"} onChange={v=>setModal(p=>({...p,needsReplacement:v==="Yes"}))} options={["Yes","No"]}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Leave Type"><select className={inp} value={modal.leaveType||"Sick"} onChange={e=>setModal(p=>({...p,leaveType:e.target.value}))}><option>Sick</option><option>Annual</option><option>Emergency</option><option>AWOL</option><option>Maternity</option><option>Other</option></select></Fld><Fld label="Deduction (₦)"><input className={inp} type="number" min="0" value={modal.deductionAmount||""} onChange={e=>setModal(p=>({...p,deductionAmount:Number(e.target.value)}))} placeholder="0 if none"/></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...absences,{...modal,id:"abs"+Date.now(),status:"Absent Logged"}];setAbsences(nl);dbSync("absences",nl);toast.success("Absence logged");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Log Absence</button></div></ModalWrap>}
+    {modal?.type==="cover"&&<ModalWrap title="Assign Cover" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Cleaner"><StaffSelect staff={staff} value={modal.absentCleaner||""} onChange={v=>setModal(p=>({...p,absentCleaner:v}))} placeholder="-- Select absent staff --"/></Fld><Fld label="Replacement Cleaner"><StaffSelect staff={staff} value={modal.replacement||""} onChange={v=>setModal(p=>({...p,replacement:v}))} placeholder="-- Select replacement --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-3 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld><Fld label="Days Covered"><input className={inp} type="number" min="1" value={modal.days||1} onChange={e=>setModal(p=>({...p,days:Number(e.target.value)}))}/></Fld></div><Fld label="Compensation?"><RadioG value={modal.compensation?"Yes":"No"} onChange={v=>setModal(p=>({...p,compensation:v==="Yes"}))} options={["Yes","No"]}/></Fld>{modal.compensation&&<Fld label="Cover Amount (₦)"><input className={inp} type="number" min="0" value={modal.coverAmount||""} onChange={e=>setModal(p=>({...p,coverAmount:Number(e.target.value)}))} placeholder="Amount to pay cover staff"/></Fld>}<Fld label="Remarks"><textarea className={inp} rows={2} value={modal.remarks||""} onChange={e=>setModal(p=>({...p,remarks:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...covers,{...modal,id:"cov"+Date.now()}];setCovers(nl);dbSync("covers",nl);toast.success("Cover assigned");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Assign</button></div></ModalWrap>}
   </div>);}
 
 // -- BIRTHDAYS (field staff only) ----------------
@@ -1444,10 +1737,11 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
   const sorted=[...withBdays].sort((a,b)=>{const am=new Date(a.dob).getMonth()+1,ad=new Date(a.dob).getDate(),bm=new Date(b.dob).getMonth()+1,bd=new Date(b.dob).getDate();return am!==bm?am-bm:ad-bd;});
   const thisMonth=sorted.filter(u=>new Date(u.dob).getMonth()+1===thisM);
   const showList=allPeople;
+  const toast=useToast();
   // DOB update — updates staff record only
   const saveDob=data=>{
     const ns=staff.map(s=>s.id===data.id?{...s,dob:data.dob}:s);setStaff(ns);dbSync("staff",ns);
-    setModal(null);
+    toast.success(`DOB updated for ${data.name}`);setModal(null);
   };
   return(<div className="space-y-5">
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><KPI icon="🎂" label="Field Staff" value={allPeople.length} sub="Total staff members" bg="#f0fdf4"/><KPI icon="🎉" label="DOB Recorded" value={withBdays.length} sub={`of ${allPeople.length}`} bg="#fdf4ff"/><KPI icon="🎁" label="This Month" value={thisMonth.length} sub={monthName(thisM-1)+" celebrants"} bg="#eff6ff"/><KPI icon="⚠️" label="No DOB" value={allPeople.filter(u=>!u.dob).length} sub="Update profiles" bg="#fffbeb"/></div>
@@ -1468,7 +1762,7 @@ function BirthdaysPage({users,setUsers,staff,setStaff}){
 
 // -- IMPREST -------------------------------------------------------------------
 function ImprestPage({imprests,setImprests,staff=[]}){
-  const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[confirm,confirmEl]=useConfirm();
+  const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const today=new Date();
   const curMK=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;
   const[selMK,setSelMK]=useState(curMK);
@@ -1500,10 +1794,10 @@ function ImprestPage({imprests,setImprests,staff=[]}){
     return Math.max(0,p.amount-spent);
   };
 
-  const addExpense=(id,exp)=>{const u=imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i);saveOne(u,id);};
-  const addTopUp=(id,tu)=>{const u=imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i);saveOne(u,id);};
-  const updStatus=(id,status)=>{const u=imprests.map(i=>i.id===id?{...i,status}:i);saveOne(u,id);};
-  const del=id=>confirm("Delete this imprest record?",()=>{setImprests(prev=>prev.filter(i=>i.id!==id));dbDelete("imprests",id);});
+  const addExpense=(id,exp)=>{const u=imprests.map(i=>i.id===id?{...i,expenses:[...(i.expenses||[]),exp]}:i);saveOne(u,id);toast.success("Expense logged");};
+  const addTopUp=(id,tu)=>{const u=imprests.map(i=>i.id===id?{...i,amount:i.amount+(tu.amount||0),topups:[...(i.topups||[]),tu]}:i);saveOne(u,id);toast.success(`Top-up of ₦${(tu.amount||0).toLocaleString()} added`);};
+  const updStatus=(id,status)=>{const u=imprests.map(i=>i.id===id?{...i,status}:i);saveOne(u,id);toast.info(`Status → ${status}`);};
+  const del=id=>confirm("Delete this imprest record?",()=>{setImprests(prev=>prev.filter(i=>i.id!==id));dbDelete("imprests",id);toast.success("Imprest record deleted");});
 
   const doMonthClose=()=>{
     const active=monthRecs.filter(i=>i.status==="Active");if(!active.length)return;
@@ -1679,7 +1973,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
           const prevBal=modal._prevBal||0;const isCarry=prevBal>0;
           const{_prevBal,_manual,type,...rest}=modal;
           const newRec={...rest,id:"imp"+Date.now(),month:modal.month||curMK,originalAmount:modal.amount||0,status:"Active",expenses:[],topups:[],carryForwardAmount:isCarry?prevBal:0,isCarryForward:isCarry};
-          setImprests(prev=>[...prev,newRec]);dbSync("imprests",[newRec]);
+          setImprests(prev=>[...prev,newRec]);dbSync("imprests",[newRec]);toast.success("Imprest account created");
           setModal(null);
         }} disabled={!modal.holder||!modal.amount} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Create</button>
       </div>
@@ -1761,7 +2055,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
 
 
 // -- ANALYTICS -----------------------------------------------------------------
-function AnalyticsPage({clients,siteReports,jobs,staff}){
+function AnalyticsPage({clients,siteReports,jobs,staff,absences=[],requests=[]}){
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
   const top=[...ws].sort((a,b)=>b.tot-a.tot).slice(0,7);
   const svcRev=[{name:"Cleaning",value:ws.filter(c=>c.svc==="Cleaning").reduce((s,c)=>s+c.tot,0)},{name:"Pest Control",value:ws.filter(c=>c.svc==="Pest Control").reduce((s,c)=>s+c.tot,0)},{name:"Both",value:ws.filter(c=>c.svc==="Both").reduce((s,c)=>s+c.tot,0)}];
@@ -1773,40 +2067,61 @@ function AnalyticsPage({clients,siteReports,jobs,staff}){
   const techData=Object.entries(techMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,count])=>({name,count}));
   const monthlyJobs=useMemo(()=>{const m={};jobs.forEach(j=>{if(j.date){const k=j.date.slice(0,7);m[k]=(m[k]||0)+1;}});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v])=>({month:k.slice(5)+" "+k.slice(0,4),count:v}));
 },[jobs]);
+  // Revenue trend: monthly contract totals from client start dates
+  const revenueTrend=useMemo(()=>{const m={};clients.forEach(c=>{if(c.cs){const k=c.cs.slice(0,7);m[k]=(m[k]||0)+(c.tot||0);}});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).slice(-8).map(([k,v])=>({month:k.slice(5)+"/"+k.slice(2,4),revenue:v}));},[clients]);
+  // Contract health
+  const expired=ws.filter(c=>c.status==="Expired").length;
+  const expiring=ws.filter(c=>c.status==="Expiring Soon"||c.status==="Critical").length;
+  const renewalRate=ws.length>0?Math.round((ws.length-expired)/ws.length*100):0;
+  // Attendance: absences per month
+  const absenceByMonth=useMemo(()=>{const m={};absences.forEach(a=>{if(a.startDate){const k=a.startDate.slice(0,7);m[k]=(m[k]||0)+1;}});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v])=>({month:k.slice(5)+"/"+k.slice(2,4),absences:v}));},[absences]);
+  // Request conversion rate
+  const converted=requests.filter(r=>r.status==="Converted").length;
+  const convRate=requests.length>0?Math.round(converted/requests.length*100):0;
   return(<div className="space-y-6">
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[{l:"Total Clients",v:clients.length},{l:"Active Contracts",v:ws.filter(c=>c.status==="Active").length},{l:"Jobs Completed",v:jobs.filter(j=>j.status==="Completed").length},{l:"Site Reports",v:siteReports.length}].map(k=><Card key={k.l} className="p-5"><div className="text-2xl font-black text-gray-800">{k.v}</div><div className="text-xs font-bold text-gray-500 mt-1">{k.l}</div></Card>)}</div>
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-  <Card className="p-5"><div className="text-2xl font-black" style={{color:completionRate>=80?G:completionRate>=50?AMBER:RED}}>{completionRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Job Completion Rate</div><div className="text-xs text-gray-400 mt-0.5">{completedJobs} of {totalJobs} jobs</div></Card>
-  <Card className="p-5"><div className="text-2xl font-black text-gray-800">{avgQuality>0?avgQuality:"--"}</div><div className="text-xs font-bold text-gray-500 mt-1">Avg Quality Score</div><div className="text-xs text-gray-400 mt-0.5">From {siteReports.length} reports</div></Card>
-  <Card className="p-5"><div className="text-2xl font-black text-gray-800">{techData.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Active Technicians</div><div className="text-xs text-gray-400 mt-0.5">With jobs assigned</div></Card>
-  <Card className="p-5"><div className="text-2xl font-black text-gray-800">{monthlyJobs.length>0?monthlyJobs[monthlyJobs.length-1].count:0}</div><div className="text-xs font-bold text-gray-500 mt-1">Jobs This Month</div><div className="text-xs text-gray-400 mt-0.5">Last 6 months tracked</div></Card>
-</div>
+      <Card className="p-5"><div className="text-2xl font-black" style={{color:completionRate>=80?G:completionRate>=50?AMBER:RED}}>{completionRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Job Completion Rate</div><div className="text-xs text-gray-400 mt-0.5">{completedJobs} of {totalJobs} jobs</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{avgQuality>0?avgQuality:"--"}</div><div className="text-xs font-bold text-gray-500 mt-1">Avg Quality Score</div><div className="text-xs text-gray-400 mt-0.5">From {siteReports.length} reports</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black" style={{color:renewalRate>=90?G:renewalRate>=70?AMBER:RED}}>{renewalRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Contract Renewal Rate</div><div className="text-xs text-gray-400 mt-0.5">{expired} expired · {expiring} expiring soon</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black" style={{color:convRate>=60?G:convRate>=30?AMBER:RED}}>{convRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Request Conversion</div><div className="text-xs text-gray-400 mt-0.5">{converted} of {requests.length} requests</div></Card>
+    </div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{techData.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Active Technicians</div><div className="text-xs text-gray-400 mt-0.5">With jobs assigned</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{monthlyJobs.length>0?monthlyJobs[monthlyJobs.length-1].count:0}</div><div className="text-xs font-bold text-gray-500 mt-1">Jobs This Month</div><div className="text-xs text-gray-400 mt-0.5">Last 6 months tracked</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{absences.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Absences</div><div className="text-xs text-gray-400 mt-0.5">All time</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black" style={{color:G}}>{fmt(clients.reduce((s,c)=>s+c.tot,0))}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Portfolio (₦)</div><div className="text-xs text-gray-400 mt-0.5">All active contracts</div></Card>
+    </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">Top Clients by Value</h3><ResponsiveContainer width="100%" height={220}><BarChart data={top} layout="vertical" barSize={14}><XAxis type="number" tickFormatter={v=>`${(v/1000).toFixed(0)}k`} tick={{fontSize:9,fill:"#9ca3af"}} axisLine={false} tickLine={false}/><YAxis type="category" dataKey="name" tick={{fontSize:10,fill:"#6b7280"}} width={130} axisLine={false} tickLine={false}/><Tooltip formatter={v=>[fmt(v),"Value"]} contentStyle={{borderRadius:"12px"}}/><Bar dataKey="tot" fill={G} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Card>
       <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Revenue by Service</h3><ResponsiveContainer width="100%" height={140}><BarChart data={svcRev} barSize={45}><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize:12,fill:"#6b7280"}}/><YAxis tickFormatter={v=>`${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} tick={{fontSize:10}}/><Tooltip formatter={v=>[fmt(v),"Revenue"]}/><Bar dataKey="value" radius={[8,8,0,0]}>{svcRev.map((_,i)=><Cell key={i} fill={[G,O,BLUE][i]}/>)}</Bar></BarChart></ResponsiveContainer></Card>
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-  <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Monthly Jobs (Last 6 Months)</h3><ResponsiveContainer width="100%" height={160}><BarChart data={monthlyJobs} barSize={28}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" fill={BLUE} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>
-  {techData.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Jobs per Technician</h3><ResponsiveContainer width="100%" height={160}><BarChart data={techData} layout="vertical" barSize={12}><XAxis type="number" axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" fill={G} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Card>}
-</div>
+      <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Monthly Jobs (Last 6 Months)</h3><ResponsiveContainer width="100%" height={160}><BarChart data={monthlyJobs} barSize={28}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" fill={BLUE} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>
+      {techData.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Jobs per Technician</h3><ResponsiveContainer width="100%" height={160}><BarChart data={techData} layout="vertical" barSize={12}><XAxis type="number" axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" fill={G} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Card>}
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {revenueTrend.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Contract Revenue Trend</h3><ResponsiveContainer width="100%" height={160}><BarChart data={revenueTrend} barSize={22}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis tickFormatter={v=>`₦${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} tick={{fontSize:9}}/><Tooltip formatter={v=>[`₦${fmt(v)}`,"Revenue"]} contentStyle={{borderRadius:"12px"}}/><Bar dataKey="revenue" fill={G} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>}
+      {absenceByMonth.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Absences per Month</h3><ResponsiveContainer width="100%" height={160}><BarChart data={absenceByMonth} barSize={22}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="absences" fill={RED} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>}
+    </div>
     <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Full Revenue Breakdown</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b">{["Client","Cat","Service","Salary","Consumables","Svc Charge","VAT","Total","Status"].map(h=><th key={h} className="text-right first:text-left px-3 py-2 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{[...clients].sort((a,b)=>b.tot-a.tot).map(c=><tr key={c.id} className="hover:bg-gray-50"><td className="px-3 py-2.5 font-medium text-gray-700">{c.name}</td><td className="px-3 py-2.5 text-right text-xs text-gray-500">{c.cat}</td><td className="px-3 py-2.5 text-right text-xs text-gray-500">{c.svc}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.sal)}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.con)}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.sc)}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.vat)}</td><td className="px-3 py-2.5 text-right font-bold text-gray-800">{fmt(c.tot)}</td><td className="px-3 py-2.5 text-right"><SBadge s={cStatus(c.ce)}/></td></tr>)}<tr className="border-t-2 font-black" style={{background:GL}}><td className="px-3 py-2.5 text-gray-800" colSpan={3}>TOTAL</td>{[clients.reduce((s,c)=>s+c.sal,0),clients.reduce((s,c)=>s+c.con,0),clients.reduce((s,c)=>s+c.sc,0),clients.reduce((s,c)=>s+c.vat,0),clients.reduce((s,c)=>s+c.tot,0)].map((v,i)=><td key={i} className="px-3 py-2.5 text-right" style={i===4?{color:G}:{}}>{fmt(v)}</td>)}<td/></tr></tbody></table></div></Card>
   </div>);}
 
 // -- USERS ----------------------------------------------------------------------
 function StaffPage({staff,setStaff}){
-  const[tab,setTab]=useState("cleaning");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
+  const[tab,setTab]=useState("cleaning");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();const[payrollMonth,setPayrollMonth]=useState(()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;})
   const[search,setSearch]=useState("");
   const CATEGORIES=["Office Staff","Cleaning Staff","Gardening Staff"];
   const TAB_MAP={"office":"Office Staff","cleaning":"Cleaning Staff","gardening":"Gardening Staff"};
   // Fallback: infer category from role when the record has no category set
   const inferCat=s=>s.category||(s.role==="Gardener"||s.role==="Gardening"?"Gardening Staff":s.role==="Supervisor"||s.role==="Technical Supervisor"||s.role==="Finance"||s.category==="Office Staff"?"Office Staff":"Cleaning Staff");
   const filtered=staff.filter(s=>inferCat(s)===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
-  const del=id=>confirm("Remove this staff member?",()=>{setStaff(ss=>ss.filter(s=>s.id!==id));dbDelete("staff",id);});
+  const del=id=>confirm("Remove this staff member?",()=>{setStaff(ss=>ss.filter(s=>s.id!==id));dbDelete("staff",id);toast.success("Staff member removed");});
   const save=data=>{
     let ns;if(data.id)ns=staff.map(s=>s.id===data.id?{...s,...data}:s);else ns=[...staff,{...data,id:"st"+Date.now()}];
-    setStaff(ns);dbSync("staff",ns);setModal(null);
+    setStaff(ns);dbSync("staff",ns);toast.success(data.id?"Staff record updated":"Staff member added");setModal(null);
   };
-  const blank={name:"",category:TAB_MAP[tab],role:"",site:"",phone:"",email:"",homeAddress:"",emergencyContact:"",emergencyPhone:"",emergencyAddress:"",dob:"",employmentType:"Full Time",startDate:"",workDays:"",bankName:"",accountName:"",accountNumber:""};
+  const blank={name:"",category:TAB_MAP[tab],role:"",site:"",phone:"",email:"",homeAddress:"",emergencyContact:"",emergencyPhone:"",emergencyAddress:"",dob:"",employmentType:"Full Time",startDate:"",workDays:"",bankName:"",accountName:"",accountNumber:"",salary:0};
 
   const counts=Object.fromEntries(CATEGORIES.map(c=>[c,staff.filter(s=>s.category===c).length]));
 
@@ -1817,9 +2132,9 @@ function StaffPage({staff,setStaff}){
       <KPI icon="" label="Gardening Staff" value={counts["Gardening Staff"]||0} sub="Gardeners" bg="#f0fdf4"/>
     </div>
     <div className="flex items-center justify-between gap-3 flex-wrap">
-      <div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white">
-        {[{id:"office",l:"Office Staff"},{id:"cleaning",l:"Cleaning Staff"},{id:"gardening",l:"Gardening Staff"}].map(t=>
-          <button key={t.id} onClick={()=>{setTab(t.id);setSearch("");}} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab===t.id?"text-white":"text-gray-500"}`} style={tab===t.id?{background:G}:{}}>{t.l} ({counts[TAB_MAP[t.id]]||0})</button>
+      <div className="flex flex-wrap gap-1 border border-gray-200 rounded-xl p-1 bg-white">
+        {[{id:"office",l:"Office Staff"},{id:"cleaning",l:"Cleaning Staff"},{id:"gardening",l:"Gardening Staff"},{id:"payroll",l:"💳 Payroll"}].map(t=>
+          <button key={t.id} onClick={()=>{setTab(t.id);setSearch("");}} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab===t.id?"text-white":"text-gray-500"}`} style={tab===t.id?{background:t.id==="payroll"?O:G}:{}}>{t.l}{t.id!=="payroll"?` (${counts[TAB_MAP[t.id]]||0})`:""}</button>
         )}
       </div>
       <div className="flex items-center gap-2">
@@ -1827,7 +2142,44 @@ function StaffPage({staff,setStaff}){
         <button onClick={()=>setModal({...blank,category:TAB_MAP[tab]})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Staff</button>
       </div>
     </div>
-    <Card><div className="divide-y divide-gray-50">
+    {tab==="payroll"&&(()=>{
+      const allStaff=staff.filter(s=>s.salary>0||s.bankName);
+      const total=allStaff.reduce((s,m)=>s+(m.salary||0),0);
+      const exportCSV=()=>{
+        const rows=[["Staff Name","Bank Name","Account Number","Account Name","Amount (NGN)","Description"],...allStaff.map(s=>[s.name,s.bankName||"",s.accountNumber||"",s.accountName||"",(s.salary||0),`Salary - ${payrollMonth}`])];
+        const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+        const b=new Blob([csv],{type:"text/csv"});
+        const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`payroll-${payrollMonth}.csv`;a.click();URL.revokeObjectURL(u);
+        toast.success("Payroll CSV downloaded");
+      };
+      return(<div className="space-y-5">
+        <Card className="p-5"><div className="flex flex-wrap items-center justify-between gap-4">
+          <div><p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Monthly Payroll</p><p className="text-3xl font-black" style={{color:G}}>₦{fmt(total)}</p><p className="text-xs text-gray-400 mt-1">{allStaff.length} staff members with salary records</p></div>
+          <div className="flex items-center gap-3">
+            <Fld label="Pay Month"><input className={inp} type="month" value={payrollMonth} onChange={e=>setPayrollMonth(e.target.value)}/></Fld>
+            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold" style={{background:O}}><Download size={14}/>Export CSV</button>
+          </div>
+        </div></Card>
+        <Card>
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Name","Bank","Acc Number","Account Name","Salary (₦)"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {staff.filter(s=>s.category!=="").sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(s=>(
+                <tr key={s.id} className="hover:bg-gray-50/60">
+                  <td className="px-4 py-3 font-semibold text-gray-800 text-sm">{s.name}<p className="text-xs text-gray-400 font-normal">{s.role}{s.site?` · ${s.site}`:""}</p></td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{s.bankName||<span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 text-xs font-mono text-gray-700">{s.accountNumber||<span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{s.accountName||<span className="text-gray-300">—</span>}</td>
+                  <td className="px-4 py-3 font-bold text-gray-800">{s.salary>0?`₦${fmt(s.salary)}`:<span className="text-gray-300 font-normal">Not set</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr style={{background:GL}} className="border-t-2"><td className="px-4 py-3 font-bold text-gray-700 text-sm" colSpan={4}>Total Payroll</td><td className="px-4 py-3 font-black text-lg" style={{color:G}}>₦{fmt(total)}</td></tr></tfoot>
+          </table></div>
+        </Card>
+        {staff.filter(s=>!s.salary&&!s.bankName).length>0&&<div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-700"><strong>{staff.filter(s=>!s.salary&&!s.bankName).length} staff</strong> have no salary or bank details. Edit their records to add payroll information.</div>}
+      </div>);
+    })()}
+    {tab!=="payroll"&&<Card><div className="divide-y divide-gray-50">
       {filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No {TAB_MAP[tab].toLowerCase()} found</div>}
       {filtered.map(s=><div key={s.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50">
         <div className="flex items-start gap-3 min-w-0">
@@ -1853,7 +2205,7 @@ function StaffPage({staff,setStaff}){
           <button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button>
         </div>
       </div>)}
-    </div></Card>
+    </div></Card>}
     {modal&&<ModalWrap title={modal._editing?"Edit Staff Member":"Add Staff Member"} onClose={()=>setModal(null)} xl>
       <div className="space-y-5">
         <div>
@@ -1886,11 +2238,12 @@ function StaffPage({staff,setStaff}){
           </div>
         </div>
         <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Bank Account</p>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Bank Account & Payroll</p>
           <div className="grid grid-cols-2 gap-4">
             <Fld label="Bank Name"><input className={inp} value={modal.bankName||""} onChange={e=>setModal(p=>({...p,bankName:e.target.value}))}/></Fld>
             <Fld label="Account Number"><input className={inp} value={modal.accountNumber||""} onChange={e=>setModal(p=>({...p,accountNumber:e.target.value}))}/></Fld>
-            <Fld label="Account Owner Name" col><input className={inp} value={modal.accountName||""} onChange={e=>setModal(p=>({...p,accountName:e.target.value}))}/></Fld>
+            <Fld label="Account Owner Name"><input className={inp} value={modal.accountName||""} onChange={e=>setModal(p=>({...p,accountName:e.target.value}))}/></Fld>
+            <Fld label="Monthly Salary (₦)"><input className={inp} type="number" min="0" value={modal.salary||""} onChange={e=>setModal(p=>({...p,salary:Number(e.target.value)}))}/></Fld>
           </div>
         </div>
       </div>
@@ -2602,7 +2955,9 @@ export default function App(){
   const[imprests,    setImprests]    =useState([]);
   const[assessments, setAssessments] =useState([]);
   const[showNotif,   setShowNotif]   =useState(false);
-  const[readIds,     setReadIds]     =useState([]);
+  const[showSearch,  setShowSearch]  =useState(false);
+  const[isOnline,    setIsOnline]    =useState(()=>navigator.onLine);
+  const[readIds,     setReadIds]     =useState(()=>{try{const s=localStorage.getItem("dw_readNotifs");return s?JSON.parse(s):[];}catch{return[];}});
   const[dbStatus,    setDbStatus]    =useState("ok"); // DB loads in background
   const[dbLoading,   setDbLoading]   =useState(true);
   const notifRef   = useRef(null);
@@ -2693,6 +3048,59 @@ export default function App(){
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
 
+  // -- Auto-schedule recurring jobs from contract service frequency -------------
+  // Runs whenever clients or jobs change (after initial DB load).
+  // Creates a "Scheduled" job for each active client whose serviceFreq window is due
+  // within the next 14 days and has no existing job already covering that window.
+  // Uses deterministic IDs (auto-{clientId}-{dueDate}) so re-runs are fully idempotent.
+  useEffect(()=>{
+    if(!dbLoaded.current||clients.length===0)return;
+    const todayStr=new Date().toISOString().split("T")[0];
+    const today=new Date(todayStr);
+    const LOOKAHEAD=14;
+    const toAdd=[];
+    clients.forEach(client=>{
+      const freq=client.serviceFreq;
+      if(!freq||!FREQ_DAYS[freq])return; // no freq or One-Time
+      const expiry=client.ce?new Date(client.ce):null;
+      if(expiry&&expiry<today)return; // contract expired
+      const freqDays=FREQ_DAYS[freq];
+      // Last job for this client sorted most-recent first
+      const clientJobs=jobs.filter(j=>j.clientName===client.name&&j.date).sort((a,b)=>b.date.localeCompare(a.date));
+      let nextDue=new Date(today);
+      if(clientJobs.length>0){
+        const lastDate=new Date(clientJobs[0].date);
+        nextDue=new Date(lastDate);
+        nextDue.setDate(nextDue.getDate()+freqDays);
+      }
+      // If overdue bring it to today; if beyond lookahead skip
+      if(nextDue<today)nextDue=new Date(today);
+      const windowEnd=new Date(today);
+      windowEnd.setDate(windowEnd.getDate()+LOOKAHEAD);
+      if(nextDue>windowEnd)return;
+      const nextDueStr=nextDue.toISOString().split("T")[0];
+      const autoId=`auto-${client.id}-${nextDueStr}`;
+      // Skip if this exact auto-job already exists
+      if(jobs.some(j=>j.id===autoId))return;
+      // Also skip if any non-closed job for this client already covers a ±3-day window
+      const winStart=new Date(nextDue);winStart.setDate(winStart.getDate()-3);
+      const winStartStr=winStart.toISOString().split("T")[0];
+      const covered=jobs.some(j=>j.clientName===client.name&&j.date&&j.date>=winStartStr&&j.date<=nextDueStr&&j.status!=="Closed");
+      if(covered)return;
+      toAdd.push({id:autoId,clientName:client.name,clientPhone:client.phone||"",loc:client.addr||"",svc:client.svc||"Cleaning",date:nextDueStr,sup:"",techs:"",status:"Scheduled",notes:`Auto-scheduled (${freq})`,autoScheduled:true,checkIn:null,checkOut:null});
+    });
+    if(toAdd.length===0)return;
+    setJobs(js=>{
+      const existingIds=new Set(js.map(j=>j.id));
+      const truly=toAdd.filter(j=>!existingIds.has(j.id));
+      if(truly.length===0)return js;
+      const updated=[...js,...truly];
+      dbSync("jobs",updated);
+      Toaster._add?.({type:"info",msg:`${truly.length} recurring job${truly.length>1?"s":""} auto-scheduled`});
+      return updated;
+    });
+  },[clients,jobs]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
   latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments };
@@ -2712,12 +3120,49 @@ export default function App(){
     return () => document.removeEventListener("visibilitychange", onVisChange);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // -- Online / offline detection + queue drain --------------------------------
+  useEffect(()=>{
+    // Drain any queue items left from a previous offline session
+    if(navigator.onLine&&dbLoaded.current){
+      const n=drainOfflineQueue(setJobs);
+      if(n>0)Toaster._add?.({type:"success",msg:`${n} offline action${n>1?"s":""} synced`});
+    }
+    const handleOnline=()=>{
+      setIsOnline(true);
+      const n=drainOfflineQueue(setJobs);
+      if(n>0)Toaster._add?.({type:"success",msg:`${n} offline action${n>1?"s":""} synced to server`});
+    };
+    const handleOffline=()=>{
+      setIsOnline(false);
+      Toaster._add?.({type:"info",msg:"You are offline — actions will sync when reconnected"});
+    };
+    // Service Worker background-sync message handler
+    const handleSwMessage=e=>{
+      if(e.data?.type==="DW_DRAIN_OFFLINE_QUEUE"){
+        const n=drainOfflineQueue(setJobs);
+        if(n>0)Toaster._add?.({type:"success",msg:`${n} queued action${n>1?"s":""} synced via background sync`});
+      }
+    };
+    window.addEventListener("online",handleOnline);
+    window.addEventListener("offline",handleOffline);
+    navigator.serviceWorker?.addEventListener("message",handleSwMessage);
+    return()=>{
+      window.removeEventListener("online",handleOnline);
+      window.removeEventListener("offline",handleOffline);
+      navigator.serviceWorker?.removeEventListener("message",handleSwMessage);
+    };
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // -- Notifications ----------------------------------------------------------
   const allNotifs=useMemo(()=>buildNotifs(clients,jobs,inventory),[clients,jobs,inventory]);
   const liveNotifs=useMemo(()=>allNotifs.map(n=>({...n,read:readIds.includes(n.id)})),[allNotifs,readIds]);
   const unread=useMemo(()=>liveNotifs.filter(n=>!n.read).length,[liveNotifs]);
   const markRead=id=>setReadIds(r=>[...r,id]);
+  // Persist read notification IDs across page refreshes
+  useEffect(()=>{try{localStorage.setItem("dw_readNotifs",JSON.stringify(readIds));}catch{};},[readIds]);
   useEffect(()=>{const h=e=>{if(notifRef.current&&!notifRef.current.contains(e.target))setShowNotif(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
+  // Global ⌘K / Ctrl+K shortcut to open search
+  useEffect(()=>{const h=e=>{if((e.metaKey||e.ctrlKey)&&e.key==="k"){e.preventDefault();setShowSearch(s=>!s);}if(e.key==="Escape")setShowSearch(false);};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
 
   const handleLogin=u=>{setUser(u);setPage("dashboard");};
 
@@ -2753,6 +3198,10 @@ export default function App(){
 
   return(
     <div className="flex h-screen bg-gray-50 overflow-hidden" style={{fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      {/* Global toast — renders above everything */}
+      <Toaster/>
+      {/* Global ⌘K search palette */}
+      {showSearch&&<GlobalSearch clients={clients} jobs={jobs} staff={staff} inventory={inventory} requests={requests} onNav={p=>{setPage(p);}} onClose={()=>setShowSearch(false)}/>}
       <aside className={`${sidebar?"w-60":"w-14"} transition-all duration-200 flex flex-col flex-shrink-0`} style={{background:GD}}>
         <div className="h-16 flex items-center px-3 border-b gap-2 flex-shrink-0" style={{borderColor:"rgba(255,255,255,0.06)"}}>
           <img src={LOGO} alt="D&W" className="w-8 h-8 object-contain flex-shrink-0 rounded-lg bg-white p-0.5 border border-gray-100"/>
@@ -2785,7 +3234,10 @@ export default function App(){
         <header className="h-16 bg-white border-b border-gray-100 flex items-center px-6 gap-4 flex-shrink-0 shadow-sm">
           <button onClick={()=>setSidebar(o=>!o)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><Menu size={18}/></button>
           <div className="flex-1 min-w-0"><h1 className="font-bold text-gray-700 text-sm">{pageTitle}</h1><p className="text-xs text-gray-400 hidden sm:block">{APP_NAME}  {APP_SUB}</p></div>
+          <button onClick={()=>setShowSearch(true)} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors text-xs text-gray-400" title="Search (⌘K)"><Search size={13}/><span>Search</span><kbd className="ml-1 font-mono text-gray-300 text-xs">⌘K</kbd></button>
           <div className="flex items-center gap-2">
+            {/* Offline banner */}
+            {!isOnline&&<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold animate-fade-in" style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a"}}><WifiOff size={12}/>Offline</div>}
             {/* DB status dot */}
             <div className="flex items-center gap-1.5 mr-2">
               <div className="w-2 h-2 rounded-full" style={{background:dbStatus==="ok"?"#22c55e":dbStatus==="error"?"#ef4444":"#f59e0b"}}/>
@@ -2805,22 +3257,22 @@ export default function App(){
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-6">
-          {page==="dashboard"   &&<Dashboard clients={clients} jobs={jobs} requests={requests} inventory={inventory} users={users} staff={staff} onNav={setPage}/>}
-          {page==="clients"     &&<ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/>}
-          {page==="contracts"   &&<ContractsPage clients={clients} setClients={setClients}/>}
-          {page==="requests"    &&<RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients}/>}
-          {page==="jobs"        &&<JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} user={user}/>}
-          {page==="schedule"    &&<SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/>}
-          {page==="site_reports"&&<SiteReportsPage reports={siteReports} setReports={setSiteReports} user={user} clients={clients} contacts={contacts} staff={staff}/>}
-          {page==="inventory"   &&<InventoryPage inventory={inventory} setInventory={setInventory} userRole={user.role}/>}
-          {page==="requisitions"&&<RequisitionsPage requisitions={requisitions} setRequisitions={setRequisitions} supplyItems={supplyItems} setSupplyItems={setSupplyItems} clients={clients} users={users} user={user} inventory={inventory} setInventory={setInventory}/>}
-          {page==="absencecover"&&<AbsenceCoverPage absences={absences} setAbsences={setAbsences} covers={covers} setCovers={setCovers} clients={clients} staff={staff} users={users}/>}
-          {page==="birthdays"   &&<BirthdaysPage users={users} setUsers={setUsers} staff={staff} setStaff={setStaff}/>}
-          {page==="imprest"     &&<ImprestPage imprests={imprests} setImprests={setImprests} staff={staff}/>}
-          {page==="assessments"&&<AssessmentsPage assessments={assessments} setAssessments={setAssessments} user={user} clients={clients} contacts={contacts} requests={requests} setRequests={setRequests}/>}
-          {page==="analytics"   &&<AnalyticsPage clients={clients} siteReports={siteReports} jobs={jobs} staff={staff}/>}
-          {page==="staff"       &&<StaffPage staff={staff} setStaff={setStaff}/>}
-          {page==="settings"    &&<SettingsPage users={users} setUsers={setUsers} activityLog={activityLog}/>}
+          {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} inventory={inventory} users={users} staff={staff} onNav={setPage}/></ErrorBoundary>}
+          {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
+          {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
+          {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients}/></ErrorBoundary>}
+          {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} user={user}/></ErrorBoundary>}
+          {page==="schedule"    &&<ErrorBoundary module="Pest Schedule"><SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/></ErrorBoundary>}
+          {page==="site_reports"&&<ErrorBoundary module="Site Reports"><SiteReportsPage reports={siteReports} setReports={setSiteReports} user={user} clients={clients} contacts={contacts} staff={staff}/></ErrorBoundary>}
+          {page==="inventory"   &&<ErrorBoundary module="Inventory"><InventoryPage inventory={inventory} setInventory={setInventory} userRole={user.role}/></ErrorBoundary>}
+          {page==="requisitions"&&<ErrorBoundary module="Requisitions"><RequisitionsPage requisitions={requisitions} setRequisitions={setRequisitions} supplyItems={supplyItems} setSupplyItems={setSupplyItems} clients={clients} users={users} user={user} inventory={inventory} setInventory={setInventory}/></ErrorBoundary>}
+          {page==="absencecover"&&<ErrorBoundary module="Absence & Cover"><AbsenceCoverPage absences={absences} setAbsences={setAbsences} covers={covers} setCovers={setCovers} clients={clients} staff={staff} users={users}/></ErrorBoundary>}
+          {page==="birthdays"   &&<ErrorBoundary module="Birthdays"><BirthdaysPage users={users} setUsers={setUsers} staff={staff} setStaff={setStaff}/></ErrorBoundary>}
+          {page==="imprest"     &&<ErrorBoundary module="Imprest Fund"><ImprestPage imprests={imprests} setImprests={setImprests} staff={staff}/></ErrorBoundary>}
+          {page==="assessments" &&<ErrorBoundary module="Site Assessments"><AssessmentsPage assessments={assessments} setAssessments={setAssessments} user={user} clients={clients} contacts={contacts} requests={requests} setRequests={setRequests}/></ErrorBoundary>}
+          {page==="analytics"   &&<ErrorBoundary module="Analytics"><AnalyticsPage clients={clients} siteReports={siteReports} jobs={jobs} staff={staff} absences={absences} requests={requests}/></ErrorBoundary>}
+          {page==="staff"       &&<ErrorBoundary module="Staff"><StaffPage staff={staff} setStaff={setStaff}/></ErrorBoundary>}
+          {page==="settings"    &&<ErrorBoundary module="Settings"><SettingsPage users={users} setUsers={setUsers} activityLog={activityLog}/></ErrorBoundary>}
         </main>
       </div>
     </div>

@@ -4,7 +4,7 @@
 //  Bump CACHE_VERSION on every new deployment
 // ─────────────────────────────────────────────────────────────
 
-const CACHE_VERSION = "dw-hub-v1";
+const CACHE_VERSION = "dw-hub-v2";
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 
@@ -134,6 +134,19 @@ self.addEventListener("notificationclick", event => {
         if (w.url === url && "focus" in w) return w.focus();
       }
       return clients.openWindow(url);
+    })
+  );
+});
+
+// ── Background Sync: notify open page windows to drain their offline queue ────
+// The "dw-job-sync" tag is registered from the app when an offline action is
+// queued. When connectivity is restored the browser fires this event, and we
+// message all open clients so they can flush their localStorage queue.
+self.addEventListener("sync", event => {
+  if (event.tag !== "dw-job-sync") return;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(wins => {
+      wins.forEach(w => w.postMessage({ type: "DW_DRAIN_OFFLINE_QUEUE" }));
     })
   );
 });

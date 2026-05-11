@@ -1,38 +1,25 @@
-.App {
-  text-align: center;
+/* ── Dust & Wipes Operations Hub — App.css ── */
+
+/* Toast fade-in */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeInUp 0.22s ease-out both;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
+/* Smooth sidebar transitions */
+aside { transition: width 0.2s ease; }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
+/* Scrollbar styling (Webkit) */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #d1d5db; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* Print: hide sidebar and header */
+@media print {
+  aside, header, nav, button { display: none !important; }
+  main { margin: 0 !important; padding: 0 !important; }
 }
