@@ -728,7 +728,9 @@ function LoginScreen({onLogin,users,clients}){
     }catch{setFpErr("Network error. Please try again.");}
     finally{setFpBusy(false);}
   };
-  const totalPortfolio=clients.reduce((s,c)=>s+(c.tot||0),0);
+  // Portfolio value = sum of contracts that haven't expired yet (cStatus !== "Expired").
+  // This includes Active, Expiring Soon, Critical, and Unknown (no end date set).
+  const totalPortfolio=clients.filter(c=>cStatus(c.ce)!=="Expired").reduce((s,c)=>s+(c.tot||0),0);
   const portStr=totalPortfolio>=1e9?`₦${(totalPortfolio/1e9).toFixed(1)}B`:totalPortfolio>=1e6?`₦${(totalPortfolio/1e6).toFixed(1)}M`:totalPortfolio>=1e3?`₦${(totalPortfolio/1e3).toFixed(0)}K`:totalPortfolio>0?`₦${totalPortfolio}`:"--";
   const roleCount=[...new Set(users.map(u=>u.role))].length||3;
   const loginStats=[[clients.length||"--","Clients"],["15","Modules"],[portStr,"Portfolio"],[roleCount,"User Roles"]];
@@ -2498,7 +2500,7 @@ function AnalyticsPage({clients,siteReports,jobs,staff,absences=[],requests=[]})
       <Card className="p-5"><div className="text-2xl font-black text-gray-800">{techData.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Active Technicians</div><div className="text-xs text-gray-400 mt-0.5">With jobs assigned</div></Card>
       <Card className="p-5"><div className="text-2xl font-black text-gray-800">{monthlyJobs.length>0?monthlyJobs[monthlyJobs.length-1].count:0}</div><div className="text-xs font-bold text-gray-500 mt-1">Jobs This Month</div><div className="text-xs text-gray-400 mt-0.5">Last 6 months tracked</div></Card>
       <Card className="p-5"><div className="text-2xl font-black text-gray-800">{absences.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Absences</div><div className="text-xs text-gray-400 mt-0.5">All time</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black" style={{color:G}}>{fmt(clients.reduce((s,c)=>s+c.tot,0))}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Portfolio (₦)</div><div className="text-xs text-gray-400 mt-0.5">All active contracts</div></Card>
+      <Card className="p-5"><div className="text-2xl font-black" style={{color:G}}>{fmt(ws.filter(c=>c.status!=="Expired").reduce((s,c)=>s+(c.tot||0),0))}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Portfolio (₦)</div><div className="text-xs text-gray-400 mt-0.5">Non-expired contracts only</div></Card>
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">Top Clients by Value</h3><ResponsiveContainer width="100%" height={220}><BarChart data={top} layout="vertical" barSize={14}><XAxis type="number" tickFormatter={v=>`${(v/1000).toFixed(0)}k`} tick={{fontSize:9,fill:"#9ca3af"}} axisLine={false} tickLine={false}/><YAxis type="category" dataKey="name" tick={{fontSize:10,fill:"#6b7280"}} width={130} axisLine={false} tickLine={false}/><Tooltip formatter={v=>[fmt(v),"Value"]} contentStyle={{borderRadius:"12px"}}/><Bar dataKey="tot" fill={G} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Card>
