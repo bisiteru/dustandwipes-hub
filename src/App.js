@@ -1,7 +1,7 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback, Component } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
+import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ChevronDown, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const TODAY=new Date(); // always uses current date
@@ -248,6 +248,111 @@ const CONTRACT_COLORS={"Active":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},
 const IMPREST_CATS=["Transportation","Emergency Supplies","Minor Repairs","Fuel/Logistics","Site Support","Consumables Procurement","Other"];
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+// ─── MONTHLY TABS + PRINT REPORT HELPERS ─────────────────────────────────────
+// Shared across Site Reports, Absence & Cover, Jobs, Service Requests, Requisitions
+// Each module passes a getMK(record) accessor that returns either YYYY-MM,
+// YYYY-MM-DD, or an ISO datetime. Falls back to parsing Date.now() from the id.
+const monthOf=(r,getMK)=>{
+  try{
+    const v=getMK?getMK(r):null;
+    if(typeof v==="string"){
+      if(/^\d{4}-\d{2}$/.test(v))return v;
+      if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(0,7);
+      const d=new Date(v);if(!isNaN(d))return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    }
+  }catch{}
+  // Fallback — legacy records may not have a date field; parse from id like "j1747032198432"
+  const m=String(r?.id||"").match(/\d{10,}/);
+  if(m){const d=new Date(Number(m[0]));if(!isNaN(d))return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
+  return null;
+};
+const mkLabel=mk=>{if(!mk||!/^\d{4}-\d{2}$/.test(mk))return"Unknown";const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
+const curMonthKey=()=>{const t=new Date();return`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}`;};
+const nextMonthKey=mk=>{const[y,m]=mk.split("-").map(Number);const d=new Date(y,m,1);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;};
+
+// Monthly tab strip — last 6 months as buttons + "More ▾" dropdown for older.
+// onOpenNext (optional): renders a "+ Open Next Month" button next to the tabs.
+function MonthTabs({records,getMK,selMK,setSelMK,onOpenNext}){
+  const curMK=curMonthKey();
+  const[dropOpen,setDropOpen]=useState(false);
+  const ddRef=useRef(null);
+  useEffect(()=>{const h=e=>{if(ddRef.current&&!ddRef.current.contains(e.target))setDropOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
+  const allMonths=useMemo(()=>{
+    const s=new Set([curMK]);
+    (records||[]).forEach(r=>{const mk=monthOf(r,getMK);if(mk)s.add(mk);});
+    return[...s].sort().reverse();
+  },[records,getMK,curMK]);
+  const visible=allMonths.slice(0,6);
+  const older=allMonths.slice(6);
+  return(
+    <div className="flex items-center gap-2 flex-wrap">
+      {visible.map(mk=>{const active=mk===selMK;return(
+        <button key={mk} onClick={()=>setSelMK(mk)}
+          className="px-3.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all"
+          style={active?{background:G,color:"#fff"}:{background:"#f3f4f6",color:"#6b7280"}}>
+          {mkLabel(mk)}{mk===curMK?" ●":""}
+        </button>
+      );})}
+      {older.length>0&&(
+        <div className="relative" ref={ddRef}>
+          <button onClick={()=>setDropOpen(o=>!o)}
+            className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-sm font-semibold"
+            style={{background:"#f3f4f6",color:"#374151"}}>
+            More <ChevronDown size={12}/>
+          </button>
+          {dropOpen&&(
+            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px] max-h-72 overflow-y-auto">
+              {older.map(mk=>(
+                <button key={mk} onClick={()=>{setSelMK(mk);setDropOpen(false);}}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 whitespace-nowrap"
+                  style={mk===selMK?{background:GL,color:G,fontWeight:700}:{}}>
+                  {mkLabel(mk)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {onOpenNext&&(
+        <button onClick={onOpenNext}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white"
+          style={{background:BLUE}}>
+          <Plus size={13}/>Open Next Month
+        </button>
+      )}
+    </div>
+  );
+}
+
+// "Print This Month" + "Print All History" buttons.
+function PrintReportButtons({onPrintMonth,onPrintAll}){
+  return(
+    <div className="flex items-center gap-2 flex-wrap">
+      <button onClick={onPrintMonth}
+        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border"
+        style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}>
+        <Download size={13}/>Print This Month
+      </button>
+      <button onClick={onPrintAll}
+        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border"
+        style={{color:G,borderColor:"#bbf7d0",background:"#f0fdf4"}}>
+        <FileText size={13}/>Print All History
+      </button>
+    </div>
+  );
+}
+
+// Open a print preview window with HTML content (triggers browser Save-as-PDF).
+const openPrintWin=html=>{const w=window.open("","_blank","width=920,height=1000");if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);}};
+
+// Build a print-ready HTML report. `sections` = [{label, kpis, table, note}] (newest first).
+const buildReportHtml=({moduleName,periodLabel,summaryKpis,sections})=>{
+  const today=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+  const kpiHtml=kpis=>(kpis||[]).map(k=>`<div style="text-align:center;min-width:110px"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0;text-transform:uppercase;letter-spacing:.05em">${k.label}</p><p style="font-size:22px;font-weight:bold;color:${k.color||"#1B6B2F"};margin:2px 0">${k.value}</p>${k.sub?`<p style="font-size:9px;color:#9ca3af;margin:0">${k.sub}</p>`:""}</div>`).join("");
+  const sectionsHtml=(sections||[]).map(s=>`<div style="margin-bottom:26px;page-break-inside:avoid">${s.label?`<h3 style="margin:0 0 8px;font-size:13px;color:#1B6B2F;border-bottom:2px solid #1B6B2F;padding-bottom:4px">${s.label}</h3>`:""}${s.kpis?`<div style="display:flex;gap:24px;margin-bottom:10px;padding:8px 12px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;flex-wrap:wrap">${kpiHtml(s.kpis)}</div>`:""}${s.table||""}${s.note?`<p style="font-size:10px;color:#6b7280;font-style:italic;margin-top:6px">${s.note}</p>`:""}</div>`).join("");
+  return`<!DOCTYPE html><html><head><title>${moduleName} Report — ${periodLabel}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:10px;margin-top:6px}th{background:#f3f4f6;padding:6px 8px;text-align:left;border:1px solid #e5e7eb;font-weight:bold}td{padding:5px 8px;border:1px solid #e5e7eb;vertical-align:top}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited — ${moduleName} Report</h1><h2>Period: ${periodLabel} &nbsp;&nbsp; Generated: ${today}</h2>${summaryKpis&&summaryKpis.length?`<div style="display:flex;gap:32px;margin-bottom:24px;padding:14px 18px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;flex-wrap:wrap">${kpiHtml(summaryKpis)}</div>`:""}${sectionsHtml}</body></html>`;
+};
+
 // -- MASTER SUPPLY ITEMS (APRIL 2026 actuals + standard stock) ----------------
 const INITIAL_SUPPLY_MASTER=[
   {id:"s1", name:"Liquid Soap (4.5 ltr)",        unit:"bottle",cost:4500, cat:"Cleaning",    active:true},
@@ -339,6 +444,8 @@ const uploadAssessmentPhoto = async (file, assessmentId) => {
 };
 
 // Print/download all requisitions as HTML report
+// (Legacy — superseded by per-module PrintReportButtons; kept for potential reuse)
+// eslint-disable-next-line no-unused-vars
 const printAllRequisitions = (requisitions, supplyItems, users) => {
   const fmt = n => isNaN(Number(n)) ? n : "₦"+Number(n).toLocaleString();
   const fmtD = d => { try{ return new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return d||"—";}};
@@ -894,14 +1001,53 @@ function ContractsPage({clients,setClients}){
 // -- SERVICE REQUESTS ---------------------------------------------------------
 function RequestsPage({requests,setRequests,setJobs,clients}){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
+  const[selMK,setSelMK]=useState(curMonthKey());
+  const getMK=r=>r.created;
+  useEffect(()=>{if(requests.length>0&&!requests.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(requests.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[requests.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthRequests=requests.filter(r=>monthOf(r,getMK)===selMK);
   const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
   const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);toast.success(data.id?"Request updated":"Request logged");setModal(null);};
-  const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));toast.success("Request converted to job");};
+  const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),createdAt:new Date().toISOString(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));toast.success("Request converted to job");};
   const del=id=>confirm("Delete this request?",()=>{setRequests(rs=>rs.filter(r=>r.id!==id));dbDelete("requests",id);toast.success("Request deleted");});
   const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
+
+  // ── Print report helpers ───────────────────────────────────────────────
+  // Average response time = days between request creation and conversion.
+  // We approximate "converted at" from the corresponding job's createdAt (linked via sourceRequestId).
+  const statsOf=list=>{
+    const closed=list.filter(r=>r.status==="Converted"||r.status==="Declined").length;
+    const open=list.filter(r=>r.status==="Pending").length;
+    const declined=list.filter(r=>r.status==="Declined").length;
+    const converted=list.filter(r=>r.status==="Converted").length;
+    // average response time (days) for converted ones — uses prefDate vs created
+    const respDays=list.filter(r=>r.status==="Converted"&&r.created&&r.prefDate).map(r=>Math.max(0,Math.round((new Date(r.prefDate)-new Date(r.created))/86400000)));
+    const avgResp=respDays.length?Math.round(respDays.reduce((a,b)=>a+b,0)/respDays.length):null;
+    return{total:list.length,open,closed,declined,converted,avgResp};
+  };
+  const kpisOf=s=>[{label:"Total Requests",value:s.total},{label:"Open",value:s.open,color:AMBER},{label:"Converted",value:s.converted,color:"#16a34a"},{label:"Declined",value:s.declined,color:"#6b7280"},{label:"Avg Response",value:s.avgResp===null?"–":`${s.avgResp}d`,color:BLUE,sub:"days"}];
+  const reqRow=r=>`<tr><td>${fmtD(r.created)}</td><td>${r.clientName||"--"}${r.clientPhone?`<br><span style="color:#9ca3af">${r.clientPhone}</span>`:""}</td><td>${r.svc||"--"}</td><td>${r.loc||"--"}</td><td>${fmtD(r.prefDate)||"--"}</td><td>${r.src||"--"}</td><td>${r.status||"Pending"}</td></tr>`;
+  const reqTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No requests</p>`:`<table><thead><tr><th>Submitted</th><th>Client</th><th>Service</th><th>Location</th><th>Preferred Date</th><th>Source</th><th>Status</th></tr></thead><tbody>${list.map(reqRow).join("")}</tbody></table>`;
+  const printMonth=()=>{
+    if(monthRequests.length===0){alert(`No requests submitted in ${mkLabel(selMK)}`);return;}
+    const s=statsOf(monthRequests);
+    openPrintWin(buildReportHtml({moduleName:"Service Requests",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Requests Submitted in "+mkLabel(selMK),table:reqTable(monthRequests)}]}));
+  };
+  const printAll=()=>{
+    if(requests.length===0){alert("No requests recorded yet");return;}
+    const s=statsOf(requests);
+    const byMonth={};requests.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(r);});
+    const months=Object.keys(byMonth).sort().reverse();
+    openPrintWin(buildReportHtml({moduleName:"Service Requests",periodLabel:"All History",summaryKpis:kpisOf(s),sections:months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:`${mkLabel(mk)} — ${sub.total} request(s)`,kpis:kpisOf(sub),table:reqTable(byMonth[mk])};})}));
+  };
+
   return(<div className="space-y-5">{confirmEl}
-    <div className="flex items-center justify-between"><div className="flex gap-3"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{requests.filter(r=>r.status==="Pending").length} Pending</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{requests.filter(r=>r.status==="Converted").length} Converted</div></div><button onClick={()=>setModal(blank)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Log Request</button></div>
-    <Card><div className="divide-y divide-gray-50">{requests.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No requests yet</div>}{requests.map(r=>(<div key={r.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.clientName||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.clientName}</p><p className="text-xs text-gray-500">{r.svc}  {fmtD(r.prefDate)}  via {r.src}{r.clientPhone?<>  <span className="font-medium">{r.clientPhone}</span></>:""}</p>{r.notes&&<p className="text-xs text-gray-400 italic mt-0.5">"{r.notes}"</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={r.status} custom={SC[r.status]}/>{r.status==="Pending"&&<button onClick={()=>convert(r)} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white flex items-center gap-1" style={{background:BLUE}}><ArrowRight size={11}/>Convert</button>}<button onClick={()=>setModal(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>))}</div></Card>
+    {/* Month tabs + Print buttons */}
+    <div className="flex items-start justify-between flex-wrap gap-3">
+      <MonthTabs records={requests} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
+      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
+    </div>
+    <div className="flex items-center justify-between flex-wrap gap-3"><div className="flex gap-3 flex-wrap"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{monthRequests.filter(r=>r.status==="Pending").length} Pending in {mkLabel(selMK)}</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{monthRequests.filter(r=>r.status==="Converted").length} Converted</div></div><button onClick={()=>setModal(blank)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Log Request</button></div>
+    <Card><div className="divide-y divide-gray-50">{monthRequests.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No requests submitted in {mkLabel(selMK)}</div>}{monthRequests.map(r=>(<div key={r.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.clientName||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.clientName}</p><p className="text-xs text-gray-500">{r.svc}  {fmtD(r.prefDate)}  via {r.src}{r.clientPhone?<>  <span className="font-medium">{r.clientPhone}</span></>:""}</p>{r.notes&&<p className="text-xs text-gray-400 italic mt-0.5">"{r.notes}"</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={r.status} custom={SC[r.status]}/>{r.status==="Pending"&&<button onClick={()=>convert(r)} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white flex items-center gap-1" style={{background:BLUE}}><ArrowRight size={11}/>Convert</button>}<button onClick={()=>setModal(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>))}</div></Card>
     {modal&&<ModalWrap title={modal.id?"Edit Request":"Log Service Request"} onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Client Name"><input className={inp} value={modal.clientName} onChange={e=>setModal(p=>({...p,clientName:e.target.value}))}/></Fld><Fld label="Client Phone"><input className={inp} type="tel" value={modal.clientPhone||""} onChange={e=>setModal(p=>({...p,clientPhone:e.target.value}))} placeholder="e.g. 08031234567"/></Fld><Fld label="Service"><select className={inp} value={modal.svc} onChange={e=>setModal(p=>({...p,svc:e.target.value}))}><option value="">-- Select --</option><option>General Cleaning</option><option>One-Time Cleaning</option><option>Deep Cleaning</option><option>Pest Control</option><option>Fumigation</option><option>Training/Consultancy</option></select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Location"><input className={inp} value={modal.loc} onChange={e=>setModal(p=>({...p,loc:e.target.value}))}/></Fld><Fld label="Preferred Date"><input className={inp} type="date" value={modal.prefDate} onChange={e=>setModal(p=>({...p,prefDate:e.target.value}))}/></Fld><Fld label="Source"><select className={inp} value={modal.src} onChange={e=>setModal(p=>({...p,src:e.target.value}))}><option>Phone</option><option>WhatsApp</option><option>Email</option><option>Walk-in</option><option>Website</option><option>Referral</option></select></Fld></div><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Save</button></div></ModalWrap>}
   </div>);}
 
@@ -909,14 +1055,51 @@ function RequestsPage({requests,setRequests,setJobs,clients}){
 function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
   const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const filtered=filter==="All"?jobs:jobs.filter(j=>j.status===filter);
-  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);toast.success(data.id?"Job updated":"Job created");setModal(null);};
+  const[selMK,setSelMK]=useState(curMonthKey());
+  // Group by job CREATION date — uses createdAt if present, falls back to parsing timestamp from id
+  const getMK=j=>j.createdAt;
+  useEffect(()=>{if(jobs.length>0&&!jobs.some(j=>monthOf(j,getMK)===selMK)){const keys=[...new Set(jobs.map(j=>monthOf(j,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[jobs.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthJobs=jobs.filter(j=>monthOf(j,getMK)===selMK);
+  const filtered=filter==="All"?monthJobs:monthJobs.filter(j=>j.status===filter);
+  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),createdAt:new Date().toISOString(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);toast.success(data.id?"Job updated":"Job created");setModal(null);};
   const advance=(id,ns)=>{setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));toast.info(`Job moved to ${ns}`);};
   const del=id=>confirm("Delete this job?",()=>{setJobs(js=>js.filter(j=>j.id!==id));dbDelete("jobs",id);toast.success("Job deleted");});
   const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
+
+  // ── Print report helpers ───────────────────────────────────────────────
+  const statsOf=list=>{
+    const closed=list.filter(j=>j.status==="Closed"||j.status==="Completed").length;
+    const pending=list.filter(j=>!["Closed","Completed"].includes(j.status)).length;
+    const today=new Date().toISOString().slice(0,10);
+    const overdue=list.filter(j=>j.date&&j.date<today&&!["Closed","Completed"].includes(j.status)).length;
+    const byClient={};list.forEach(j=>{const k=j.clientName||"Unknown";byClient[k]=(byClient[k]||0)+1;});
+    return{total:list.length,closed,pending,overdue,byClient};
+  };
+  const kpisOf=s=>[{label:"Total Jobs",value:s.total},{label:"Closed",value:s.closed,color:"#16a34a"},{label:"Pending",value:s.pending,color:AMBER},{label:"Overdue",value:s.overdue,color:s.overdue>0?RED:"#6b7280"}];
+  const jobRow=j=>`<tr><td>${fmtD(j.createdAt||j.date)}</td><td>${j.clientName||"--"}</td><td>${j.svc||"--"}</td><td>${fmtD(j.date)||"--"}</td><td>${j.sup||"--"}</td><td>${j.techs||"--"}</td><td>${j.status||"--"}</td></tr>`;
+  const jobTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No jobs</p>`:`<table><thead><tr><th>Created</th><th>Client</th><th>Service</th><th>Scheduled</th><th>Supervisor</th><th>Crew</th><th>Status</th></tr></thead><tbody>${list.map(jobRow).join("")}</tbody></table>`;
+  const clientBreakdown=s=>{const rows=Object.entries(s.byClient).sort((a,b)=>b[1]-a[1]).slice(0,15);if(!rows.length)return"";return`<table style="margin-top:6px"><thead><tr><th>Client</th><th style="text-align:right">Jobs</th></tr></thead><tbody>${rows.map(([n,c])=>`<tr><td>${n}</td><td style="text-align:right">${c}</td></tr>`).join("")}</tbody></table>`;};
+  const printMonth=()=>{
+    if(monthJobs.length===0){alert(`No jobs created in ${mkLabel(selMK)}`);return;}
+    const s=statsOf(monthJobs);
+    openPrintWin(buildReportHtml({moduleName:"Jobs",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Jobs Created in "+mkLabel(selMK),table:jobTable(monthJobs)},{label:"By Client",table:clientBreakdown(s)}]}));
+  };
+  const printAll=()=>{
+    if(jobs.length===0){alert("No jobs recorded yet");return;}
+    const s=statsOf(jobs);
+    const byMonth={};jobs.forEach(j=>{const mk=monthOf(j,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(j);});
+    const months=Object.keys(byMonth).sort().reverse();
+    openPrintWin(buildReportHtml({moduleName:"Jobs",periodLabel:"All History",summaryKpis:[...kpisOf(s),{label:"Unique Clients",value:Object.keys(s.byClient).length,color:BLUE}],sections:months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:`${mkLabel(mk)} — ${sub.total} job(s)`,kpis:kpisOf(sub),table:jobTable(byMonth[mk])};})}));
+  };
+
   return(<div className="space-y-5">{confirmEl}
-    <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{["All",...JOB_STATUSES].map(s=><button key={s} onClick={()=>setFilter(s)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all border ${filter===s?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===s?{background:s==="All"?GD:(STATUS_COLORS[s]?.color||G)}:{}}>{s} ({s==="All"?jobs.length:jobs.filter(j=>j.status===s).length})</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Job</button>}</div>
-    <Card><div className="divide-y divide-gray-50">{filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No jobs match this filter</div>}{filtered.map(j=>{const sc=STATUS_COLORS[j.status]||{};const ns=JOB_STATUSES[JOB_STATUSES.indexOf(j.status)+1];const canCI=isTech&&j.status==="Assigned"&&!j.checkIn;const canCO=isTech&&j.status==="In Progress"&&j.checkIn&&!j.checkOut;return(<div key={j.id} className="px-5 py-4 hover:bg-gray-50/60"><div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5" style={{background:sc.color||G}}>{(j.clientName||"?")[0]}</div><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="font-semibold text-gray-800 text-sm">{j.clientName}</p><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{j.svc}</span><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{fmtD(j.date)}</span></div><p className="text-xs text-gray-400 mt-0.5">Sup: {j.sup||"--"}  Crew: {j.techs||"--"}{j.loc?`  📍 ${j.loc}`:""}{j.sourceRequestId?<span className="ml-1 text-blue-400 font-medium">· From Request</span>:null}</p>{j.checkIn&&<p className="text-xs text-green-600 mt-0.5"> In: {fmtDT(j.checkIn)}{j.checkOut?`  Out: ${fmtDT(j.checkOut)}  ${calcDur(j.checkIn,j.checkOut)}`:""}</p>}
+    {/* Month tabs + Print buttons */}
+    <div className="flex items-start justify-between flex-wrap gap-3">
+      <MonthTabs records={jobs} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
+      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{["All",...JOB_STATUSES].map(s=><button key={s} onClick={()=>setFilter(s)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all border ${filter===s?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===s?{background:s==="All"?GD:(STATUS_COLORS[s]?.color||G)}:{}}>{s} ({s==="All"?monthJobs.length:monthJobs.filter(j=>j.status===s).length})</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Job</button>}</div>
+    <Card><div className="divide-y divide-gray-50">{filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">{monthJobs.length===0?`No jobs created in ${mkLabel(selMK)}`:"No jobs match this filter"}</div>}{filtered.map(j=>{const sc=STATUS_COLORS[j.status]||{};const ns=JOB_STATUSES[JOB_STATUSES.indexOf(j.status)+1];const canCI=isTech&&j.status==="Assigned"&&!j.checkIn;const canCO=isTech&&j.status==="In Progress"&&j.checkIn&&!j.checkOut;return(<div key={j.id} className="px-5 py-4 hover:bg-gray-50/60"><div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5" style={{background:sc.color||G}}>{(j.clientName||"?")[0]}</div><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="font-semibold text-gray-800 text-sm">{j.clientName}</p><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{j.svc}</span><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{fmtD(j.date)}</span></div><p className="text-xs text-gray-400 mt-0.5">Sup: {j.sup||"--"}  Crew: {j.techs||"--"}{j.loc?`  📍 ${j.loc}`:""}{j.sourceRequestId?<span className="ml-1 text-blue-400 font-medium">· From Request</span>:null}</p>{j.checkIn&&<p className="text-xs text-green-600 mt-0.5"> In: {fmtDT(j.checkIn)}{j.checkOut?`  Out: ${fmtDT(j.checkOut)}  ${calcDur(j.checkIn,j.checkOut)}`:""}</p>}
 {j.signOff&&<p className="text-xs mt-0.5">{j.signOff.notPresent?<span style={{color:AMBER}}>⚠ Client not present at checkout</span>:<span style={{color:G}}>★ {j.signOff.rating}/5 — {j.signOff.clientName}{j.signOff.remarks?` · "${j.signOff.remarks}"`:""}</span>}</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0"><SBadge s={j.status}/><div className="flex gap-1">{canCI&&<button onClick={()=>setGpsModal({job:j,type:"in"})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Check In</button>}{canCO&&<button onClick={()=>setGpsModal({job:j,type:"out"})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:O}}>Check Out</button>}{canEdit&&ns&&!["Closed"].includes(j.status)&&<button onClick={()=>advance(j.id,ns)} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>{ns}</button>}{canEdit&&<button onClick={()=>setModal(j)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={12}/></button>}{canEdit&&<button onClick={()=>del(j.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={12}/></button>}</div></div></div></div>);})}</div></Card>
     {modal!==null&&<ModalWrap title={modal.id?"Edit Job":"Create Job"} onClose={()=>setModal(null)} wide><div className="grid grid-cols-2 gap-4"><Fld label="Client" col><ContactSearchSelect value={modal.clientName||""} onSelect={name=>setModal(p=>({...p,clientName:name}))} clients={clients} contacts={contacts}/></Fld><Fld label="Service"><select className={inp} value={modal.svc||"Cleaning"} onChange={e=>setModal(p=>({...p,svc:e.target.value}))}><option>Cleaning</option><option>Pest Control</option><option>Both</option><option>Deep Cleaning</option></select></Fld><Fld label="Scheduled Date"><input className={inp} type="date" value={modal.date||""} onChange={e=>setModal(p=>({...p,date:e.target.value}))}/></Fld><Fld label="Status"><select className={inp} value={modal.status||"New"} onChange={e=>setModal(p=>({...p,status:e.target.value}))}>{JOB_STATUSES.map(s=><option key={s}>{s}</option>)}</select></Fld><Fld label="Supervisor"><StaffSelect staff={staff} value={modal.sup||""} onChange={v=>setModal(p=>({...p,sup:v}))} placeholder="-- Select supervisor --" filter={s=>s.category==="Office Staff"||s.role==="Team Lead"||s.role==="Supervisor"}/></Fld><Fld label="Lead Technician"><StaffSelect staff={staff} value={modal.techs||""} onChange={v=>setModal(p=>({...p,techs:v}))} placeholder="-- Select technician --" filter={s=>s.category==="Cleaning Staff"||s.category==="Gardening Staff"}/></Fld><Fld label="Location"><input className={inp} value={modal.loc||""} onChange={e=>setModal(p=>({...p,loc:e.target.value}))} placeholder="Site address or description"/></Fld><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Create"}</button></div></ModalWrap>}
     {gpsModal&&<GpsModal job={gpsModal.job} type={gpsModal.type} onSave={data=>{setJobs(js=>js.map(j=>j.id===data.id?data:j));setGpsModal(null);}} onClose={()=>setGpsModal(null)}/>}
@@ -1152,18 +1335,56 @@ function ContactSearchSelect({value,onSelect,clients,contacts=[]}){
 function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}){
   const[showForm,setShowForm]=useState(false);const[view,setView]=useState(null);
   const[confirm,confirmEl]=useConfirm();
+  const[selMK,setSelMK]=useState(curMonthKey());
+  const getMK=r=>r.submittedAt;
+  // Auto-switch to most recent month with data if current month is empty
+  useEffect(()=>{if(reports.length>0&&!reports.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(reports.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[reports]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthReports=reports.filter(r=>monthOf(r,getMK)===selMK);
   const del=id=>confirm("Delete this report?",()=>{setReports(rs=>rs.filter(r=>r.id!==id));dbDelete("reports",id);});
+
+  // ── Stats helper for any report subset ────────────────────────────────────
+  const statsOf=list=>{
+    const completed=list.filter(r=>r.overallAssessment==="Job Completed Successfully").length;
+    const flagged=list.length-completed;
+    const sites=new Set(list.map(r=>r.clientName).filter(Boolean)).size;
+    const byInspector={};list.forEach(r=>{const k=r.supervisorName||"Unknown";byInspector[k]=(byInspector[k]||0)+1;});
+    return{total:list.length,completed,flagged,sites,byInspector};
+  };
+  const reportRow=r=>`<tr><td>${fmtD(r.submittedAt||r.arrivalDate)}</td><td>${r.clientName||"--"}</td><td>${r.supervisorName||"--"}</td><td>${r.jobType||"--"}</td><td>${(r.serviceCategory||[]).join(", ")||"--"}</td><td style="text-align:center">${r.cleanlinessRating||"-"}/5</td><td style="text-align:center">${r.adherenceRating||"-"}/5</td><td>${r.overallAssessment==="Job Completed Successfully"?"Completed":"Issues Noted"}</td></tr>`;
+  const reportTable=list=>`<table><thead><tr><th>Submitted</th><th>Client / Site</th><th>Inspector</th><th>Job Type</th><th>Services</th><th>Cleanliness</th><th>Adherence</th><th>Outcome</th></tr></thead><tbody>${list.map(reportRow).join("")}</tbody></table>`;
+  const kpisOf=s=>[{label:"Total Visits",value:s.total},{label:"Unique Sites",value:s.sites,color:BLUE},{label:"Completed",value:s.completed,color:"#16a34a"},{label:"Findings Flagged",value:s.flagged,color:s.flagged>0?RED:"#6b7280"}];
+
+  const printMonth=()=>{
+    if(monthReports.length===0){alert(`No reports for ${mkLabel(selMK)}`);return;}
+    const s=statsOf(monthReports);
+    const inspectors=Object.entries(s.byInspector).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(", ")||"--";
+    openPrintWin(buildReportHtml({moduleName:"Site Reports",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Reports for "+mkLabel(selMK),table:reportTable(monthReports),note:"By Inspector: "+inspectors}]}));
+  };
+  const printAll=()=>{
+    if(reports.length===0){alert("No reports yet");return;}
+    const s=statsOf(reports);
+    const byMonth={};reports.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(r);});
+    const months=Object.keys(byMonth).sort().reverse();
+    openPrintWin(buildReportHtml({moduleName:"Site Reports",periodLabel:"All History",summaryKpis:kpisOf(s),sections:months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:mkLabel(mk)+` — ${sub.total} report${sub.total!==1?"s":""}`,kpis:kpisOf(sub),table:reportTable(byMonth[mk])};})}));
+  };
+
   return(<div className="space-y-5">{confirmEl}
-    <div className="flex items-center justify-between">
-      <div className="flex gap-3">
-        <div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{reports.length} Total</div>
-        <div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:"#166534"}}>{reports.filter(r=>r.overallAssessment==="Job Completed Successfully").length} Completed</div>
+    {/* Month tabs + Print buttons */}
+    <div className="flex items-start justify-between flex-wrap gap-3">
+      <MonthTabs records={reports} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
+      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
+    </div>
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex gap-3 flex-wrap">
+        <div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{monthReports.length} in {mkLabel(selMK)}</div>
+        <div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:"#166534"}}>{monthReports.filter(r=>r.overallAssessment==="Job Completed Successfully").length} Completed</div>
+        <div className="p-3 rounded-xl text-sm font-bold" style={{background:"#f3f4f6",color:"#374151"}}>{reports.length} Total (all months)</div>
       </div>
       <button onClick={()=>setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Report</button>
     </div>
-    <Card>{reports.length===0?
-      <div className="text-center py-16 text-gray-400"><ClipboardList size={40} className="mx-auto mb-3 opacity-20"/><p className="text-sm font-semibold">No site visit reports yet</p><p className="text-xs mt-1">Reports capture job details, quality scores, photos and client feedback</p></div>:
-      <div className="divide-y divide-gray-50">{reports.map(r=>{
+    <Card>{monthReports.length===0?
+      <div className="text-center py-16 text-gray-400"><ClipboardList size={40} className="mx-auto mb-3 opacity-20"/><p className="text-sm font-semibold">No site reports for {mkLabel(selMK)}</p><p className="text-xs mt-1">Switch months above, or create a new report</p></div>:
+      <div className="divide-y divide-gray-50">{monthReports.map(r=>{
         const photos=r.photos||[];
         const done=r.overallAssessment==="Job Completed Successfully";
         const sc=done?{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}:{bg:"#fff7ed",color:AMBER,border:"#fde68a"};
@@ -1719,6 +1940,45 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
   const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const canManage=user.role==="Admin"||user.role==="Supervisor";
   const statusColors={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Approved:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},Rejected:{bg:"#fee2e2",color:RED,border:"#fca5a5"},Forwarded:{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"}};
+  // ── Monthly grouping ────────────────────────────────────────────────
+  const[selMK,setSelMK]=useState(curMonthKey());
+  const getMK=r=>`${r.year||new Date().getFullYear()}-${String((r.month??new Date().getMonth())+1).padStart(2,"0")}`;
+  useEffect(()=>{if(requisitions.length>0&&!requisitions.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(requisitions.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[requisitions.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthReqs=requisitions.filter(r=>monthOf(r,getMK)===selMK);
+  const openNextMonth=()=>{
+    const keys=[...new Set(requisitions.map(r=>monthOf(r,getMK)).filter(Boolean)),curMonthKey()].sort().reverse();
+    const latest=keys[0]||curMonthKey();
+    const next=nextMonthKey(latest);
+    setSelMK(next);
+    toast.info(`Now viewing ${mkLabel(next)} — click "New Requisition" to create one for this month.`);
+  };
+  // ── Print report helpers ────────────────────────────────────────────
+  const reqTotal=r=>(r.items||[]).reduce((s,i)=>s+(i.qty*(i.approvedRate||i.rate||i.cost||0)),0);
+  const statsOf=list=>{
+    const budget=list.reduce((s,r)=>s+(r.budgetCap||0),0);
+    const spent=list.reduce((s,r)=>s+reqTotal(r),0);
+    const itemCount=list.reduce((s,r)=>s+(r.items||[]).filter(i=>i.qty>0).reduce((ss,i)=>ss+i.qty,0),0);
+    const byCat={};list.forEach(r=>(r.items||[]).filter(i=>i.qty>0).forEach(i=>{const k=i.cat||"Other";byCat[k]=(byCat[k]||0)+i.qty*(i.approvedRate||i.rate||i.cost||0);}));
+    const byItem={};list.forEach(r=>(r.items||[]).filter(i=>i.qty>0).forEach(i=>{const k=i.name||"Unknown";byItem[k]=(byItem[k]||0)+i.qty*(i.approvedRate||i.rate||i.cost||0);}));
+    return{reqs:list.length,budget,spent,itemCount,byCat,byItem};
+  };
+  const kpisOf=s=>[{label:"Requisitions",value:s.reqs},{label:"Total Budget",value:"₦"+s.budget.toLocaleString(),color:BLUE},{label:"Total Spent",value:"₦"+s.spent.toLocaleString(),color:s.spent>s.budget&&s.budget>0?RED:"#16a34a"},{label:"Items Requested",value:s.itemCount,color:O},{label:"Categories",value:Object.keys(s.byCat).length,color:"#7c3aed"}];
+  const reqRow=r=>{const total=reqTotal(r);const budget=r.budgetCap||0;const pct=budget>0?(total/budget*100).toFixed(0)+"%":"--";return`<tr><td>${r.site||"--"}</td><td>${r.submittedBy||"--"}</td><td style="text-align:center">${(r.items||[]).filter(i=>i.qty>0).length}</td><td style="text-align:right">&#x20a6;${budget.toLocaleString()}</td><td style="text-align:right">&#x20a6;${total.toLocaleString()}</td><td style="text-align:center">${pct}</td><td>${r.status||"Pending"}</td></tr>`;};
+  const reqTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No requisitions</p>`:`<table><thead><tr><th>Site</th><th>Submitted By</th><th>Items</th><th>Budget</th><th>Total</th><th>Util.</th><th>Status</th></tr></thead><tbody>${list.map(reqRow).join("")}</tbody></table>`;
+  const catBreakdown=s=>{const rows=Object.entries(s.byCat).sort((a,b)=>b[1]-a[1]);if(!rows.length)return"";return`<table style="margin-top:6px"><thead><tr><th>Category</th><th style="text-align:right">Spend</th><th style="text-align:right">% of total</th></tr></thead><tbody>${rows.map(([n,v])=>`<tr><td>${n}</td><td style="text-align:right">&#x20a6;${v.toLocaleString()}</td><td style="text-align:right">${s.spent>0?(v/s.spent*100).toFixed(1):0}%</td></tr>`).join("")}</tbody></table>`;};
+  const topItems=s=>{const rows=Object.entries(s.byItem).sort((a,b)=>b[1]-a[1]).slice(0,15);if(!rows.length)return"";return`<table style="margin-top:6px"><thead><tr><th>Item</th><th style="text-align:right">Spend</th></tr></thead><tbody>${rows.map(([n,v])=>`<tr><td>${n}</td><td style="text-align:right">&#x20a6;${v.toLocaleString()}</td></tr>`).join("")}</tbody></table>`;};
+  const printMonth=()=>{
+    if(monthReqs.length===0){alert(`No requisitions for ${mkLabel(selMK)}`);return;}
+    const s=statsOf(monthReqs);
+    openPrintWin(buildReportHtml({moduleName:"Requisitions",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Requisitions for "+mkLabel(selMK),table:reqTable(monthReqs)},{label:"Spend by Category",table:catBreakdown(s)},{label:"Top Items by Spend",table:topItems(s)}]}));
+  };
+  const printAll=()=>{
+    if(requisitions.length===0){alert("No requisitions recorded yet");return;}
+    const s=statsOf(requisitions);
+    const byMonth={};requisitions.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(r);});
+    const months=Object.keys(byMonth).sort().reverse();
+    openPrintWin(buildReportHtml({moduleName:"Requisitions",periodLabel:"All History",summaryKpis:kpisOf(s),sections:[{label:"Overall Spend by Category",table:catBreakdown(s)},...months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:`${mkLabel(mk)} — ${sub.reqs} requisition(s), ₦${sub.spent.toLocaleString()} spent`,kpis:kpisOf(sub),table:reqTable(byMonth[mk])};})]}));
+  };
   const approve=(id,status)=>{
     const newRs=requisitions.map(r=>{
       if(r.id!==id) return r;
@@ -1741,13 +2001,18 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
   const[catFilter,setCatFilter]=useState("All");
   const[deductModal,setDeductModal]=useState(null);
   return(<div className="space-y-5">{confirmEl}
+    {/* Month tabs (with Open Next Month) + Print buttons — only on Requisitions tab */}
+    {tab==="reqs"&&<div className="flex items-start justify-between flex-wrap gap-3">
+      <MonthTabs records={requisitions} getMK={getMK} selMK={selMK} setSelMK={setSelMK} onOpenNext={openNextMonth}/>
+      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
+    </div>}
     <div className="flex items-center gap-4 border-b border-gray-200">
-      {[{id:"reqs",label:"Requisitions",n:requisitions.filter(r=>r.status==="Pending").length},{id:"catalogue",label:"Item Catalogue",hide:!canManage,n:supplyItems.length}].filter(t=>!t.hide).map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`pb-3 text-sm font-semibold transition-all flex items-center gap-2 ${tab===t.id?"border-b-2":"text-gray-400 hover:text-gray-600"}`} style={tab===t.id?{borderColor:G,color:G}:{}}>{t.label}{t.n>0&&<span className="text-xs px-1.5 py-0.5 rounded-full font-bold text-white" style={{background:t.id==="reqs"?AMBER:G}}>{t.n}</span>}</button>)}
+      {[{id:"reqs",label:"Requisitions",n:monthReqs.filter(r=>r.status==="Pending").length},{id:"catalogue",label:"Item Catalogue",hide:!canManage,n:supplyItems.length}].filter(t=>!t.hide).map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`pb-3 text-sm font-semibold transition-all flex items-center gap-2 ${tab===t.id?"border-b-2":"text-gray-400 hover:text-gray-600"}`} style={tab===t.id?{borderColor:G,color:G}:{}}>{t.label}{t.n>0&&<span className="text-xs px-1.5 py-0.5 rounded-full font-bold text-white" style={{background:t.id==="reqs"?AMBER:G}}>{t.n}</span>}</button>)}
     </div>
     {tab==="reqs"&&<>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-3 flex-wrap"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{requisitions.filter(r=>r.status==="Pending").length} Pending</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:G}}>{requisitions.filter(r=>r.status==="Approved").length} Approved</div></div><div className="flex items-center gap-2">{canManage&&<button onClick={()=>printAllRequisitions(requisitions,supplyItems,users)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Download All</button>}<button onClick={()=>setModal({type:"new"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Requisition</button></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-3 flex-wrap"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{monthReqs.filter(r=>r.status==="Pending").length} Pending in {mkLabel(selMK)}</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dcfce7",color:G}}>{monthReqs.filter(r=>r.status==="Approved").length} Approved</div></div><button onClick={()=>setModal({type:"new"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Requisition</button></div>
       {canManage&&<div className="flex items-center gap-2 p-3 rounded-xl text-xs text-blue-700 font-medium" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}><Info size={13}/>Submitted requisitions trigger email notifications to all Supervisors. (Requires Supabase backend.)</div>}
-      <Card><div className="divide-y divide-gray-50">{requisitions.length===0&&<div className="text-center py-12 text-gray-400"><ClipboardCheck size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No requisitions yet</p></div>}{requisitions.map(r=>{const total=r.items?.reduce((s,i)=>s+(i.qty*(i.approvedRate||i.rate||0)),0)||0;const budget=r.budgetCap||0;const pct=budget>0?total/budget:0;return(<div key={r.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.site||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.site} -- {MONTHS[r.month]} {r.year}</p><p className="text-xs text-gray-500">By: {r.submittedBy}  {r.items?.length||0} items</p>{canManage&&budget>0&&<span className="text-xs px-2 py-0.5 rounded-lg font-semibold" style={{background:pct>1?"#fee2e2":pct>0.85?"#fffbeb":"#dcfce7"}}><span className={pct>1?"text-red-700":pct>0.85?"text-amber-700":"text-green-700"}>{fmt(total)} / {fmt(budget)} ({(pct*100).toFixed(0)}%)</span></span>}{r.reviewedBy&&<p className="text-xs text-gray-400 mt-0.5">Reviewed: {r.reviewedBy}</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={r.status} custom={statusColors[r.status]}/><button onClick={()=>setView(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Eye size={13}/></button>{canManage&&r.status==="Pending"&&<><button onClick={()=>approve(r.id,"Approved")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Approve</button><button onClick={()=>approve(r.id,"Rejected")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:RED}}>Reject</button></>}{canManage&&r.status==="Approved"&&<button onClick={()=>setDeductModal(r)} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:BLUE}}>Forward</button>}<button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>);})}</div></Card>
+      <Card><div className="divide-y divide-gray-50">{monthReqs.length===0&&<div className="text-center py-12 text-gray-400"><ClipboardCheck size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No requisitions in {mkLabel(selMK)}</p><p className="text-xs mt-1">Switch months above, or click <strong>New Requisition</strong> to create one</p></div>}{monthReqs.map(r=>{const total=r.items?.reduce((s,i)=>s+(i.qty*(i.approvedRate||i.rate||0)),0)||0;const budget=r.budgetCap||0;const pct=budget>0?total/budget:0;return(<div key={r.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.site||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.site} -- {MONTHS[r.month]} {r.year}</p><p className="text-xs text-gray-500">By: {r.submittedBy}  {r.items?.length||0} items</p>{canManage&&budget>0&&<span className="text-xs px-2 py-0.5 rounded-lg font-semibold" style={{background:pct>1?"#fee2e2":pct>0.85?"#fffbeb":"#dcfce7"}}><span className={pct>1?"text-red-700":pct>0.85?"text-amber-700":"text-green-700"}>{fmt(total)} / {fmt(budget)} ({(pct*100).toFixed(0)}%)</span></span>}{r.reviewedBy&&<p className="text-xs text-gray-400 mt-0.5">Reviewed: {r.reviewedBy}</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={r.status} custom={statusColors[r.status]}/><button onClick={()=>setView(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Eye size={13}/></button>{canManage&&r.status==="Pending"&&<><button onClick={()=>approve(r.id,"Approved")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Approve</button><button onClick={()=>approve(r.id,"Rejected")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:RED}}>Reject</button></>}{canManage&&r.status==="Approved"&&<button onClick={()=>setDeductModal(r)} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:BLUE}}>Forward</button>}<button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>);})}</div></Card>
     </>}
     {tab==="catalogue"&&canManage&&<>
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{cats.map(c=><button key={c} onClick={()=>setCatFilter(c)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold border ${catFilter===c?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={catFilter===c?{background:G}:{}}>{c}</button>)}</div><button onClick={()=>setItemModal({cat:"Cleaning",unit:"bottle",active:true})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Item</button></div>
@@ -1820,14 +2085,53 @@ function ReqViewer({req:r,canSeeCosts,onClose}){
 // -- ABSENCE & COVER -----------------------------------------------------------
 function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[]}){
   const[tab,setTab]=useState("absences");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
+  const[selMK,setSelMK]=useState(curMonthKey());
+  const getMK=r=>r.startDate;
+  // Both absences AND covers feed the month list (linked together per user spec)
+  const combined=useMemo(()=>[...absences,...covers],[absences,covers]);
+  useEffect(()=>{if(combined.length>0&&!combined.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(combined.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[combined.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monthAbsences=absences.filter(a=>monthOf(a,getMK)===selMK);
+  const monthCovers=covers.filter(c=>monthOf(c,getMK)===selMK);
   const delA=id=>confirm("Delete this absence?",()=>{setAbsences(as=>as.filter(a=>a.id!==id));dbDelete("absences",id);toast.success("Absence deleted");});
   const delC=id=>confirm("Delete this cover?",()=>{setCovers(cs=>cs.filter(c=>c.id!==id));dbDelete("covers",id);toast.success("Cover deleted");});
   const SC={"Absent Logged":{bg:"#fff7ed",color:O,border:"#fed7aa"},"Cover Assigned":{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"},"Completed":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Sent to Finance":{bg:"#fdf4ff",color:"#7c3aed",border:"#ddd6fe"}};
   const advanceAbs=(id,cur)=>setAbsences(as=>as.map(a=>a.id===id?{...a,status:cur==="Absent Logged"?"Cover Assigned":cur==="Cover Assigned"?"Completed":"Sent to Finance"}:a));
+
+  // ── Print report helpers ───────────────────────────────────────────────
+  const daysOfAbsence=a=>{const s=new Date(a.startDate),e=new Date(a.endDate||a.startDate);return Math.max(1,Math.round((e-s)/86400000)+1);};
+  const statsOf=(ab,cv)=>{
+    const totalDays=ab.reduce((s,a)=>s+daysOfAbsence(a),0);
+    const absentStaff=new Set(ab.map(a=>a.cleaner).filter(Boolean)).size;
+    const uncovered=ab.filter(a=>a.needsReplacement&&!cv.some(c=>c.absentCleaner===a.cleaner&&c.startDate===a.startDate)).length;
+    return{absences:ab.length,covers:cv.length,totalDays,absentStaff,uncovered};
+  };
+  const kpisOf=s=>[{label:"Total Absences",value:s.absences,color:O},{label:"Absence Days",value:s.totalDays,color:RED},{label:"Staff Affected",value:s.absentStaff,color:BLUE},{label:"Covers Assigned",value:s.covers,color:"#16a34a"},{label:"Uncovered",value:s.uncovered,color:s.uncovered>0?RED:"#6b7280"}];
+  const absRow=a=>`<tr><td>${a.cleaner||"--"}</td><td>${a.site||"--"}</td><td>${fmtD(a.startDate)}</td><td>${fmtD(a.endDate||a.startDate)}</td><td style="text-align:center">${daysOfAbsence(a)}</td><td>${a.leaveType||"Sick"}</td><td style="text-align:right">${a.deductionAmount?"&#x20a6;"+a.deductionAmount.toLocaleString():"-"}</td><td>${a.status||"Absent Logged"}</td></tr>`;
+  const covRow=c=>`<tr><td>${c.replacement||"--"}</td><td>${c.absentCleaner||"--"}</td><td>${c.site||"--"}</td><td>${fmtD(c.startDate)}</td><td>${fmtD(c.endDate||c.startDate)}</td><td style="text-align:center">${c.days||1}</td><td style="text-align:right">${c.compensation?(c.coverAmount?"&#x20a6;"+c.coverAmount.toLocaleString():"Yes"):"No"}</td></tr>`;
+  const absTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No absences</p>`:`<table><thead><tr><th>Staff</th><th>Site</th><th>From</th><th>To</th><th>Days</th><th>Type</th><th>Deduction</th><th>Status</th></tr></thead><tbody>${list.map(absRow).join("")}</tbody></table>`;
+  const covTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No covers</p>`:`<table><thead><tr><th>Replacement</th><th>Covering For</th><th>Site</th><th>From</th><th>To</th><th>Days</th><th>Compensation</th></tr></thead><tbody>${list.map(covRow).join("")}</tbody></table>`;
+  const printMonth=()=>{
+    if(monthAbsences.length===0&&monthCovers.length===0){alert(`No absences or covers for ${mkLabel(selMK)}`);return;}
+    const s=statsOf(monthAbsences,monthCovers);
+    openPrintWin(buildReportHtml({moduleName:"Absence & Cover",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Absences",table:absTable(monthAbsences)},{label:"Cover Assignments",table:covTable(monthCovers)}]}));
+  };
+  const printAll=()=>{
+    if(combined.length===0){alert("No absences or covers recorded yet");return;}
+    const s=statsOf(absences,covers);
+    const byMonth={};combined.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;if(!byMonth[mk])byMonth[mk]={abs:[],cov:[]};if(r.absentCleaner)byMonth[mk].cov.push(r);else byMonth[mk].abs.push(r);});
+    const months=Object.keys(byMonth).sort().reverse();
+    openPrintWin(buildReportHtml({moduleName:"Absence & Cover",periodLabel:"All History",summaryKpis:kpisOf(s),sections:months.map(mk=>{const sub=statsOf(byMonth[mk].abs,byMonth[mk].cov);return{label:`${mkLabel(mk)} — ${sub.absences} absence(s), ${sub.covers} cover(s)`,kpis:kpisOf(sub),table:absTable(byMonth[mk].abs)+covTable(byMonth[mk].cov)};})}));
+  };
+
   return(<div className="space-y-5">{confirmEl}
-    <div className="flex items-center justify-between"><div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white"><button onClick={()=>setTab("absences")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="absences"?"text-white":"text-gray-500"}`} style={tab==="absences"?{background:G}:{}}>Absences ({absences.length})</button><button onClick={()=>setTab("covers")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="covers"?"text-white":"text-gray-500"}`} style={tab==="covers"?{background:G}:{}}>Cover ({covers.length})</button></div><div className="flex items-center gap-2">{tab==="absences"&&<button onClick={()=>{const rows=[["Staff","Site","Start","End","Leave Type","Deduction (₦)","Status"],...absences.map(a=>[a.cleaner,a.site,a.startDate,a.endDate||a.startDate,a.leaveType||"Sick",a.deductionAmount||0,a.status||"Absent Logged"])];const csv=rows.map(r=>r.join(",")).join("\n");const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="absences.csv";a.click();URL.revokeObjectURL(u);}} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Export CSV</button>}<button onClick={()=>setModal({type:tab==="absences"?"absence":"cover"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>{tab==="absences"?"Log Absence":"Assign Cover"}</button></div></div>
-    {tab==="absences"&&<Card><div className="divide-y divide-gray-50">{absences.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No absences logged</div>}{absences.map(a=><div key={a.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:RED}}>{(a.cleaner||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{a.cleaner}</p><p className="text-xs text-gray-500">Site: {a.site}  {fmtD(a.startDate)}{a.endDate&&a.endDate!==a.startDate?` - ${fmtD(a.endDate)}`:""}</p>{a.reason&&<p className="text-xs text-gray-400 italic">Reason: {a.reason}</p>}<p className="text-xs text-gray-400">Type: {a.leaveType||"Sick"}  Replacement: {a.needsReplacement?"Needed":"Not required"}{a.deductionAmount>0?<span className="text-red-500 font-medium ml-1">  Deduction: ₦{a.deductionAmount.toLocaleString()}</span>:null}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={a.status||"Absent Logged"} custom={SC[a.status||"Absent Logged"]}/>{a.status!=="Sent to Finance"&&<button onClick={()=>advanceAbs(a.id,a.status||"Absent Logged")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>Next</button>}<button onClick={()=>delA(a.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
-    {tab==="covers"&&<Card><div className="divide-y divide-gray-50">{covers.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No cover assignments</div>}{covers.map(c=><div key={c.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(c.replacement||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{c.replacement} <span className="font-normal text-gray-400">covered for</span> {c.absentCleaner}</p><p className="text-xs text-gray-500">Site: {c.site}  {fmtD(c.startDate)}{c.endDate&&c.endDate!==c.startDate?` - ${fmtD(c.endDate)}`:""}</p><p className="text-xs text-gray-400">{c.days} day(s)  Compensation: {c.compensation?"Yes":"No"}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><button onClick={()=>delC(c.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
+    {/* Month tabs + Print buttons */}
+    <div className="flex items-start justify-between flex-wrap gap-3">
+      <MonthTabs records={combined} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
+      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
+    </div>
+    <div className="flex items-center justify-between flex-wrap gap-3"><div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white"><button onClick={()=>setTab("absences")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="absences"?"text-white":"text-gray-500"}`} style={tab==="absences"?{background:G}:{}}>Absences ({monthAbsences.length})</button><button onClick={()=>setTab("covers")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="covers"?"text-white":"text-gray-500"}`} style={tab==="covers"?{background:G}:{}}>Cover ({monthCovers.length})</button></div><div className="flex items-center gap-2">{tab==="absences"&&<button onClick={()=>{const rows=[["Staff","Site","Start","End","Leave Type","Deduction (₦)","Status"],...monthAbsences.map(a=>[a.cleaner,a.site,a.startDate,a.endDate||a.startDate,a.leaveType||"Sick",a.deductionAmount||0,a.status||"Absent Logged"])];const csv=rows.map(r=>r.join(",")).join("\n");const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`absences-${selMK}.csv`;a.click();URL.revokeObjectURL(u);}} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Export CSV</button>}<button onClick={()=>setModal({type:tab==="absences"?"absence":"cover"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>{tab==="absences"?"Log Absence":"Assign Cover"}</button></div></div>
+    {tab==="absences"&&<Card><div className="divide-y divide-gray-50">{monthAbsences.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No absences in {mkLabel(selMK)}</div>}{monthAbsences.map(a=><div key={a.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:RED}}>{(a.cleaner||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{a.cleaner}</p><p className="text-xs text-gray-500">Site: {a.site}  {fmtD(a.startDate)}{a.endDate&&a.endDate!==a.startDate?` - ${fmtD(a.endDate)}`:""}</p>{a.reason&&<p className="text-xs text-gray-400 italic">Reason: {a.reason}</p>}<p className="text-xs text-gray-400">Type: {a.leaveType||"Sick"}  Replacement: {a.needsReplacement?"Needed":"Not required"}{a.deductionAmount>0?<span className="text-red-500 font-medium ml-1">  Deduction: ₦{a.deductionAmount.toLocaleString()}</span>:null}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={a.status||"Absent Logged"} custom={SC[a.status||"Absent Logged"]}/>{a.status!=="Sent to Finance"&&<button onClick={()=>advanceAbs(a.id,a.status||"Absent Logged")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>Next</button>}<button onClick={()=>delA(a.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
+    {tab==="covers"&&<Card><div className="divide-y divide-gray-50">{monthCovers.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No cover assignments in {mkLabel(selMK)}</div>}{monthCovers.map(c=><div key={c.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(c.replacement||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{c.replacement} <span className="font-normal text-gray-400">covered for</span> {c.absentCleaner}</p><p className="text-xs text-gray-500">Site: {c.site}  {fmtD(c.startDate)}{c.endDate&&c.endDate!==c.startDate?` - ${fmtD(c.endDate)}`:""}</p><p className="text-xs text-gray-400">{c.days} day(s)  Compensation: {c.compensation?"Yes":"No"}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><button onClick={()=>delC(c.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
     {modal?.type==="absence"&&<ModalWrap title="Log Staff Absence" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Staff"><StaffSelect staff={staff} value={modal.cleaner||""} onChange={v=>setModal(p=>({...p,cleaner:v}))} placeholder="-- Select staff --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld></div><Fld label="Reason"><input className={inp} value={modal.reason||""} onChange={e=>setModal(p=>({...p,reason:e.target.value}))}/></Fld><Fld label="Replacement Needed?"><RadioG value={modal.needsReplacement?"Yes":"No"} onChange={v=>setModal(p=>({...p,needsReplacement:v==="Yes"}))} options={["Yes","No"]}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Leave Type"><select className={inp} value={modal.leaveType||"Sick"} onChange={e=>setModal(p=>({...p,leaveType:e.target.value}))}><option>Sick</option><option>Annual</option><option>Emergency</option><option>AWOL</option><option>Maternity</option><option>Other</option></select></Fld><Fld label="Deduction (₦)"><input className={inp} type="number" min="0" value={modal.deductionAmount||""} onChange={e=>setModal(p=>({...p,deductionAmount:Number(e.target.value)}))} placeholder="0 if none"/></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...absences,{...modal,id:"abs"+Date.now(),status:"Absent Logged"}];setAbsences(nl);dbSync("absences",nl);toast.success("Absence logged");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Log Absence</button></div></ModalWrap>}
     {modal?.type==="cover"&&<ModalWrap title="Assign Cover" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Cleaner"><StaffSelect staff={staff} value={modal.absentCleaner||""} onChange={v=>setModal(p=>({...p,absentCleaner:v}))} placeholder="-- Select absent staff --"/></Fld><Fld label="Replacement Cleaner"><StaffSelect staff={staff} value={modal.replacement||""} onChange={v=>setModal(p=>({...p,replacement:v}))} placeholder="-- Select replacement --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-3 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld><Fld label="Days Covered"><input className={inp} type="number" min="1" value={modal.days||1} onChange={e=>setModal(p=>({...p,days:Number(e.target.value)}))}/></Fld></div><Fld label="Compensation?"><RadioG value={modal.compensation?"Yes":"No"} onChange={v=>setModal(p=>({...p,compensation:v==="Yes"}))} options={["Yes","No"]}/></Fld>{modal.compensation&&<Fld label="Cover Amount (₦)"><input className={inp} type="number" min="0" value={modal.coverAmount||""} onChange={e=>setModal(p=>({...p,coverAmount:Number(e.target.value)}))} placeholder="Amount to pay cover staff"/></Fld>}<Fld label="Remarks"><textarea className={inp} rows={2} value={modal.remarks||""} onChange={e=>setModal(p=>({...p,remarks:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...covers,{...modal,id:"cov"+Date.now()}];setCovers(nl);dbSync("covers",nl);toast.success("Cover assigned");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Assign</button></div></ModalWrap>}
   </div>);}
