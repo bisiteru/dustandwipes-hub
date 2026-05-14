@@ -1480,7 +1480,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
 
   const canNext=[
     f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
-    (hasCleaning?f.cleaningTasks.length>0:true)&&(hasPest?f.pestTasks.length>0:true)&&(Array.isArray(f.crewMembers)?f.crewMembers.length>0:f.crewMembers.trim().length>0),
+    (hasCleaning?f.cleaningTasks.length>0:true)&&(hasPest?f.pestTasks.length>0:true)&&(Array.isArray(f.crewMembers)?f.crewMembers.length>0:String(f.crewMembers||"").trim().length>0),
     f.cleanlinessRating>0&&f.adherenceRating>0,
     f.ppeWorn&&f.safeHandling,
     f.clientPresent&&(f.clientPresent==="Yes"?f.satisfactionLevel:true),
@@ -1490,7 +1490,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
   const canNextInspection=[
     f.clientName&&f.arrivalDate&&f.arrivalTime&&f.jobType&&f.serviceCategory.length>0,
     f.cleanlinessRating>0&&f.adherenceRating>0,
-    (Array.isArray(f.crewMembers)?f.crewMembers.length>0:f.crewMembers.trim().length>0),
+    (Array.isArray(f.crewMembers)?f.crewMembers.length>0:String(f.crewMembers||"").trim().length>0),
     !!f.clientPresent,
     true,
     !!(f.overallAssessment&&f.signatureName),
@@ -1741,7 +1741,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
               ["Site Score",f.cleanlinessRating>0?`${((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}/5.0`:"Not rated"],
               ["Client Present",f.clientPresent||"Not recorded"],
               ["Satisfaction",f.satisfactionLevel||"N/A"],
-              ["Crew",(Array.isArray(f.crewMembers)?f.crewMembers:f.crewMembers.split("\n")).filter(Boolean).join(", ")],
+              ["Crew",(Array.isArray(f.crewMembers)?f.crewMembers:String(f.crewMembers||"").split("\n")).filter(Boolean).join(", ")],
               ["Photos",`${f.photos.length} attached`],
             ].map(([l,v])=>v&&<div key={l} className="flex gap-2"><span className="text-xs font-bold text-gray-400 w-32 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>)}
           </div>
@@ -1804,7 +1804,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}){
               ["Arrival",`${fmtD(f.arrivalDate)} ${f.arrivalTime}`],
               ["Departure",`${fmtD(f.departureDate)} ${f.departureTime}`],
               ["GPS",f.gpsAcquired?`${f.gpsLat}N, ${f.gpsLng}E`:"Not captured"],
-              ["Crew",(Array.isArray(f.crewMembers)?f.crewMembers:f.crewMembers.split("\n")).filter(Boolean).join(", ")],
+              ["Crew",(Array.isArray(f.crewMembers)?f.crewMembers:String(f.crewMembers||"").split("\n")).filter(Boolean).join(", ")],
               ["Quality Score",f.cleanlinessRating>0?`${((f.cleanlinessRating+f.adherenceRating)/2).toFixed(1)}/5.0`:"Not rated"],
               ["Client Satisfaction",f.satisfactionLevel||"N/A"],
               ["Photos",`${f.photos.length} attached`],
@@ -1862,7 +1862,7 @@ function SiteReportViewer({report:r,onClose}){
         {r.pesticidesUsed&&row("Pesticides Used",r.pesticidesUsed)}
         {r.activeIngredients&&row("Active Ingredients",r.activeIngredients)}
         {r.otherTasks&&row("Other Tasks",r.otherTasks)}
-        {row("Crew Members",(Array.isArray(r.crewMembers)?r.crewMembers:r.crewMembers?.split("\n")||[]).filter(Boolean).join(", "))}
+        {row("Crew Members",(Array.isArray(r.crewMembers)?r.crewMembers:String(r.crewMembers||"").split("\n")).filter(Boolean).join(", "))}
         {r.equipment?.length>0&&row("Equipment",r.equipment.join(", "))}
         {r.supplies?.length>0&&row("Supplies",r.supplies.join(", "))}
       </>)}
