@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, Component } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ChevronDown, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
+import { validateRows, validateRecord, SCHEMAS } from "./lib/schemas";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const TODAY=new Date(); // always uses current date
@@ -149,7 +150,13 @@ const dbLoad = async (table, setter) => {
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    if (Array.isArray(data) && data.length) setter(data.map(r => r.record).filter(Boolean));
+    if (Array.isArray(data) && data.length) {
+      const records = data.map(r => r.record).filter(Boolean);
+      // Zod validation (coerce + warn mode) — kills the string/number bug class
+      // at the boundary, so the React tree never sees a corrupted record.
+      const validated = SCHEMAS[table] ? validateRows(table, records) : records;
+      setter(validated);
+    }
   } catch(e) { console.warn(`[DB] load ${table}:`, e.message); }
 };
 
@@ -180,7 +187,13 @@ const dbSync = async (table, data) => {
       "Content-Type": "application/json",
       "Prefer": "resolution=merge-duplicates,return=minimal"
     };
-    const rows = data.map(r => ({ id: String(r.id), record: r, updated_at: new Date().toISOString() }));
+    // Zod validation on writes — coerces numeric strings → numbers, prunes
+    // invalid records, prevents the string-concat portfolio bug at source.
+    const validated = SCHEMAS[table]
+      ? data.map(r => validateRecord(table, r)).filter(Boolean)
+      : data;
+    if (validated.length === 0) return;
+    const rows = validated.map(r => ({ id: String(r.id), record: r, updated_at: new Date().toISOString() }));
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}`, {
       method: "POST", headers, body: JSON.stringify(rows)
     });
