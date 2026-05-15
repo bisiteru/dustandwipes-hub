@@ -174,6 +174,33 @@ export const dbDelete = async (table: string, id: string | number): Promise<void
   }
 };
 
+// ── Storage: photo upload to Supabase Storage (assessment-photos bucket) ────
+/**
+ * Upload a file (typically an assessment photo) to Supabase Storage.
+ * Returns the public URL on success, or null on failure (logged).
+ */
+export const uploadAssessmentPhoto = async (file: File, assessmentId: string): Promise<string | null> => {
+  try {
+    const ext = file.name.split(".").pop();
+    const path = `${assessmentId}/${Date.now()}.${ext}`;
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/assessment-photos/${path}`, {
+      method: "POST",
+      headers: {
+        "apikey":        SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type":  file.type,
+        "x-upsert":      "true",
+      },
+      body: file,
+    });
+    if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+    return `${SUPABASE_URL}/storage/v1/object/public/assessment-photos/${path}`;
+  } catch (e: any) {
+    console.warn("[Storage] photo upload:", e.message);
+    return null;
+  }
+};
+
 /**
  * Upsert an array of records to Supabase.
  * NEVER deletes — deletion is handled by dbDelete() explicitly.
