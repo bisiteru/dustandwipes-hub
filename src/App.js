@@ -1,19 +1,19 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, WifiOff } from "lucide-react";
+import { } from "recharts";
+import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, AlertTriangle, Search, X, ClipboardList, Package, Briefcase, ChevronRight, Inbox, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, WifiOff } from "lucide-react";
 
 // ── lib/ extractions (Phase 2 of TS migration) ───────────────────────────────
 import {
   GD, G, GL, O, OL, AMBER, RED, BLUE, TODAY, MONTHS,
-  FREQ_DAYS, STATUS_COLORS, IMPREST_CATS,
-  JOB_STATUSES, inp,
+  FREQ_DAYS, IMPREST_CATS,
+  inp,
 } from "./lib/constants";
 import {
-  fmt, fmtD, fmtDT, calcDur, monthName, cStatus, dLeft,
+  fmt, fmtD,
 } from "./lib/format";
-import { hashPw } from "./lib/auth";
-import { queueOfflineAction, drainOfflineQueue } from "./lib/offline";
+import { } from "./lib/auth";
+import { drainOfflineQueue } from "./lib/offline";
 import {
   SUPABASE_URL, SUPABASE_ANON_KEY, T,
   dbLoad, dbDelete, dbSync,
@@ -46,6 +46,11 @@ import { RequestsPage } from "./pages/Requests";
 import { AbsenceCoverPage } from "./pages/AbsenceCover";
 import { AnalyticsPage } from "./pages/Analytics";
 import { StaffPage } from "./pages/Staff";
+import { LoginScreen } from "./pages/Login";
+import { Dashboard } from "./pages/Dashboard";
+import { ClientsPage } from "./pages/Clients";
+import { JobsPage } from "./pages/Jobs";
+import { SettingsPage } from "./pages/Settings";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const LOGO_B64_PARTS = [
@@ -234,499 +239,9 @@ const printAllRequisitions = (requisitions, supplyItems, users) => {
 };
 
 
-// -- LOGIN --------------------------------------------------------------------
-function LoginScreen({onLogin,users,clients}){
-  const[em,setEm]=useState("");const[pw,setPw]=useState("");const[sp,setSp]=useState(false);const[err,setErr]=useState("");const[busy,setBusy]=useState(false);const[forgot,setForgot]=useState(false);const[fpEmail,setFpEmail]=useState("");const[fpSent,setFpSent]=useState(false);const[fpBusy,setFpBusy]=useState(false);const[fpErr,setFpErr]=useState("");
-  const go=async()=>{
-    if(busy||!em.trim()||!pw)return;
-    setBusy(true);setErr("");
-    try{
-      // 1. Try Supabase Auth (email + password)
-      const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{
-        method:"POST",
-        headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
-        body:JSON.stringify({email:em.trim(),password:pw})
-      });
-      const d=await r.json(); // always parse — we need error body too
-      if(r.ok){
-        const profile=users.find(u=>u.email===d.user?.email||u.username===em.trim());
-        onLogin({...(profile||{}),id:d.user.id,email:d.user?.email||em.trim(),name:profile?.name||d.user?.email||em.trim(),role:profile?.role||"Technician",initial:(profile?.name||d.user?.email||"?")[0].toUpperCase(),accessToken:d.access_token});
-        return;
-      }
-      // Supabase returned an error — read what it actually said
-      const sbMsg=(d?.error_description||d?.msg||d?.message||"").toLowerCase();
-      console.warn("[Auth] Supabase error:",r.status,d?.error_description||d?.message);
-      if(sbMsg.includes("email not confirmed")){
-        setErr("Your email address hasn't been confirmed yet. The Admin must open the Supabase dashboard → Authentication → Users → find your account → click Confirm.");
-        return;
-      }
-      // 2. Local hash-based auth (password set via Settings → Users in the app)
-      const localUser=users.find(u=>(u.email&&u.email===em.trim())||(u.username&&u.username===em.trim()));
-      if(localUser){
-        if(localUser.pwHash){
-          const h=await hashPw(pw,localUser.id);
-          if(h===localUser.pwHash){onLogin(localUser);return;}
-          setErr("Incorrect password.");return;
-        }
-        // Technician phone-number login (no password hash set — username match is sufficient)
-        if(localUser.username&&localUser.username===em.trim()){onLogin(localUser);return;}
-        // Known email but no local password: give Supabase's actual reason
-        setErr(d?.error_description||d?.message||"Login failed. Check your password or ask Admin to reset it.");
-        return;
-      }
-      setErr("Account not found. Check your email address or ask Admin.");
-    }catch{
-      // Network/config error — diagnose before falling back
-      if(!SUPABASE_URL||!SUPABASE_ANON_KEY){
-        setErr("Supabase environment variables are not configured on this deployment. Contact the developer to set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in Vercel project settings.");
-        return;
-      }
-      // Genuine network outage — allow Admin emergency local access
-      const fallback=users.find(u=>u.email===em.trim()||u.username===em.trim());
-      if(fallback&&fallback.role==="Admin"){onLogin(fallback);return;}
-      setErr("Network error — check your connection and try again.");
-    }finally{setBusy(false);}
-  };
-  const sendReset=async()=>{
-    if(fpBusy||!fpEmail.trim())return;
-    setFpBusy(true);setFpErr("");
-    try{
-      const r=await fetch(`${SUPABASE_URL}/auth/v1/recover`,{
-        method:"POST",
-        headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
-        body:JSON.stringify({email:fpEmail.trim()})
-      });
-      if(r.ok||r.status===200){setFpSent(true);}
-      else{
-        // Supabase Auth doesn't know this email — user hasn't been created there yet
-        const isLocal=users.some(u=>u.email===fpEmail.trim());
-        setFpErr(isLocal
-          ?"This account uses local password login. Ask your Admin to set a new password in Settings → Users → Edit."
-          :"Email not recognised. Check for typos or contact bisit@dustandwipes.com.");
-      }
-    }catch{setFpErr("Network error. Please try again.");}
-    finally{setFpBusy(false);}
-  };
-  // Portfolio value = sum of contracts that haven't expired yet (cStatus !== "Expired").
-  // This includes Active, Expiring Soon, Critical, and Unknown (no end date set).
-  // Number() coercion is defensive — guards against legacy string values in c.tot.
-  const totalPortfolio=clients.filter(c=>cStatus(c.ce)!=="Expired").reduce((s,c)=>s+(Number(c.tot)||0),0);
-  const portStr=totalPortfolio>=1e9?`₦${(totalPortfolio/1e9).toFixed(1)}B`:totalPortfolio>=1e6?`₦${(totalPortfolio/1e6).toFixed(1)}M`:totalPortfolio>=1e3?`₦${(totalPortfolio/1e3).toFixed(0)}K`:totalPortfolio>0?`₦${totalPortfolio}`:"--";
-  const roleCount=[...new Set(users.map(u=>u.role))].length||3;
-  const loginStats=[[clients.length||"--","Clients"],["15","Modules"],[portStr,"Portfolio"],[roleCount,"User Roles"]];
-  return(
-    <div className="min-h-screen relative flex overflow-hidden">
-      {/* ── Full-screen background image ── */}
-      <div className="absolute inset-0" style={{backgroundImage:"url('/login-bg.jpg')",backgroundSize:"cover",backgroundPosition:"center center",backgroundRepeat:"no-repeat"}}/>
-      {/* Gradient overlay — deeper on right to keep card readable, lighter on left to show image */}
-      <div className="absolute inset-0" style={{background:"linear-gradient(110deg,rgba(11,53,24,0.55) 0%,rgba(11,53,24,0.35) 45%,rgba(0,0,0,0.60) 100%)"}}/>
-
-      {/* ── Content layer ── */}
-      <div className="relative z-10 flex w-full min-h-screen">
-
-        {/* Left branding panel — desktop only */}
-        <div className="hidden lg:flex flex-1 flex-col justify-between p-14 text-white">
-          <div>
-            <img src={LOGO} alt="D&W" className="w-20 mb-8 drop-shadow-xl rounded-2xl bg-white/10 backdrop-blur-sm p-1.5 border border-white/20"/>
-            <h1 className="text-5xl font-black leading-tight mb-2" style={{fontFamily:"Georgia,serif",letterSpacing:"-1.5px",textShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>Operations Hub</h1>
-            <p className="text-green-200 text-xl font-light mt-1">Dust &amp; Wipes Limited</p>
-            <p className="text-green-300/80 italic text-sm mt-2">"Restoring a Clean World"</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 w-72 mb-4">
-            {loginStats.map(([v,l])=>(
-              <div key={l} className="rounded-2xl p-4 text-center backdrop-blur-sm" style={{background:"rgba(255,255,255,0.10)",border:"1px solid rgba(255,255,255,0.15)"}}>
-                <div className="text-2xl font-black" style={{color:O,textShadow:"0 1px 6px rgba(0,0,0,0.3)"}}>{v}</div>
-                <div className="text-green-200 text-xs mt-1">{l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right login card */}
-        <div className="flex-1 flex items-center justify-center p-5 sm:p-8 lg:max-w-md lg:ml-auto">
-          <div className="w-full max-w-md">
-            {/* Mobile-only logo */}
-            <div className="flex flex-col items-center mb-6 lg:hidden">
-              <img src={LOGO} alt="D&W" className="w-16 mb-3 rounded-2xl bg-white/10 backdrop-blur-sm p-1.5 border border-white/20 drop-shadow-xl"/>
-              <h2 className="text-2xl font-black text-white" style={{textShadow:"0 2px 12px rgba(0,0,0,0.5)"}}>Operations Hub</h2>
-              <p className="text-green-200 text-sm">Dust &amp; Wipes Limited</p>
-            </div>
-
-            {/* Card */}
-            <div className="bg-white/95 backdrop-blur-md rounded-3xl p-8 sm:p-10 shadow-2xl" style={{border:"1px solid rgba(255,255,255,0.3)"}}>
-              <div className="hidden lg:block text-center mb-7">
-                <img src={LOGO} alt="D&W" className="w-12 mx-auto mb-3 rounded-xl bg-gray-50 p-1 shadow-sm"/>
-                <h2 className="text-2xl font-black text-gray-800">Welcome Back</h2>
-                <p className="text-gray-400 text-sm mt-0.5">Sign in to Operations Hub</p>
-              </div>
-              <div className="lg:hidden text-center mb-6">
-                <h2 className="text-xl font-black text-gray-800">Sign In</h2>
-                <p className="text-gray-400 text-sm mt-0.5">Enter your credentials to continue</p>
-              </div>
-
-              {err&&<div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm mb-4"><AlertTriangle size={14} className="flex-shrink-0 mt-0.5"/><span>{err}</span></div>}
-
-              <div className="space-y-4">
-                <Fld label="Email or Username">
-                  <input className={inp} type="text" value={em} onChange={e=>{setEm(e.target.value);setErr("");}} placeholder="email@dustandwipes.com or phone number" autoComplete="username"/>
-                </Fld>
-                <Fld label="Password">
-                  <div className="relative">
-                    <input className={inp+" pr-10"} type={sp?"text":"password"} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••" autoComplete="current-password"/>
-                    <button type="button" onClick={()=>setSp(p=>!p)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">{sp?<EyeOff size={16}/>:<Eye size={16}/>}</button>
-                  </div>
-                  <button onClick={()=>setForgot(true)} className="text-xs mt-1.5 text-green-700 hover:underline float-right">Forgot password?</button>
-                </Fld>
-                <button onClick={go} disabled={busy||!em.trim()||!pw} className="w-full py-3 rounded-xl text-white font-bold text-sm mt-2 clear-both flex items-center justify-center gap-2 disabled:opacity-60 transition-opacity" style={{background:`linear-gradient(135deg,${G} 0%,#2D8A45 100%)`,boxShadow:"0 4px 14px rgba(11,53,24,0.35)"}}>{busy&&<span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{busy?"Signing in…":"Sign In →"}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Forgot password modal ── */}
-      {forgot&&(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
-            <h3 className="font-bold text-gray-800 mb-1">Reset Password</h3>
-            <p className="text-xs text-gray-400 mb-5">Enter your email and we'll send a password reset link.</p>
-            {fpSent
-              ?<div className="p-4 rounded-xl text-sm text-green-700 font-medium" style={{background:"#f0fdf4",border:"1px solid #bbf7d0"}}> Reset link sent to <strong>{fpEmail}</strong>. Check your inbox (including spam folder).</div>
-              :<div className="space-y-4">
-                {fpErr&&<div className="p-3 rounded-xl text-xs text-red-700" style={{background:"#fee2e2"}}>{fpErr}</div>}
-                <Fld label="Email Address"><input className={inp} type="email" value={fpEmail} onChange={e=>{setFpEmail(e.target.value);setFpErr("");}} placeholder="your@dustandwipes.com"/></Fld>
-                <button onClick={sendReset} disabled={!fpEmail.trim()||fpBusy} className="w-full py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{background:G}}>{fpBusy&&<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"/>}{fpBusy?"Sending…":"Send Reset Link"}</button>
-              </div>
-            }
-            <button onClick={()=>{setForgot(false);setFpSent(false);setFpEmail("");setFpErr("");}} className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600">← Back to sign in</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );}
-
-// -- DASHBOARD ----------------------------------------------------------------
-function Dashboard({clients,jobs,requests,inventory,users,staff,onNav}){
-  const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
-  const critical=ws.filter(c=>c.status==="Critical").length,awaiting=jobs.filter(j=>j.status==="Awaiting Approval").length,lowStock=inventory.filter(i=>i.qty<=i.reorder).length,pending=requests.filter(r=>r.status==="Pending").length,activeJobs=jobs.filter(j=>!["Completed","Closed"].includes(j.status)).length;
-  const allPeople=[...users,...staff];
-  const todayM=TODAY.getMonth()+1,todayD=TODAY.getDate();
-  const bdays=allPeople.filter(u=>u.dob&&new Date(u.dob).getMonth()+1===todayM).sort((a,b)=>new Date(a.dob).getDate()-new Date(b.dob).getDate());
-  const todayBdays=bdays.filter(u=>new Date(u.dob).getDate()===todayD);
-  const sc=JOB_STATUSES.slice(0,-1).map(s=>({s,count:jobs.filter(j=>j.status===s).length})).filter(d=>d.count>0);
-  const todayStr=TODAY.toISOString().split("T")[0];
-  const todayJobs=useMemo(()=>jobs.filter(j=>j.date===todayStr),[jobs,todayStr]);
-  return(<div className="space-y-6">
-    {todayJobs.length>0&&<Card className="p-5"><div className="flex items-center justify-between mb-3"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><Briefcase size={12} style={{color:G}}/>Today's Jobs ({todayJobs.length})</h3><button onClick={()=>onNav("jobs")} className="text-xs text-green-700 hover:underline flex items-center gap-1">View all<ChevronRight size={10}/></button></div><div className="space-y-2">{todayJobs.map(j=>{const sc=STATUS_COLORS[j.status]||{};return(<div key={j.id} className="flex items-center justify-between p-3 rounded-xl" style={{background:"#fafafa",border:"1px solid #f3f4f6"}}><div className="flex items-center gap-2.5 min-w-0"><div className="w-7 h-7 rounded-lg text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:sc.color||G}}>{(j.clientName||"?")[0]}</div><div className="min-w-0"><p className="text-sm font-semibold text-gray-800 truncate">{j.clientName}</p><p className="text-xs text-gray-400">{j.svc}{j.sup?`  Sup: ${j.sup}`:""}{j.checkIn&&!j.checkOut?" · Checked in":""}</p></div></div><SBadge s={j.status}/></div>);})}</div></Card>}
-    {todayBdays.length>0&&<div className="flex items-center gap-3 p-4 rounded-2xl" style={{background:"#fdf4ff",border:"1px solid #e9d5ff"}}><span className="text-2xl"></span><div><p className="font-bold text-purple-800">Birthday Today!</p><p className="text-purple-600 text-sm">{todayBdays.map(u=>u.name).join(", ")} -- Happy Birthday! </p></div></div>}
-    {(critical+awaiting+lowStock)>0&&<div className="grid grid-cols-1 md:grid-cols-3 gap-3">{critical>0&&<div className="flex items-center gap-3 p-3.5 rounded-xl text-sm" style={{background:"#fee2e2",border:"1px solid #fca5a5"}}><AlertTriangle size={16} style={{color:RED}}/><div><p className="font-bold text-red-800"> {critical} contract(s) critical</p><button onClick={()=>onNav("contracts")} className="text-xs text-red-600 underline">View</button></div></div>}{awaiting>0&&<div className="flex items-center gap-3 p-3.5 rounded-xl text-sm" style={{background:"#fff7ed",border:"1px solid #fed7aa"}}><Clock size={16} style={{color:O}}/><div><p className="font-bold text-orange-800"> {awaiting} job(s) awaiting approval</p><button onClick={()=>onNav("jobs")} className="text-xs text-orange-600 underline">Review</button></div></div>}{lowStock>0&&<div className="flex items-center gap-3 p-3.5 rounded-xl text-sm" style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}><Package size={16} style={{color:BLUE}}/><div><p className="font-bold text-blue-800"> {lowStock} item(s) low stock</p><button onClick={()=>onNav("inventory")} className="text-xs text-blue-600 underline">View</button></div></div>}</div>}
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4"><KPI icon="" label="Active Jobs" value={activeJobs} sub={`${awaiting} need approval`} bg="#fffbeb" onClick={()=>onNav("jobs")}/><KPI icon="" label="Pending Requests" value={pending} sub="Awaiting conversion" bg="#eff6ff" onClick={()=>onNav("requests")}/><KPI icon="" label="Critical Contracts" value={critical} sub="+expiring soon" bg="#fee2e2" onClick={()=>onNav("contracts")}/><KPI icon="" label="Low Stock Items" value={lowStock} sub="Below reorder level" bg="#f0f9ff" onClick={()=>onNav("inventory")}/></div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Jobs by Status</h3><ResponsiveContainer width="100%" height={160}><BarChart data={sc} barSize={28}><XAxis dataKey="s" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" radius={[6,6,0,0]}>{sc.map((_,i)=><Cell key={i} fill={[G,BLUE,O,"#7c3aed","#ea580c","#16a34a"][i%6]}/>)}</Bar></BarChart></ResponsiveContainer></Card>
-      <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Gift size={12} style={{color:"#9333ea"}}/>Birthdays This Month</h3>{bdays.length===0?<p className="text-gray-400 text-sm text-center py-4">No birthdays this month</p>:<div className="space-y-2 max-h-40 overflow-y-auto">{bdays.map(u=>{const d=new Date(u.dob);const isToday=d.getDate()===todayD;return(<div key={u.id} className={`flex items-center justify-between p-2.5 rounded-xl ${isToday?"border border-purple-200":"border border-gray-100"}`} style={isToday?{background:"#fdf4ff"}:{background:"#fafafa"}}><div className="flex items-center gap-2.5"><div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold" style={{background:isToday?"#9333ea":G}}>{(u.initial||u.name[0])}</div><div><p className="text-sm font-semibold text-gray-800">{u.name}</p><p className="text-xs text-gray-400">{u.role}</p></div></div><p className={`text-xs font-bold ${isToday?"text-purple-600":"text-gray-500"}`}>{isToday?" Today!":d.getDate()+" "+monthName(d.getMonth())}</p></div>);})}</div>}</Card>
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="p-6"><div className="flex justify-between items-center mb-3"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Contract Alerts</h3><button onClick={()=>onNav("contracts")} className="text-xs text-green-700 hover:underline flex items-center gap-1">View all<ChevronRight size={10}/></button></div><div className="space-y-2">{ws.filter(c=>c.status!=="Active").slice(0,5).map(c=>{const dl=dLeft(c.ce);return(<div key={c.id} className="flex items-center justify-between p-3 rounded-xl" style={{background:"#fafafa",border:"1px solid #f3f4f6"}}><div><p className="text-sm font-semibold text-gray-800 truncate max-w-[150px]">{c.name}</p><p className="text-xs text-gray-400">{fmtD(c.ce)}</p></div><div className="flex items-center gap-2">{dl!==null&&<span className={`text-xs font-bold ${dl<0?"text-gray-500":dl<=30?"text-red-500":"text-amber-500"}`}>{dl<0?`${Math.abs(dl)}d ago`:`${dl}d`}</span>}<SBadge s={c.status}/></div></div>);})}</div></Card>
-      <Card className="p-6"><div className="flex justify-between items-center mb-3"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Inventory Alerts</h3><button onClick={()=>onNav("inventory")} className="text-xs text-green-700 hover:underline flex items-center gap-1">View all<ChevronRight size={10}/></button></div><div className="space-y-2">{inventory.filter(i=>i.qty<=i.reorder).map(i=><div key={i.id} className="flex items-center justify-between p-3 rounded-xl" style={{background:"#fafafa",border:"1px solid #f3f4f6"}}><div><p className="text-sm font-semibold text-gray-800 truncate max-w-[150px]">{i.item}</p><p className="text-xs text-gray-400">{i.cat}</p></div><div className="text-right"><p className="text-sm font-black text-red-600">{i.qty}</p><p className="text-xs text-gray-400">min {i.reorder}</p></div></div>)}{inventory.filter(i=>i.qty<=i.reorder).length===0&&<p className="text-gray-400 text-sm text-center py-4"> All stock levels OK</p>}</div></Card>
-    </div>
-  </div>);}
-
-// -- CLIENTS ------------------------------------------------------------------
-function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
-  const[tab,setTab]=useState("clients");const[contactSearch,setContactSearch]=useState("");const[search,setSearch]=useState("");const[ft,setFt]=useState("All");const[fs,setFs]=useState("All");const[modal,setModal]=useState(null);
-  const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
-  const filtered=useMemo(()=>ws.filter(c=>[c.name,c.addr,c.cleaners,c.cp,c.phone].join(" ").toLowerCase().includes(search.toLowerCase())&&(ft==="All"||c.svc===ft)&&(fs==="All"||c.status===fs)),[ws,search,ft,fs]);
-  const save=data=>{const{status:_,...d}=data;let nc;if(d.id)nc=clients.map(c=>c.id===d.id?d:c);else nc=[...clients,{...d,id:"c"+Date.now()+Math.random().toString(36).slice(2,6)}];setClients(nc);dbSync("clients",nc);toast.success(d.id?"Client updated":"Client added");setModal(null);};
-  const del=id=>confirm("Delete this client?",()=>{setClients(cs=>cs.filter(c=>c.id!==id));dbDelete("clients",id);toast.success("Client deleted");});
-  const can=userRole!=="Technician";
-  const filteredContacts=useMemo(()=>{
-    const db=window.__DW_CONTACTS__||contacts||[];
-    const q=contactSearch.toLowerCase().trim();
-    if(!q) return db.slice(0,100);
-    return db.filter(c=>[c.name,c.phone,c.email,c.address].join(" ").toLowerCase().includes(q)).slice(0,100);
-  },[contacts,contactSearch]);
-
-  return(<div className="space-y-5">{confirmEl}
-    {/* Tab Switcher */}
-    <div className="flex items-center justify-between flex-wrap gap-3">
-      <div className="flex gap-1 border border-gray-200 rounded-xl p-1 bg-white">
-        <button onClick={()=>setTab("clients")} className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="clients"?"text-white":"text-gray-500"}`} style={tab==="clients"?{background:G}:{}}> Contracts ({clients.length})</button>
-        <button onClick={()=>setTab("contacts")} className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="contacts"?"text-white":"text-gray-500"}`} style={tab==="contacts"?{background:G}:{}}> All Contacts ({(window.__DW_CONTACTS__||contacts||[]).length})</button>
-      </div>
-    </div>
-
-    {/* CONTACTS DIRECTORY TAB */}
-    {tab==="contacts"&&<div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Search by name, phone, address…" value={contactSearch} onChange={e=>setContactSearch(e.target.value)}/></div>
-        <span className="text-xs text-gray-400 whitespace-nowrap">Showing {filteredContacts.length} of {(window.__DW_CONTACTS__||contacts||[]).length}</span>
-      </div>
-      <Card>
-        <div className="divide-y divide-gray-50">
-          {filteredContacts.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No contacts match your search</div>}
-          {filteredContacts.map((c,i)=>(
-            <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:G}}>{(c.name||"?")[0].toUpperCase()}</div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 truncate">{c.name}</p>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    {c.phone&&<span className="text-xs text-gray-500">📞 {c.phone}</span>}
-                    {c.email&&<span className="text-xs text-gray-500">✉ {c.email}</span>}
-                    {c.address&&<span className="text-xs text-gray-400 truncate max-w-xs">📍 {c.address}</span>}
-                  </div>
-                </div>
-              </div>
-              {userRole!=="Technician"&&<div className="flex-shrink-0">
-                <button onClick={()=>setClients(cs=>[...cs,{id:"c"+Date.now()+Math.random().toString(36).slice(2,6),name:c.name,phone:c.phone||"",addr:c.address||"",cp:c.name,cat:"Corporate",svc:"Cleaning",serviceFreq:"Weekly",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0,cleaners:[],duty:"Mon-Fri"}])} className="text-xs px-3 py-1.5 rounded-lg font-semibold border" style={{borderColor:G,color:G}}> Add as Client</button>
-              </div>}
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>}
-
-    {/* CONTRACTS / CLIENTS TAB */}
-    {tab==="clients"&&<div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3"><div className="relative flex-1 min-w-52"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9"} placeholder="Name, address, phone..." value={search} onChange={e=>setSearch(e.target.value)}/></div><select className={inp+" w-auto"} value={ft} onChange={e=>setFt(e.target.value)}><option value="All">All Services</option><option>Cleaning</option><option>Pest Control</option><option>Both</option></select><select className={inp+" w-auto"} value={fs} onChange={e=>setFs(e.target.value)}><option value="All">All Statuses</option><option>Active</option><option>Expiring Soon</option><option>Critical</option><option>Expired</option></select>{can&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Client</button>}</div>
-      <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Category","Contact","Phone","Contract End","Value","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(c=>(<tr key={c.id} className="hover:bg-gray-50/70 transition-colors"><td className="px-4 py-3"><div className="flex items-center gap-2.5"><div className="w-8 h-8 rounded-lg text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:c.svc==="Pest Control"?O:G}}>{(c.name||"?")[0]}</div><div><p className="font-semibold text-gray-800">{c.name}</p><p className="text-xs text-gray-400 max-w-[140px] truncate">{c.addr}</p></div></div></td><td className="px-4 py-3"><span className="text-xs px-2 py-1 rounded-lg font-medium" style={c.svc==="Pest Control"?{background:OL,color:"#c2410c"}:c.svc==="Both"?{background:"#f3f4f6",color:"#374151"}:{background:GL,color:G}}>{c.svc}</span></td><td className="px-4 py-3 text-xs text-gray-500">{c.cat}</td><td className="px-4 py-3 text-xs text-gray-500">{c.cp}</td><td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{c.phone}</td><td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.ce)}</td><td className="px-4 py-3 font-bold text-gray-700 text-sm whitespace-nowrap">{fmt(c.tot)}</td><td className="px-4 py-3"><SBadge s={c.status}/></td><td className="px-4 py-3">{can&&<div className="flex items-center gap-1.5"><button onClick={()=>setModal(c)} className="w-8 h-8 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(c.id)} className="w-8 h-8 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>))}</tbody></table>{filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No clients match your filters</div>}</div></Card>
-      {modal!==null&&<ClientModal data={modal.id?modal:null} onSave={save} onClose={()=>setModal(null)} staff={staff}/>}
-    </div>}
-  </div>);}
-function ClientModal({data,onSave,onClose,staff}){
-  const blank={name:"",cat:"Corporate",svc:"Cleaning",addr:"",cp:"",phone:"",email:"",cleaners:[],duty:"Mon-Fri",serviceFreq:"Weekly",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0};
-  const[f,setF]=useState(data?{...data,cleaners:Array.isArray(data.cleaners)?data.cleaners:data.cleaners?[data.cleaners]:[]}:blank);
-  const[cleanerSearch,setCleanerSearch]=useState("");
-  const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  // Numeric handler — coerces input to Number so DB stores numbers, not strings.
-  // (Critical: prevents string concatenation when summing — e.g. "100" + "200" = "100200")
-  const uN=k=>e=>setF(p=>({...p,[k]:e.target.value===""?0:Number(e.target.value)||0}));
-  const cleaningStaff=staff.filter(s=>s.category==="Cleaning Staff"||s.category==="Gardening Staff"||s.role==="Cleaner"||s.role==="Gardener"||s.role==="Team Lead");
-  const filteredStaff=cleanerSearch?cleaningStaff.filter(s=>s.name.toLowerCase().includes(cleanerSearch.toLowerCase())):cleaningStaff;
-  const toggleCleaner=name=>setF(p=>({...p,cleaners:p.cleaners.includes(name)?p.cleaners.filter(c=>c!==name):[...p.cleaners,name]}));
-
-  return(<ModalWrap title={data?"Edit Client":"Add New Client"} onClose={onClose} xl>
-    <div className="grid grid-cols-2 gap-4">
-      <Fld label="Client / Company Name" col><input className={inp} value={f.name} onChange={u("name")}/></Fld>
-      <Fld label="Category"><select className={inp} value={f.cat} onChange={u("cat")}>
-        <option>Corporate</option><option>NGO</option><option>Healthcare</option>
-        <option>Real Estate</option><option>Food & Bev</option><option>Retail</option>
-        <option>Residence</option><option>Hospitality</option><option>Education</option>
-        <option>Other</option>
-      </select></Fld>
-      <Fld label="Service Type"><select className={inp} value={f.svc} onChange={u("svc")}>
-        <option>Cleaning</option><option>Pest Control</option>
-        <option>Both</option><option>Training/Consultancy</option>
-      </select></Fld>
-      <Fld label="Address" col><input className={inp} value={f.addr} onChange={u("addr")}/></Fld>
-      <Fld label="Contact Person"><input className={inp} value={f.cp} onChange={u("cp")}/></Fld>
-      <Fld label="Phone"><input className={inp} value={f.phone} onChange={u("phone")}/></Fld>
-      <Fld label="Email"><input className={inp} type="email" value={f.email} onChange={u("email")}/></Fld>
-      <Fld label="Duty Days"><input className={inp} value={f.duty} onChange={u("duty")}/></Fld>
-      <Fld label="Service Frequency"><select className={inp} value={f.serviceFreq||"Weekly"} onChange={u("serviceFreq")}>
-        <option value="">-- None --</option>
-        {Object.keys(FREQ_DAYS).map(k=><option key={k}>{k}</option>)}
-      </select></Fld>
-      <Fld label="Contract Start"><input className={inp} type="date" value={f.cs} onChange={u("cs")}/></Fld>
-      <Fld label="Contract End"><input className={inp} type="date" value={f.ce} onChange={u("ce")}/></Fld>
-      {/* Cleaners Multi-Select */}
-      <Fld label="Cleaners Assigned" col>
-        <div className="border border-gray-300 rounded-xl overflow-hidden">
-          <div className="p-2 border-b border-gray-200 bg-gray-50">
-            <div className="relative"><Search size={12} className="absolute left-2.5 top-2.5 text-gray-400"/>
-              <input className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 bg-white"
-                placeholder="Search cleaning staff..." value={cleanerSearch} onChange={e=>setCleanerSearch(e.target.value)}/>
-            </div>
-          </div>
-          <div className="max-h-36 overflow-y-auto p-2 space-y-1">
-            {filteredStaff.length===0&&<p className="text-xs text-gray-400 text-center py-2">No cleaning staff found</p>}
-            {filteredStaff.map(s=><label key={s.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer text-xs transition-all ${f.cleaners.includes(s.name)?"bg-green-50 border border-green-300 font-semibold text-green-800":"hover:bg-gray-50 text-gray-600"}`}>
-              <input type="checkbox" checked={f.cleaners.includes(s.name)} onChange={()=>toggleCleaner(s.name)} className="accent-green-600"/>
-              <span>{s.name}</span>
-              {s.site&&<span className="text-gray-400 ml-auto">({s.site})</span>}
-            </label>)}
-          </div>
-          {f.cleaners.length>0&&<div className="p-2 border-t border-gray-100 bg-green-50/50">
-            <p className="text-xs font-semibold text-green-700 mb-1">{f.cleaners.length} assigned:</p>
-            <div className="flex flex-wrap gap-1">{f.cleaners.map(c=><span key={c} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium">
-              {c}<button type="button" onClick={()=>toggleCleaner(c)} className="text-green-600 hover:text-red-500 ml-0.5 font-bold"></button>
-            </span>)}</div>
-          </div>}
-        </div>
-      </Fld>
-      <div className="col-span-2 border-t pt-3"><p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Financials ()</p></div>
-      <Fld label="Salary"><input className={inp} type="number" value={f.sal} onChange={uN("sal")}/></Fld>
-      <Fld label="Consumables"><input className={inp} type="number" value={f.con} onChange={uN("con")}/></Fld>
-      <Fld label="Service Charge"><input className={inp} type="number" value={f.sc} onChange={uN("sc")}/></Fld>
-      <Fld label="VAT"><input className={inp} type="number" value={f.vat} onChange={uN("vat")}/></Fld>
-      <Fld label="Total Contract Sum" col><input className={inp} type="number" value={f.tot} onChange={uN("tot")}/></Fld>
-    </div>
-    <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-      <button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-      <button onClick={()=>onSave({...f,cleaners:f.cleaners})} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{data?"Save Changes":"Add Client"}</button>
-    </div>
-  </ModalWrap>);}
 
 
 
-
-// -- JOBS ---------------------------------------------------------------------
-function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
-  const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[gpsModal,setGpsModal]=useState(null);
-  const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const[selMK,setSelMK]=useState(curMonthKey());
-  // Group by job CREATION date — uses createdAt if present, falls back to parsing timestamp from id
-  const getMK=j=>j.createdAt;
-  useEffect(()=>{if(jobs.length>0&&!jobs.some(j=>monthOf(j,getMK)===selMK)){const keys=[...new Set(jobs.map(j=>monthOf(j,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[jobs.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const monthJobs=jobs.filter(j=>monthOf(j,getMK)===selMK);
-  const filtered=filter==="All"?monthJobs:monthJobs.filter(j=>j.status===filter);
-  const save=data=>{let nj;if(data.id)nj=jobs.map(j=>j.id===data.id?data:j);else nj=[...jobs,{...data,id:"j"+Date.now(),createdAt:new Date().toISOString(),checkIn:null,checkOut:null}];setJobs(nj);dbSync("jobs",nj);toast.success(data.id?"Job updated":"Job created");setModal(null);};
-  const advance=(id,ns)=>{setJobs(js=>js.map(j=>j.id===id?{...j,status:ns}:j));toast.info(`Job moved to ${ns}`);};
-  const del=id=>confirm("Delete this job?",()=>{setJobs(js=>js.filter(j=>j.id!==id));dbDelete("jobs",id);toast.success("Job deleted");});
-  const canEdit=user.role!=="Technician",isTech=user.role==="Technician";
-
-  // ── Print report helpers ───────────────────────────────────────────────
-  const statsOf=list=>{
-    const closed=list.filter(j=>j.status==="Closed"||j.status==="Completed").length;
-    const pending=list.filter(j=>!["Closed","Completed"].includes(j.status)).length;
-    const today=new Date().toISOString().slice(0,10);
-    const overdue=list.filter(j=>j.date&&j.date<today&&!["Closed","Completed"].includes(j.status)).length;
-    const byClient={};list.forEach(j=>{const k=j.clientName||"Unknown";byClient[k]=(byClient[k]||0)+1;});
-    return{total:list.length,closed,pending,overdue,byClient};
-  };
-  const kpisOf=s=>[{label:"Total Jobs",value:s.total},{label:"Closed",value:s.closed,color:"#16a34a"},{label:"Pending",value:s.pending,color:AMBER},{label:"Overdue",value:s.overdue,color:s.overdue>0?RED:"#6b7280"}];
-  const jobRow=j=>`<tr><td>${fmtD(j.createdAt||j.date)}</td><td>${j.clientName||"--"}</td><td>${j.svc||"--"}</td><td>${fmtD(j.date)||"--"}</td><td>${j.sup||"--"}</td><td>${j.techs||"--"}</td><td>${j.status||"--"}</td></tr>`;
-  const jobTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No jobs</p>`:`<table><thead><tr><th>Created</th><th>Client</th><th>Service</th><th>Scheduled</th><th>Supervisor</th><th>Crew</th><th>Status</th></tr></thead><tbody>${list.map(jobRow).join("")}</tbody></table>`;
-  const clientBreakdown=s=>{const rows=Object.entries(s.byClient).sort((a,b)=>b[1]-a[1]).slice(0,15);if(!rows.length)return"";return`<table style="margin-top:6px"><thead><tr><th>Client</th><th style="text-align:right">Jobs</th></tr></thead><tbody>${rows.map(([n,c])=>`<tr><td>${n}</td><td style="text-align:right">${c}</td></tr>`).join("")}</tbody></table>`;};
-  const printMonth=()=>{
-    if(monthJobs.length===0){alert(`No jobs created in ${mkLabel(selMK)}`);return;}
-    const s=statsOf(monthJobs);
-    openPrintWin(buildReportHtml({moduleName:"Jobs",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Jobs Created in "+mkLabel(selMK),table:jobTable(monthJobs)},{label:"By Client",table:clientBreakdown(s)}]}));
-  };
-  const printAll=()=>{
-    if(jobs.length===0){alert("No jobs recorded yet");return;}
-    const s=statsOf(jobs);
-    const byMonth={};jobs.forEach(j=>{const mk=monthOf(j,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(j);});
-    const months=Object.keys(byMonth).sort().reverse();
-    openPrintWin(buildReportHtml({moduleName:"Jobs",periodLabel:"All History",summaryKpis:[...kpisOf(s),{label:"Unique Clients",value:Object.keys(s.byClient).length,color:BLUE}],sections:months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:`${mkLabel(mk)} — ${sub.total} job(s)`,kpis:kpisOf(sub),table:jobTable(byMonth[mk])};})}));
-  };
-
-  return(<div className="space-y-5">{confirmEl}
-    {/* Month tabs + Print buttons */}
-    <div className="flex items-start justify-between flex-wrap gap-3">
-      <MonthTabs records={jobs} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
-      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
-    </div>
-    <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-2">{["All",...JOB_STATUSES].map(s=><button key={s} onClick={()=>setFilter(s)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all border ${filter===s?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===s?{background:s==="All"?GD:(STATUS_COLORS[s]?.color||G)}:{}}>{s} ({s==="All"?monthJobs.length:monthJobs.filter(j=>j.status===s).length})</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Job</button>}</div>
-    <Card><div className="divide-y divide-gray-50">{filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">{monthJobs.length===0?`No jobs created in ${mkLabel(selMK)}`:"No jobs match this filter"}</div>}{filtered.map(j=>{const sc=STATUS_COLORS[j.status]||{};const ns=JOB_STATUSES[JOB_STATUSES.indexOf(j.status)+1];const canCI=isTech&&j.status==="Assigned"&&!j.checkIn;const canCO=isTech&&j.status==="In Progress"&&j.checkIn&&!j.checkOut;return(<div key={j.id} className="px-5 py-4 hover:bg-gray-50/60"><div className="flex items-start justify-between gap-3"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5" style={{background:sc.color||G}}>{(j.clientName||"?")[0]}</div><div className="min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="font-semibold text-gray-800 text-sm">{j.clientName}</p><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{j.svc}</span><span className="text-xs text-gray-400"></span><span className="text-xs text-gray-500">{fmtD(j.date)}</span></div><p className="text-xs text-gray-400 mt-0.5">Sup: {j.sup||"--"}  Crew: {j.techs||"--"}{j.loc?`  📍 ${j.loc}`:""}{j.sourceRequestId?<span className="ml-1 text-blue-400 font-medium">· From Request</span>:null}</p>{j.checkIn&&<p className="text-xs text-green-600 mt-0.5"> In: {fmtDT(j.checkIn)}{j.checkOut?`  Out: ${fmtDT(j.checkOut)}  ${calcDur(j.checkIn,j.checkOut)}`:""}</p>}
-{j.signOff&&<p className="text-xs mt-0.5">{j.signOff.notPresent?<span style={{color:AMBER}}>⚠ Client not present at checkout</span>:<span style={{color:G}}>★ {j.signOff.rating}/5 — {j.signOff.clientName}{j.signOff.remarks?` · "${j.signOff.remarks}"`:""}</span>}</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0"><SBadge s={j.status}/><div className="flex gap-1">{canCI&&<button onClick={()=>setGpsModal({job:j,type:"in"})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Check In</button>}{canCO&&<button onClick={()=>setGpsModal({job:j,type:"out"})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:O}}>Check Out</button>}{canEdit&&ns&&!["Closed"].includes(j.status)&&<button onClick={()=>advance(j.id,ns)} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>{ns}</button>}{canEdit&&<button onClick={()=>setModal(j)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={12}/></button>}{canEdit&&<button onClick={()=>del(j.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={12}/></button>}</div></div></div></div>);})}</div></Card>
-    {modal!==null&&<ModalWrap title={modal.id?"Edit Job":"Create Job"} onClose={()=>setModal(null)} wide><div className="grid grid-cols-2 gap-4"><Fld label="Client" col><ContactSearchSelect value={modal.clientName||""} onSelect={name=>setModal(p=>({...p,clientName:name}))} clients={clients} contacts={contacts}/></Fld><Fld label="Service"><select className={inp} value={modal.svc||"Cleaning"} onChange={e=>setModal(p=>({...p,svc:e.target.value}))}><option>Cleaning</option><option>Pest Control</option><option>Both</option><option>Deep Cleaning</option></select></Fld><Fld label="Scheduled Date"><input className={inp} type="date" value={modal.date||""} onChange={e=>setModal(p=>({...p,date:e.target.value}))}/></Fld><Fld label="Status"><select className={inp} value={modal.status||"New"} onChange={e=>setModal(p=>({...p,status:e.target.value}))}>{JOB_STATUSES.map(s=><option key={s}>{s}</option>)}</select></Fld><Fld label="Supervisor"><StaffSelect staff={staff} value={modal.sup||""} onChange={v=>setModal(p=>({...p,sup:v}))} placeholder="-- Select supervisor --" filter={s=>s.category==="Office Staff"||s.role==="Team Lead"||s.role==="Supervisor"}/></Fld><Fld label="Lead Technician"><StaffSelect staff={staff} value={modal.techs||""} onChange={v=>setModal(p=>({...p,techs:v}))} placeholder="-- Select technician --" filter={s=>s.category==="Cleaning Staff"||s.category==="Gardening Staff"}/></Fld><Fld label="Location"><input className={inp} value={modal.loc||""} onChange={e=>setModal(p=>({...p,loc:e.target.value}))} placeholder="Site address or description"/></Fld><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Create"}</button></div></ModalWrap>}
-    {gpsModal&&<GpsModal job={gpsModal.job} type={gpsModal.type} onSave={data=>{setJobs(js=>js.map(j=>j.id===data.id?data:j));setGpsModal(null);}} onClose={()=>setGpsModal(null)}/>}
-  </div>);}
-function GpsModal({job,type,onSave,onClose}){
-  // gpsError = true means GPS is unavailable; loc = null means still loading
-  const[loc,setLoc]=useState(null);
-  const[loading,setLoading]=useState(true);
-  const[gpsError,setGpsError]=useState(false); // hard block — no fake coords
-  const[step,setStep]=useState(1);
-  const[signOff,setSignOff]=useState({rating:0,clientName:"",remarks:"",notPresent:false});
-
-  useEffect(()=>{
-    if(!navigator.geolocation){
-      setGpsError(true);setLoading(false);return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      pos=>{
-        setLoc({lat:pos.coords.latitude.toFixed(5),lng:pos.coords.longitude.toFixed(5),acc:Math.round(pos.coords.accuracy)});
-        setLoading(false);
-      },
-      ()=>{ setGpsError(true); setLoading(false); },
-      {timeout:15000,maximumAge:0,enableHighAccuracy:true}
-    );
-  },[]);
-
-  const doSave=()=>{
-    const now=new Date().toISOString().slice(0,16);
-    const gs=loc?`${loc.lat}N, ${loc.lng}E (±${loc.acc}m)`:"Unavailable";
-    let updated;
-    if(type==="in"){updated={...job,status:"In Progress",checkIn:now,gpsIn:gs};}
-    else{updated={...job,status:"Awaiting Approval",checkOut:now,gpsOut:gs,signOff:{rating:signOff.notPresent?0:signOff.rating,clientName:signOff.notPresent?"Not present":signOff.clientName,remarks:signOff.remarks,notPresent:signOff.notPresent,confirmedBy:"technician",timestamp:now}};}
-    onSave(updated);
-    // When offline: persist to queue so data isn't lost on page reload
-    if(!navigator.onLine){
-      queueOfflineAction("job_update",updated);
-      Toaster._add?.({type:"info",msg:`Check-${type==="in"?"in":"out"} saved — will sync when reconnected`});
-    }
-  };
-
-  // GPS hard-block screen — shown instead of fake coords
-  if(gpsError){
-    return(<ModalWrap title={type==="in"?"📍 GPS Check-In":"📍 GPS Check-Out"} onClose={onClose}>
-      <div className="space-y-5 text-center py-4">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl" style={{background:"#fee2e2"}}>📵</div>
-        <div>
-          <p className="font-bold text-gray-800 text-base">GPS Location Unavailable</p>
-          <p className="text-sm text-gray-500 mt-2">Your device could not get a GPS fix.<br/>This can happen indoors or when location permission is denied.</p>
-        </div>
-        <div className="p-4 rounded-xl text-sm text-left space-y-2" style={{background:"#fffbeb",border:"1px solid #fde68a"}}>
-          <p className="font-bold text-amber-800">What to do:</p>
-          <ul className="text-amber-700 space-y-1 list-disc list-inside text-xs">
-            <li>Step outside or move to an open area</li>
-            <li>Check that location permission is allowed for this app in your phone settings</li>
-            <li>Ask your supervisor to manually verify and log your check-{type==="in"?"in":"out"}</li>
-          </ul>
-        </div>
-        <button onClick={onClose} className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">Close</button>
-      </div>
-    </ModalWrap>);
-  }
-
-  if(type==="out"&&step===2){
-    return(<ModalWrap title="✅ Client Sign-Off" onClose={onClose}>
-      <div className="space-y-5">
-        <div className="p-3 rounded-xl text-center text-sm font-semibold text-green-800" style={{background:GL}}>{job.clientName} — checkout complete</div>
-        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${signOff.notPresent?"border-amber-400 bg-amber-50":"border-gray-200"}`}>
-          <input type="checkbox" checked={signOff.notPresent} onChange={e=>setSignOff(p=>({...p,notPresent:e.target.checked,rating:0,clientName:""}))} className="w-4 h-4 accent-amber-500"/>
-          <div><p className="font-semibold text-gray-800 text-sm">Client not present at checkout</p><p className="text-xs text-gray-400">Job will be flagged for supervisor follow-up</p></div>
-        </label>
-        {!signOff.notPresent&&<>
-          <StarRating label="Client Satisfaction" value={signOff.rating} onChange={v=>setSignOff(p=>({...p,rating:v}))}/>
-          <Fld label="Client Name / Contact"><input className={inp} value={signOff.clientName} onChange={e=>setSignOff(p=>({...p,clientName:e.target.value}))} placeholder="Name of person who confirmed the work"/></Fld>
-          <Fld label="Remarks (optional)"><textarea className={inp} rows={2} value={signOff.remarks} onChange={e=>setSignOff(p=>({...p,remarks:e.target.value}))} placeholder="Any feedback from client…"/></Fld>
-        </>}
-      </div>
-      <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
-        <button onClick={()=>setStep(1)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Back</button>
-        <button onClick={doSave} disabled={!signOff.notPresent&&signOff.rating===0} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:O}}>Submit Check-Out</button>
-      </div>
-    </ModalWrap>);
-  }
-
-  return(<ModalWrap title={type==="in"?"📍 GPS Check-In":"📍 GPS Check-Out"} onClose={onClose}>
-    <div className="space-y-4">
-      <div className="p-4 rounded-2xl text-center" style={{background:GL}}><p className="font-bold text-green-800">{job.clientName}</p></div>
-      {loading
-        ?<div className="flex flex-col items-center gap-3 py-6">
-          <div className="w-10 h-10 rounded-full border-2 border-green-500 border-t-transparent animate-spin"/>
-          <p className="text-sm text-gray-500">Acquiring GPS signal… (up to 15s)</p>
-          <p className="text-xs text-gray-400">Move to an open area if this takes too long</p>
-        </div>
-        :<div className="p-4 rounded-xl" style={{background:"#f0f9ff",border:"1px solid #bae6fd"}}>
-          <p className="text-xs font-bold text-blue-700 mb-2">✅ Location Captured</p>
-          {loc&&<><p className="text-sm text-blue-800 font-mono">Lat: {loc.lat}°N</p><p className="text-sm text-blue-800 font-mono">Lng: {loc.lng}°E</p><p className="text-xs text-blue-500 mt-1">Accuracy: ±{loc.acc}m</p></>}
-          <p className="text-xs text-blue-400 mt-2">{new Date().toLocaleString("en-GB")}</p>
-        </div>
-      }
-    </div>
-    <div className="flex justify-end gap-3 pt-4 border-t">
-      <button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-      <button onClick={type==="in"?doSave:()=>setStep(2)} disabled={loading||!loc} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{background:type==="in"?G:O}}>
-        {loading?"Locating…":type==="in"?"Confirm Check-In ✓":"Next: Sign-Off →"}
-      </button>
-    </div>
-  </ModalWrap>);
-}
 
 
 // -- SITE REPORTS -------------------------------------------------------------
@@ -1594,7 +1109,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
       </div>
     </Card>}
 
-    {/* Action Bar */}
+    {/* Action */}
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-2">
         <button onClick={printReport} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Print Report</button>
@@ -1761,103 +1276,9 @@ function ImprestPage({imprests,setImprests,staff=[]}){
 
 
 
-// -- SETTINGS ------------------------------------------------------------------
-function SettingsPage({users,setUsers,activityLog=[]}){
-  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
-  const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
-  const save=async data=>{
-    const pw=data.password;
-    const clean={...data};delete clean.password; // never persist plain text
-    if(pw){clean.pwHash=await hashPw(pw,data.id||("u"+Date.now()));}
-    const id=clean.id||("u"+Date.now());
-    const entry={...clean,id,initial:(clean.name||"?")[0].toUpperCase()};
-    let nu;
-    if(data.id)nu=users.map(u=>u.id===data.id?{...u,...entry}:u);
-    else nu=[...users,entry];
-    setUsers(nu);dbSync("users",nu);setModal(null);
-  };
-  const del=id=>confirm("Remove this app user account?",()=>{setUsers(us=>us.filter(u=>u.id!==id));dbDelete("users",id);});
-  return(<div className="space-y-6 max-w-3xl">{confirmEl}
-    <Card className="p-6"><h3 className="font-bold text-gray-800 mb-4">Company Profile</h3><div className="grid grid-cols-2 gap-4">{[["Company Name","Dust & Wipes Limited"],["App Name","Operations Hub"],["Domain","app.dustandwipes.com"],["Location","Abuja, Nigeria"],["Currency","NGN ()"],["Timezone","WAT (UTC+1)"]].map(([l,v])=><Fld key={l} label={l}><input className={inp+" bg-gray-50"} defaultValue={v} readOnly/></Fld>)}</div></Card>
-
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div><h3 className="font-bold text-gray-800">App User Accounts</h3><p className="text-xs text-gray-400 mt-0.5">Manage login credentials for app access. Separate from field staff records.</p></div>
-        <button onClick={()=>setModal({role:"Technician"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><UserPlus size={14}/>Add User</button>
-      </div>
-      <div className="flex items-start gap-3 p-3 rounded-xl mb-4 text-sm" style={{background:"#fffbeb",border:"1px solid #fde68a"}}>
-        <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{color:AMBER}}/>
-        <div><p className="font-bold text-amber-800">Session Persistence</p><p className="text-amber-700 text-xs mt-0.5">Accounts added here persist in the Supabase database permanently once the DB sync runs. Phone number login for technicians: use number as username (e.g. <code>08031234567</code>).</p></div>
-      </div>
-      <div className="divide-y divide-gray-50 border border-gray-100 rounded-xl overflow-hidden">
-        {users.map(u=><div key={u.id} className="flex items-center justify-between px-4 py-3.5 hover:bg-gray-50">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl text-white font-bold flex items-center justify-center flex-shrink-0 text-sm" style={{background:O}}>{u.initial}</div>
-            <div><p className="font-semibold text-gray-800 text-sm">{u.name}</p><p className="text-xs text-gray-400">{u.email||u.username||"No email/username"}</p></div>
-          </div>
-          <div className="flex items-center gap-3"><SBadge s={u.role} custom={rc[u.role]}/><div className="flex gap-1"><button onClick={()=>setModal(u)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(u.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>
-        </div>)}
-      </div>
-    </Card>
-
-    <Card className="p-6"><h3 className="font-bold text-gray-800 mb-3">Role Permissions</h3><div className="space-y-2.5">{[["Admin","#166534","Full access: all modules, staff management, settings, item catalogue"],["Supervisor","#9a3412","Jobs, clients, contracts, reports, requisitions (with costs), cover scheduling, imprest, item catalogue"],["Technician","#1e40af","Assigned jobs, GPS check-in/out, site reports, submit requisitions (no cost visibility)"]].map(([r,c,d])=><div key={r} className="flex gap-3 p-3 rounded-xl" style={{background:"#f9fafb"}}><span className="text-xs font-black w-24 flex-shrink-0 pt-0.5" style={{color:c}}>{r}</span><span className="text-xs text-gray-600">{d}</span></div>)}</div></Card>
-
-    <Card className="p-6">
-      <h3 className="font-bold text-gray-800 mb-4">Activity Log</h3>
-      <p className="text-xs text-gray-400 mb-4">Last 200 actions across all modules. Read-only audit trail.</p>
-      {activityLog.length===0
-        ?<div className="text-center py-8 text-gray-400 text-sm">No activity recorded yet</div>
-        :<div className="border border-gray-100 rounded-xl overflow-hidden">
-          <table className="w-full text-xs">
-            <thead><tr style={{background:"#f9fafb"}} className="border-b">
-              {["Time","User","Role","Action","Module","Description"].map(h=>
-                <th key={h} className="text-left px-3 py-2 font-bold text-gray-400 uppercase tracking-wider">{h}</th>
-              )}
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {activityLog.map((log,i)=>{
-                const actionColor={create:"#166534",update:"#1e40af",delete:"#991b1b",login:"#7c3aed",logout:"#6b7280"}[log.action]||"#374151";
-                return(<tr key={i} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 text-gray-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</td>
-                  <td className="px-3 py-2 font-medium text-gray-700">{log.user_name}</td>
-                  <td className="px-3 py-2 text-gray-500">{log.user_role}</td>
-                  <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{background:actionColor}}>{log.action}</span></td>
-                  <td className="px-3 py-2 text-gray-500 capitalize">{log.module}</td>
-                  <td className="px-3 py-2 text-gray-600 max-w-xs truncate">{log.description}</td>
-                </tr>);
-              })}
-            </tbody>
-          </table>
-        </div>
-      }
-    </Card>
-
-    <Card className="p-6"><h3 className="font-bold text-gray-800 mb-3">Technology Stack</h3><div className="space-y-2.5">{[["Database","Supabase (PostgreSQL) -- 13 tables, row-level security"],["Auth","Email/password + phone/username login, password reset via email"],["Hosting","Vercel (frontend) + Supabase (backend)  app.dustandwipes.com"],["Email","Resend via Supabase Edge Functions  notifications@mail.dustandwipes.com"],["PWA","Installable on Android & iPhone -- offline cache via Service Worker"],["GPS","Browser Geolocation API + coordinates captured on site reports"]].map(([l,d])=><div key={l} className="flex gap-3 p-3 rounded-xl" style={{background:"#f9fafb"}}><span className="text-xs font-bold text-green-700 w-36 flex-shrink-0">{l}</span><span className="text-xs text-gray-600">{d}</span></div>)}</div></Card>
-
-    {modal&&<ModalWrap title={modal.id?"Edit User":"Add New User"} onClose={()=>setModal(null)}>
-      <div className="space-y-4">
-        <Fld label="Full Name"><input className={inp} value={modal.name||""} onChange={e=>setModal(p=>({...p,name:e.target.value}))}/></Fld>
-        <Fld label="Role"><select className={inp} value={modal.role||"Technician"} onChange={e=>setModal(p=>({...p,role:e.target.value}))}><option>Admin</option><option>Supervisor</option><option>Technician</option></select></Fld>
-        <Fld label="Email (leave blank for technicians)"><input className={inp} type="email" value={modal.email||""} onChange={e=>setModal(p=>({...p,email:e.target.value}))} placeholder="name@dustandwipes.com"/></Fld>
-        <Fld label="Username / Phone (for technicians without email)"><input className={inp} value={modal.username||""} onChange={e=>setModal(p=>({...p,username:e.target.value}))} placeholder="e.g. 08031234567"/></Fld>
-        <Fld label={modal.id?"Set New Password (leave blank to keep current)":"Password"}>
-          <input className={inp} type="password" value={modal.password||""} onChange={e=>setModal(p=>({...p,password:e.target.value}))} placeholder={modal.id?"Enter new password to change it…":"Set initial password for this user"}/>
-        </Fld>
-        {modal.id&&modal.pwHash&&<p className="text-xs text-green-700 -mt-2">✓ Password is set — enter a new one above to change it</p>}
-        {modal.id&&!modal.pwHash&&<p className="text-xs text-amber-600 -mt-2">⚠ No password set — this user cannot log in without one</p>}
-      </div>
-      <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
-        <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-        <button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add User"}</button>
-      </div>
-    </ModalWrap>}
-  </div>);}
 
 
-// -- ROOT APP ------------------------------------------------------------------
-
-// ── SITE ASSESSMENT MODULE ────────────────────────────────────────────────────
-
+// Site Assessment form options (used by AssessmentsPage + AssessmentViewer)
 const SA_SERVICES=[
   "Post-construction cleaning","Deep cleaning","Routine janitorial service",
   "Pest control","Fumigation","Rodent control","Termite treatment",
@@ -1874,7 +1295,6 @@ const SA_CHEM_OPTS=["Liquid Soap","Bleach","Disinfectant","Glass Cleaner","Floor
 const SA_PEST_TYPES=["Cockroaches","Ants","Mosquitoes","Flies","Rodents","Termites","Bed bugs","Snakes","Wall geckos","Spiders","Fleas","Ticks","Other"];
 const SA_TREATMENT=["Spraying","Gel baiting","Fogging","Rodent baiting","Termite drilling/injection","Dusting","Fumigation","Trapping","Exclusion/sealing"];
 const SA_SECTIONS=["Client Info","Service Type","Scope","Site & Risk","Photos","Costing","Recommendation"];
-
 
 function AssessmentsPage({assessments,setAssessments,user,clients,contacts,requests,setRequests}){
   const[view,setView]=useState(null);
@@ -2617,7 +2037,7 @@ export default function App(){
       if(truly.length===0)return js;
       const updated=[...js,...truly];
       dbSync("jobs",updated);
-      Toaster._add?.({type:"info",msg:`${truly.length} recurring job${truly.length>1?"s":""} auto-scheduled`});
+      Toaster._add?.(`${truly.length} recurring job${truly.length>1?"s":""} auto-scheduled`,"info");
       return updated;
     });
   },[clients,jobs]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2646,22 +2066,22 @@ export default function App(){
     // Drain any queue items left from a previous offline session
     if(navigator.onLine&&dbLoaded.current){
       const n=drainOfflineQueue(setJobs, dbSync);
-      if(n>0)Toaster._add?.({type:"success",msg:`${n} offline action${n>1?"s":""} synced`});
+      if(n>0)Toaster._add?.(`${n} offline action${n>1?"s":""} synced`,"success");
     }
     const handleOnline=()=>{
       setIsOnline(true);
       const n=drainOfflineQueue(setJobs, dbSync);
-      if(n>0)Toaster._add?.({type:"success",msg:`${n} offline action${n>1?"s":""} synced to server`});
+      if(n>0)Toaster._add?.(`${n} offline action${n>1?"s":""} synced to server`,"success");
     };
     const handleOffline=()=>{
       setIsOnline(false);
-      Toaster._add?.({type:"info",msg:"You are offline — actions will sync when reconnected"});
+      Toaster._add?.("You are offline — actions will sync when reconnected","info");
     };
     // Service Worker background-sync message handler
     const handleSwMessage=e=>{
       if(e.data?.type==="DW_DRAIN_OFFLINE_QUEUE"){
         const n=drainOfflineQueue(setJobs, dbSync);
-        if(n>0)Toaster._add?.({type:"success",msg:`${n} queued action${n>1?"s":""} synced via background sync`});
+        if(n>0)Toaster._add?.(`${n} queued action${n>1?"s":""} synced via background sync`,"success");
       }
     };
     window.addEventListener("online",handleOnline);

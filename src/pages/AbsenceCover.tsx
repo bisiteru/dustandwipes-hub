@@ -25,7 +25,7 @@ function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[
   const getMK=r=>r.startDate;
   // Both absences AND covers feed the month list (linked together per user spec)
   const combined=useMemo(()=>[...absences,...covers],[absences,covers]);
-  useEffect(()=>{if(combined.length>0&&!combined.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(combined.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[combined.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(combined.length>0&&!combined.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(combined.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0] as string);}},[combined.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const monthAbsences=absences.filter(a=>monthOf(a,getMK)===selMK);
   const monthCovers=covers.filter(c=>monthOf(c,getMK)===selMK);
   const delA=id=>confirm("Delete this absence?",()=>{setAbsences(as=>as.filter(a=>a.id!==id));dbDelete("absences",id);toast.success("Absence deleted");});
