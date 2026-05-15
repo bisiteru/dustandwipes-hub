@@ -37,6 +37,12 @@ import { StaffSelect, StaffMultiPicker, ContactSearchSelect } from "./components
 import { GlobalSearch } from "./components/GlobalSearch";
 import { buildNotifs, NotifPanel } from "./components/NotifPanel";
 
+// ── Page modules (Phase 4 of TS migration) ───────────────────────────────────
+import { BirthdaysPage } from "./pages/Birthdays";
+import { ContractsPage } from "./pages/Contracts";
+import { SchedulePage } from "./pages/Schedule";
+import { InventoryPage } from "./pages/Inventory";
+
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const LOGO_B64_PARTS = [
   "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9Y",
@@ -559,19 +565,6 @@ function ClientModal({data,onSave,onClose,staff}){
   </ModalWrap>);}
 
 
-// -- CONTRACTS ----------------------------------------------------------------
-function ContractsPage({clients,setClients}){
-  const[filter,setFilter]=useState("All");
-  const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
-  const sorted=useMemo(()=>(filter==="All"?ws:ws.filter(c=>c.status===filter)).sort((a,b)=>(dLeft(a.ce)||0)-(dLeft(b.ce)||0)),[ws,filter]);
-  const stats=[{l:"Active",v:ws.filter(c=>c.status==="Active").length,c:"#22c55e",bg:"#dcfce7"},{l:"Expiring Soon",v:ws.filter(c=>c.status==="Expiring Soon").length,c:AMBER,bg:"#fffbeb"},{l:"Critical",v:ws.filter(c=>c.status==="Critical").length,c:RED,bg:"#fee2e2"},{l:"Expired",v:ws.filter(c=>c.status==="Expired").length,c:"#6b7280",bg:"#f3f4f6"}];
-  const[renewModal,setRenewModal]=useState(null);
-  return(<div className="space-y-5">
-    <div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}> <strong>Alert Policy:</strong> <span className="font-bold text-amber-600">Amber</span> 60d  <span className="font-bold text-red-600">Red/Critical</span> 30d  SMS &amp; Email to Admin &amp; Supervisor.</div>
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{stats.map(s=><button key={s.l} onClick={()=>setFilter(filter===s.l?"All":s.l)} className="p-5 rounded-2xl border-2 text-center transition-all bg-white border-gray-100 hover:shadow" style={filter===s.l?{borderColor:s.c,background:s.bg}:{}}><div className="text-3xl font-black" style={{color:s.c}}>{s.v}</div><div className="text-xs font-semibold text-gray-500 mt-1">{s.l}</div></button>)}</div>
-    <Card><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Phone","Start","End","Days Left","Value","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{sorted.map(c=>{const dl=dLeft(c.ce);return(<tr key={c.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5"><p className="font-semibold text-gray-800">{c.name}</p><p className="text-xs text-gray-400">{c.cp}</p></td><td className="px-4 py-3.5 text-xs text-gray-500">{c.svc}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{c.phone}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.cs)}</td><td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">{fmtD(c.ce)}</td><td className="px-4 py-3.5">{dl!==null&&<span className={`text-xs font-bold ${dl<0?"text-gray-500":dl<=30?"text-red-600":dl<=60?"text-amber-600":"text-green-600"}`}>{dl<0?`${Math.abs(dl)}d ago`:`${dl}d`}</span>}</td><td className="px-4 py-3.5 font-bold text-gray-700 whitespace-nowrap">{fmt(c.tot)}</td><td className="px-4 py-3.5"><div className="flex items-center gap-2"><SBadge s={c.status}/>{c.status!=="Active"&&<button onClick={()=>setRenewModal({...c})} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{background:G}}>Renew</button>}</div></td></tr>);})}</tbody></table></div></Card>
-    {renewModal&&<ModalWrap title={`Renew: ${renewModal.name}`} onClose={()=>setRenewModal(null)}><div className="space-y-4"><div className="p-3 rounded-xl text-xs text-gray-600" style={{background:GL,border:`1px solid ${G}30`}}>Current end: <strong>{fmtD(renewModal.ce)}</strong>  Value: <strong>{fmt(renewModal.tot)}</strong></div><div className="grid grid-cols-2 gap-4"><Fld label="New End Date" required><input className={inp} type="date" value={renewModal.newCe||""} onChange={e=>setRenewModal(p=>({...p,newCe:e.target.value}))}/></Fld><Fld label="New Annual Value (₦)"><input className={inp} type="number" min="0" value={renewModal.newTot||renewModal.tot||""} onChange={e=>setRenewModal(p=>({...p,newTot:Number(e.target.value)}))}/></Fld></div><Fld label="Notes"><input className={inp} value={renewModal.renewNotes||""} onChange={e=>setRenewModal(p=>({...p,renewNotes:e.target.value}))} placeholder="e.g. Renewed via letter dated..."/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setRenewModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button disabled={!renewModal.newCe} onClick={()=>{const nc=clients.map(c=>c.id===renewModal.id?{...c,ce:renewModal.newCe,tot:renewModal.newTot||c.tot,cs:c.ce}:c);setClients(nc);dbSync("clients",nc);setRenewModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Confirm Renewal</button></div></ModalWrap>}
-  </div>);}
 
 // -- SERVICE REQUESTS ---------------------------------------------------------
 function RequestsPage({requests,setRequests,setJobs,clients}){
@@ -783,52 +776,6 @@ function GpsModal({job,type,onSave,onClose}){
   </ModalWrap>);
 }
 
-// -- PEST SCHEDULE -------------------------------------------------------------
-function SchedulePage({schedules,setSchedules,clients,userRole}){
-  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const canEdit=userRole!=="Technician";
-  const ws=schedules.map(s=>({...s,overdue:new Date(s.dueDate)<TODAY}));
-  const RECUR_DAYS={Monthly:30,Quarterly:91,"Bi-annual":183,Annual:365};
-  const save=data=>{
-    let saved={...data};
-    if(saved.dateCarriedOut&&saved.recurrence&&RECUR_DAYS[saved.recurrence]){
-      const d=new Date(saved.dateCarriedOut);
-      d.setDate(d.getDate()+RECUR_DAYS[saved.recurrence]);
-      saved.dueDate=d.toISOString().split("T")[0];
-    }
-    let ns;if(saved.id)ns=schedules.map(s=>s.id===saved.id?saved:s);else ns=[...schedules,{...saved,id:Date.now()}];
-    setSchedules(ns);dbSync("schedules",ns);toast.success(saved.id?"Schedule updated":"Visit scheduled");setModal(null);
-  };
-  const del=id=>confirm("Delete this schedule?",()=>{setSchedules(ss=>ss.filter(s=>s.id!==id));dbDelete("schedules",id);toast.success("Schedule deleted");});
-  return(<div className="space-y-5">{confirmEl}
-    <div className="flex items-center justify-between"><div className="flex gap-3"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fee2e2",color:RED}}>{ws.filter(s=>s.overdue).length} Overdue</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#dbeafe",color:BLUE}}>{ws.filter(s=>!s.overdue).length} Upcoming</div></div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>New Visit</button>}</div>
-    <Card>
-      {/* Mobile card list */}
-      <div className="sm:hidden divide-y divide-gray-50">
-        {ws.length===0&&<div className="text-center py-10 text-gray-400 text-sm">No visits scheduled</div>}
-        {ws.map(s=><div key={s.id} className="px-4 py-3.5 hover:bg-gray-50/60">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-semibold text-gray-800 text-sm">{s.clientName}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{s.service}{s.recurrence?` · ${s.recurrence}`:""}</p>
-              <div className="flex flex-wrap gap-x-3 mt-1 text-xs text-gray-400">
-                {s.dateCarriedOut&&<span>Done: {fmtD(s.dateCarriedOut)}</span>}
-                <span className={s.overdue?"text-red-600 font-semibold":""}>Due: {fmtD(s.dueDate)}</span>
-                {s.chemical&&<span>💊 {s.chemical}{s.chemicalQty?` ${s.chemicalQty}${s.chemicalUnit||"L"}`:""}</span>}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <SBadge s={s.overdue?"Overdue":"Upcoming"} custom={s.overdue?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"}}/>
-              {canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(s)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}
-            </div>
-          </div>
-        </div>)}
-      </div>
-      {/* Desktop table */}
-      <div className="hidden sm:block overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Client","Service","Recurrence","Date Done","Next Due","Chemical","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{ws.map(s=><tr key={s.id} className="hover:bg-gray-50/70"><td className="px-4 py-3.5 font-semibold text-gray-800">{s.clientName}</td><td className="px-4 py-3.5 text-xs text-gray-600">{s.service}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.recurrence||"--"}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dateCarriedOut)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{fmtD(s.dueDate)}</td><td className="px-4 py-3.5 text-xs text-gray-500">{s.chemical?`${s.chemical}${s.chemicalQty?` ${s.chemicalQty}${s.chemicalUnit||"L"}`:""}`:"-"}</td><td className="px-4 py-3.5"><SBadge s={s.overdue?"Overdue":"Upcoming"} custom={s.overdue?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"}}/></td><td className="px-4 py-3.5 text-xs text-gray-400">{s.notes||"--"}</td><td className="px-4 py-3.5">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(s)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>)}</tbody></table></div>
-    </Card>
-    {modal!==null&&<ModalWrap title={modal.id?"Edit Schedule":"New Pest Visit"} onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Client"><select className={inp} value={modal.clientName||""} onChange={e=>setModal(p=>({...p,clientName:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><Fld label="Service"><select className={inp} value={modal.service||"Pest Control"} onChange={e=>setModal(p=>({...p,service:e.target.value}))}><option>Pest Control</option><option>Fumigation</option><option>Rodent Control</option><option>Termite Treatment</option></select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Date Done"><input className={inp} type="date" value={modal.dateCarriedOut||""} onChange={e=>setModal(p=>({...p,dateCarriedOut:e.target.value}))}/></Fld><Fld label="Next Due"><input className={inp} type="date" value={modal.dueDate||""} onChange={e=>setModal(p=>({...p,dueDate:e.target.value}))}/></Fld></div><Fld label="Recurrence"><select className={inp} value={modal.recurrence||""} onChange={e=>setModal(p=>({...p,recurrence:e.target.value}))}><option value="">-- Select --</option><option>Monthly</option><option>Quarterly</option><option>Bi-annual</option><option>Annual</option></select></Fld><Fld label="Chemical / Pesticide"><input className={inp} value={modal.chemical||""} onChange={e=>setModal(p=>({...p,chemical:e.target.value}))} placeholder="e.g. Cypermethrin 10%"/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Qty Used"><input className={inp} type="number" min="0" step="0.1" value={modal.chemicalQty||""} onChange={e=>setModal(p=>({...p,chemicalQty:e.target.value}))}/></Fld><Fld label="Unit"><select className={inp} value={modal.chemicalUnit||"L"} onChange={e=>setModal(p=>({...p,chemicalUnit:e.target.value}))}><option>L</option><option>mL</option><option>kg</option><option>g</option></select></Fld></div><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes||""} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add"}</button></div></ModalWrap>}
-  </div>);}
 
 // -- SITE REPORTS -------------------------------------------------------------
 // Constants
@@ -1414,38 +1361,6 @@ function SiteReportViewer({report:r,onClose}){
 
 
 
-// -- INVENTORY -----------------------------------------------------------------
-function InventoryPage({inventory,setInventory,userRole}){
-  const[modal,setModal]=useState(null);const[filter,setFilter]=useState("All");const[search,setSearch]=useState("");
-  const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const cats=["All",...new Set(inventory.map(i=>i.cat))];
-  const filtered=inventory.filter(i=>(filter==="All"||i.cat===filter)&&i.item.toLowerCase().includes(search.toLowerCase()));
-  const save=data=>{let ni;if(data.id)ni=inventory.map(i=>i.id===data.id?data:i);else ni=[...inventory,{...data,id:"i"+Date.now()}];setInventory(ni);dbSync("inventory",ni);toast.success(data.id?"Item updated":"Item added");setModal(null);};
-  const del=id=>confirm("Remove this item?",()=>{setInventory(inv=>inv.filter(i=>i.id!==id));dbDelete("inventory",id);toast.success("Item removed");});
-  const canEdit=userRole!=="Technician";
-  return(<div className="space-y-5">{confirmEl}
-    <div className="flex flex-wrap items-center gap-3"><div className="relative flex-1 min-w-48"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9"} placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/></div><div className="flex flex-wrap gap-2">{cats.map(c=><button key={c} onClick={()=>setFilter(c)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold border ${filter===c?"text-white border-transparent":"bg-white text-gray-500 border-gray-200"}`} style={filter===c?{background:G}:{}}>{c}</button>)}</div>{canEdit&&<button onClick={()=>setModal({})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Item</button>}</div>
-    <Card>
-      {/* Mobile card list */}
-      <div className="sm:hidden divide-y divide-gray-50">
-        {filtered.length===0&&<div className="text-center py-10 text-gray-400 text-sm">Nothing here yet</div>}
-        {filtered.map(i=>{const low=i.qty<=i.reorder;return(<div key={i.id} className={`flex items-center justify-between px-4 py-3.5 hover:bg-gray-50/60 ${low?"bg-red-50/30":""}`}>
-          <div className="min-w-0">
-            <p className="font-semibold text-gray-800 text-sm truncate">{i.item}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{i.cat} · Reorder at {i.reorder} · ₦{fmt(i.cost)}/unit</p>
-            <SBadge s={low?"Low Stock":"OK"} custom={low?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}}/>
-          </div>
-          <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-            <div className="text-right"><p className="font-black text-2xl leading-none" style={{color:low?RED:G}}>{i.qty}</p><p className="text-xs text-gray-400 mt-0.5">in stock</p></div>
-            {canEdit&&<div className="flex flex-col gap-1"><button onClick={()=>setModal(i)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(i.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}
-          </div>
-        </div>);})}
-      </div>
-      {/* Desktop table */}
-      <div className="hidden sm:block overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Item","Category","In Stock","Reorder","Unit Cost","Value","Status",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(i=>{const low=i.qty<=i.reorder;return(<tr key={i.id} className={`hover:bg-gray-50/70 ${low?"bg-red-50/30":""}`}><td className="px-4 py-3 font-medium text-gray-800">{i.item}</td><td className="px-4 py-3 text-xs text-gray-500">{i.cat}</td><td className="px-4 py-3 font-black text-lg" style={{color:low?RED:G}}>{i.qty}</td><td className="px-4 py-3 text-xs text-gray-400">{i.reorder}</td><td className="px-4 py-3 text-xs text-gray-500">{fmt(i.cost)}</td><td className="px-4 py-3 font-semibold text-gray-700">{fmt(i.qty*i.cost)}</td><td className="px-4 py-3"><SBadge s={low?"Low Stock":"OK"} custom={low?{bg:"#fee2e2",color:RED,border:"#fca5a5"}:{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"}}/></td><td className="px-4 py-3">{canEdit&&<div className="flex gap-1"><button onClick={()=>setModal(i)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(i.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div>}</td></tr>);})}</tbody></table></div>
-    </Card>
-    {modal!==null&&<ModalWrap title={modal.id?"Edit Item":"Add Item"} onClose={()=>setModal(null)}><div className="space-y-4">{[["Item Name","item","text"],["Category","cat","text"],["Qty","qty","number"],["Reorder Level","reorder","number"],["Unit Cost ()","cost","number"]].map(([l,k,t])=><Fld key={k} label={l}><input className={inp} type={t} value={modal[k]||""} onChange={e=>setModal(p=>({...p,[k]:t==="number"?Number(e.target.value):e.target.value}))}/></Fld>)}</div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{modal.id?"Save":"Add"}</button></div></ModalWrap>}
-  </div>);}
 
 // -- REQUISITIONS --------------------------------------------------------------
 
@@ -1650,37 +1565,6 @@ function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[
     {modal?.type==="cover"&&<ModalWrap title="Assign Cover" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Cleaner"><StaffSelect staff={staff} value={modal.absentCleaner||""} onChange={v=>setModal(p=>({...p,absentCleaner:v}))} placeholder="-- Select absent staff --"/></Fld><Fld label="Replacement Cleaner"><StaffSelect staff={staff} value={modal.replacement||""} onChange={v=>setModal(p=>({...p,replacement:v}))} placeholder="-- Select replacement --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-3 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld><Fld label="Days Covered"><input className={inp} type="number" min="1" value={modal.days||1} onChange={e=>setModal(p=>({...p,days:Number(e.target.value)}))}/></Fld></div><Fld label="Compensation?"><RadioG value={modal.compensation?"Yes":"No"} onChange={v=>setModal(p=>({...p,compensation:v==="Yes"}))} options={["Yes","No"]}/></Fld>{modal.compensation&&<Fld label="Cover Amount (₦)"><input className={inp} type="number" min="0" value={modal.coverAmount||""} onChange={e=>setModal(p=>({...p,coverAmount:Number(e.target.value)}))} placeholder="Amount to pay cover staff"/></Fld>}<Fld label="Remarks"><textarea className={inp} rows={2} value={modal.remarks||""} onChange={e=>setModal(p=>({...p,remarks:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...covers,{...modal,id:"cov"+Date.now()}];setCovers(nl);dbSync("covers",nl);toast.success("Cover assigned");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Assign</button></div></ModalWrap>}
   </div>);}
 
-// -- BIRTHDAYS (field staff only) ----------------
-function BirthdaysPage({users,setUsers,staff,setStaff}){
-  const[modal,setModal]=useState(null);
-  const thisM=TODAY.getMonth()+1,todayD=TODAY.getDate();
-  const allPeople=staff.map(s=>({...s,src:"staff"}));
-  const withBdays=allPeople.filter(u=>u.dob);
-  const sorted=[...withBdays].sort((a,b)=>{const am=new Date(a.dob).getMonth()+1,ad=new Date(a.dob).getDate(),bm=new Date(b.dob).getMonth()+1,bd=new Date(b.dob).getDate();return am!==bm?am-bm:ad-bd;});
-  const thisMonth=sorted.filter(u=>new Date(u.dob).getMonth()+1===thisM);
-  const showList=allPeople;
-  const toast=useToast();
-  // DOB update — updates staff record only
-  const saveDob=data=>{
-    const ns=staff.map(s=>s.id===data.id?{...s,dob:data.dob}:s);setStaff(ns);dbSync("staff",ns);
-    toast.success(`DOB updated for ${data.name}`);setModal(null);
-  };
-  return(<div className="space-y-5">
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4"><KPI icon="🎂" label="Field Staff" value={allPeople.length} sub="Total staff members" bg="#f0fdf4"/><KPI icon="🎉" label="DOB Recorded" value={withBdays.length} sub={`of ${allPeople.length}`} bg="#fdf4ff"/><KPI icon="🎁" label="This Month" value={thisMonth.length} sub={monthName(thisM-1)+" celebrants"} bg="#eff6ff"/><KPI icon="⚠️" label="No DOB" value={allPeople.filter(u=>!u.dob).length} sub="Update profiles" bg="#fffbeb"/></div>
-    {thisMonth.length>0&&<Card className="p-5"><h3 className="text-xs font-bold uppercase tracking-widest mb-4" style={{color:G}}>🎂 {monthName(thisM-1)} Celebrants</h3><div className="grid grid-cols-1 gap-2.5">{thisMonth.map(u=>{const d=new Date(u.dob);const isToday=d.getDate()===todayD;return(<div key={u.id} className={`flex items-center justify-between p-3.5 rounded-xl ${isToday?"border-2":"border"}`} style={isToday?{borderColor:"#9333ea",background:"#fdf4ff"}:{borderColor:"#e9d5ff",background:"#faf5ff"}}><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0" style={{background:isToday?"#9333ea":"#a855f7"}}>{(u.initial||u.name[0])}</div><div><p className="font-semibold text-gray-800">{u.name}</p><p className="text-xs text-gray-500">{u.role}{u.site?` · ${u.site}`:""}</p></div></div><p className={`text-sm font-bold ${isToday?"text-purple-600":"text-gray-500"}`}>{isToday?"🎉 Today!":d.getDate()+" "+monthName(d.getMonth())}</p></div>);})}</div></Card>}
-    <div className="flex items-center justify-between">
-      <div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white"><span className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{background:G}}>Field Staff ({allPeople.length})</span></div>
-      <p className="text-xs text-gray-400">Click ✏️ to add or update a date of birth. Manage staff records in the Staff module.</p>
-    </div>
-    <Card><div className="divide-y divide-gray-50">{showList.map(u=>{const d=u.dob?new Date(u.dob):null;const isUser=u.src==="user"||u.id?.startsWith("u");return(<div key={u.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:isUser?O:G}}>{(u.initial||u.name[0])}</div><div><p className="font-semibold text-gray-800 text-sm">{u.name}</p><p className="text-xs text-gray-400">{u.role}{u.site?` · ${u.site}`:""}{isUser?<span className="text-blue-500 ml-1">(App User)</span>:null}</p></div></div><div className="flex items-center gap-3">{d?<p className="text-sm font-semibold text-gray-700">{d.getDate()} {monthName(d.getMonth())} {d.getFullYear()}</p>:<p className="text-xs text-amber-500 font-medium">No DOB</p>}<button onClick={()=>setModal({...u})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100" title="Update date of birth"><Edit2 size={13}/></button></div></div>);})}</div></Card>
-    {modal&&<ModalWrap title={modal.src==="user"?"Update User DOB":"Update Staff DOB"} onClose={()=>setModal(null)}>
-      <div className="space-y-4">
-        <div className="p-3 rounded-xl text-sm text-gray-600" style={{background:"#f9fafb"}}><span className="font-bold">{modal.name}</span>{modal.role?` · ${modal.role}`:""}{modal.site?` · ${modal.site}`:""}</div>
-        <Fld label="Date of Birth"><input className={inp} type="date" value={modal.dob||""} onChange={e=>setModal(p=>({...p,dob:e.target.value}))}/></Fld>
-      </div>
-      <div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>saveDob(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Save DOB</button></div>
-    </ModalWrap>}
-  </div>);}
 
 // -- IMPREST -------------------------------------------------------------------
 function ImprestPage({imprests,setImprests,staff=[]}){
