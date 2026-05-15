@@ -1,7 +1,7 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
+import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, WifiOff } from "lucide-react";
 
 // ── lib/ extractions (Phase 2 of TS migration) ───────────────────────────────
 import {
@@ -42,6 +42,10 @@ import { BirthdaysPage } from "./pages/Birthdays";
 import { ContractsPage } from "./pages/Contracts";
 import { SchedulePage } from "./pages/Schedule";
 import { InventoryPage } from "./pages/Inventory";
+import { RequestsPage } from "./pages/Requests";
+import { AbsenceCoverPage } from "./pages/AbsenceCover";
+import { AnalyticsPage } from "./pages/Analytics";
+import { StaffPage } from "./pages/Staff";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const LOGO_B64_PARTS = [
@@ -566,58 +570,6 @@ function ClientModal({data,onSave,onClose,staff}){
 
 
 
-// -- SERVICE REQUESTS ---------------------------------------------------------
-function RequestsPage({requests,setRequests,setJobs,clients}){
-  const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const[selMK,setSelMK]=useState(curMonthKey());
-  const getMK=r=>r.created;
-  useEffect(()=>{if(requests.length>0&&!requests.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(requests.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[requests.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const monthRequests=requests.filter(r=>monthOf(r,getMK)===selMK);
-  const blank={clientName:"",clientPhone:"",svc:"",loc:"",prefDate:"",src:"Phone",status:"Pending",notes:""};
-  const save=data=>{let nr;if(data.id)nr=requests.map(r=>r.id===data.id?data:r);else nr=[...requests,{...data,id:"sr"+Date.now(),created:TODAY.toISOString().split("T")[0]}];setRequests(nr);dbSync("requests",nr);toast.success(data.id?"Request updated":"Request logged");setModal(null);};
-  const convert=req=>{setJobs(js=>[...js,{id:"j"+Date.now(),createdAt:new Date().toISOString(),clientName:req.clientName,clientPhone:req.clientPhone||"",loc:req.loc||"",svc:req.svc,date:req.prefDate,sup:"",techs:"",status:"New",notes:req.notes,sourceRequestId:req.id,checkIn:null,checkOut:null}]);setRequests(rs=>rs.map(r=>r.id===req.id?{...r,status:"Converted"}:r));toast.success("Request converted to job");};
-  const del=id=>confirm("Delete this request?",()=>{setRequests(rs=>rs.filter(r=>r.id!==id));dbDelete("requests",id);toast.success("Request deleted");});
-  const SC={Pending:{bg:"#fffbeb",color:AMBER,border:"#fde68a"},Converted:{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},Declined:{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"}};
-
-  // ── Print report helpers ───────────────────────────────────────────────
-  // Average response time = days between request creation and conversion.
-  // We approximate "converted at" from the corresponding job's createdAt (linked via sourceRequestId).
-  const statsOf=list=>{
-    const closed=list.filter(r=>r.status==="Converted"||r.status==="Declined").length;
-    const open=list.filter(r=>r.status==="Pending").length;
-    const declined=list.filter(r=>r.status==="Declined").length;
-    const converted=list.filter(r=>r.status==="Converted").length;
-    // average response time (days) for converted ones — uses prefDate vs created
-    const respDays=list.filter(r=>r.status==="Converted"&&r.created&&r.prefDate).map(r=>Math.max(0,Math.round((new Date(r.prefDate)-new Date(r.created))/86400000)));
-    const avgResp=respDays.length?Math.round(respDays.reduce((a,b)=>a+b,0)/respDays.length):null;
-    return{total:list.length,open,closed,declined,converted,avgResp};
-  };
-  const kpisOf=s=>[{label:"Total Requests",value:s.total},{label:"Open",value:s.open,color:AMBER},{label:"Converted",value:s.converted,color:"#16a34a"},{label:"Declined",value:s.declined,color:"#6b7280"},{label:"Avg Response",value:s.avgResp===null?"–":`${s.avgResp}d`,color:BLUE,sub:"days"}];
-  const reqRow=r=>`<tr><td>${fmtD(r.created)}</td><td>${r.clientName||"--"}${r.clientPhone?`<br><span style="color:#9ca3af">${r.clientPhone}</span>`:""}</td><td>${r.svc||"--"}</td><td>${r.loc||"--"}</td><td>${fmtD(r.prefDate)||"--"}</td><td>${r.src||"--"}</td><td>${r.status||"Pending"}</td></tr>`;
-  const reqTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No requests</p>`:`<table><thead><tr><th>Submitted</th><th>Client</th><th>Service</th><th>Location</th><th>Preferred Date</th><th>Source</th><th>Status</th></tr></thead><tbody>${list.map(reqRow).join("")}</tbody></table>`;
-  const printMonth=()=>{
-    if(monthRequests.length===0){alert(`No requests submitted in ${mkLabel(selMK)}`);return;}
-    const s=statsOf(monthRequests);
-    openPrintWin(buildReportHtml({moduleName:"Service Requests",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Requests Submitted in "+mkLabel(selMK),table:reqTable(monthRequests)}]}));
-  };
-  const printAll=()=>{
-    if(requests.length===0){alert("No requests recorded yet");return;}
-    const s=statsOf(requests);
-    const byMonth={};requests.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(r);});
-    const months=Object.keys(byMonth).sort().reverse();
-    openPrintWin(buildReportHtml({moduleName:"Service Requests",periodLabel:"All History",summaryKpis:kpisOf(s),sections:months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:`${mkLabel(mk)} — ${sub.total} request(s)`,kpis:kpisOf(sub),table:reqTable(byMonth[mk])};})}));
-  };
-
-  return(<div className="space-y-5">{confirmEl}
-    {/* Month tabs + Print buttons */}
-    <div className="flex items-start justify-between flex-wrap gap-3">
-      <MonthTabs records={requests} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
-      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
-    </div>
-    <div className="flex items-center justify-between flex-wrap gap-3"><div className="flex gap-3 flex-wrap"><div className="p-3 rounded-xl text-sm font-bold" style={{background:"#fffbeb",color:AMBER}}>{monthRequests.filter(r=>r.status==="Pending").length} Pending in {mkLabel(selMK)}</div><div className="p-3 rounded-xl text-sm font-bold" style={{background:GL,color:G}}>{monthRequests.filter(r=>r.status==="Converted").length} Converted</div></div><button onClick={()=>setModal(blank)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Log Request</button></div>
-    <Card><div className="divide-y divide-gray-50">{monthRequests.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No requests submitted in {mkLabel(selMK)}</div>}{monthRequests.map(r=>(<div key={r.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(r.clientName||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{r.clientName}</p><p className="text-xs text-gray-500">{r.svc}  {fmtD(r.prefDate)}  via {r.src}{r.clientPhone?<>  <span className="font-medium">{r.clientPhone}</span></>:""}</p>{r.notes&&<p className="text-xs text-gray-400 italic mt-0.5">"{r.notes}"</p>}</div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={r.status} custom={SC[r.status]}/>{r.status==="Pending"&&<button onClick={()=>convert(r)} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white flex items-center gap-1" style={{background:BLUE}}><ArrowRight size={11}/>Convert</button>}<button onClick={()=>setModal(r)} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button><button onClick={()=>del(r.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>))}</div></Card>
-    {modal&&<ModalWrap title={modal.id?"Edit Request":"Log Service Request"} onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Client Name"><input className={inp} value={modal.clientName} onChange={e=>setModal(p=>({...p,clientName:e.target.value}))}/></Fld><Fld label="Client Phone"><input className={inp} type="tel" value={modal.clientPhone||""} onChange={e=>setModal(p=>({...p,clientPhone:e.target.value}))} placeholder="e.g. 08031234567"/></Fld><Fld label="Service"><select className={inp} value={modal.svc} onChange={e=>setModal(p=>({...p,svc:e.target.value}))}><option value="">-- Select --</option><option>General Cleaning</option><option>One-Time Cleaning</option><option>Deep Cleaning</option><option>Pest Control</option><option>Fumigation</option><option>Training/Consultancy</option></select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Location"><input className={inp} value={modal.loc} onChange={e=>setModal(p=>({...p,loc:e.target.value}))}/></Fld><Fld label="Preferred Date"><input className={inp} type="date" value={modal.prefDate} onChange={e=>setModal(p=>({...p,prefDate:e.target.value}))}/></Fld><Fld label="Source"><select className={inp} value={modal.src} onChange={e=>setModal(p=>({...p,src:e.target.value}))}><option>Phone</option><option>WhatsApp</option><option>Email</option><option>Walk-in</option><option>Website</option><option>Referral</option></select></Fld></div><Fld label="Notes" col><textarea className={inp} rows={3} value={modal.notes} onChange={e=>setModal(p=>({...p,notes:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>save(modal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Save</button></div></ModalWrap>}
-  </div>);}
 
 // -- JOBS ---------------------------------------------------------------------
 function JobsPage({jobs,setJobs,clients,contacts=[],staff=[],user}){
@@ -1511,59 +1463,6 @@ function ReqViewer({req:r,canSeeCosts,onClose}){
     <div className="border border-gray-200 rounded-xl overflow-hidden"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b"><th className="text-left px-4 py-2.5 text-xs font-bold text-gray-400 uppercase">Item</th><th className="px-4 py-2.5 text-xs font-bold text-gray-400 uppercase text-center">Qty</th><th className="text-left px-4 py-2.5 text-xs font-bold text-gray-400 uppercase">Unit</th>{canSeeCosts&&<><th className="text-left px-4 py-2.5 text-xs font-bold text-gray-400 uppercase">Rate ()</th><th className="text-right px-4 py-2.5 text-xs font-bold text-gray-400 uppercase">Total</th></>}<th className="text-left px-4 py-2.5 text-xs font-bold text-gray-400 uppercase">Notes</th></tr></thead><tbody className="divide-y divide-gray-50">{(r.items||[]).map(i=><tr key={i.id||i.name} className="hover:bg-gray-50"><td className="px-4 py-2.5 font-medium text-gray-800">{i.name}</td><td className="px-4 py-2.5 text-center font-bold text-gray-700">{i.qty}</td><td className="px-4 py-2.5 text-xs text-gray-500">{i.unit}</td>{canSeeCosts&&<><td className="px-4 py-2.5"><input type="number" min="0" value={rates[i.id||i.name]||""} onChange={e=>setRates(prev=>({...prev,[i.id||i.name]:Number(e.target.value)}))} className="w-24 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="Rate"/></td><td className="px-4 py-2.5 text-right font-semibold text-gray-700">{rates[i.id||i.name]?fmt(i.qty*rates[i.id||i.name]):"--"}</td></>}<td className="px-4 py-2.5 text-xs text-gray-400">{i.notes||"--"}</td></tr>)}</tbody>{canSeeCosts&&<tfoot><tr style={{background:"#f0fdf4"}}><td className="px-4 py-2.5 font-black text-gray-800" colSpan={4}>TOTAL</td><td className="px-4 py-2.5 text-right font-black" style={{color:G}}>{fmt(total)}</td><td/></tr></tfoot>}</table></div>
   </ModalWrap>);}
 
-// -- ABSENCE & COVER -----------------------------------------------------------
-function AbsenceCoverPage({absences,setAbsences,covers,setCovers,clients,staff=[]}){
-  const[tab,setTab]=useState("absences");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
-  const[selMK,setSelMK]=useState(curMonthKey());
-  const getMK=r=>r.startDate;
-  // Both absences AND covers feed the month list (linked together per user spec)
-  const combined=useMemo(()=>[...absences,...covers],[absences,covers]);
-  useEffect(()=>{if(combined.length>0&&!combined.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(combined.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0]);}},[combined.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const monthAbsences=absences.filter(a=>monthOf(a,getMK)===selMK);
-  const monthCovers=covers.filter(c=>monthOf(c,getMK)===selMK);
-  const delA=id=>confirm("Delete this absence?",()=>{setAbsences(as=>as.filter(a=>a.id!==id));dbDelete("absences",id);toast.success("Absence deleted");});
-  const delC=id=>confirm("Delete this cover?",()=>{setCovers(cs=>cs.filter(c=>c.id!==id));dbDelete("covers",id);toast.success("Cover deleted");});
-  const SC={"Absent Logged":{bg:"#fff7ed",color:O,border:"#fed7aa"},"Cover Assigned":{bg:"#eff6ff",color:BLUE,border:"#bfdbfe"},"Completed":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Sent to Finance":{bg:"#fdf4ff",color:"#7c3aed",border:"#ddd6fe"}};
-  const advanceAbs=(id,cur)=>setAbsences(as=>as.map(a=>a.id===id?{...a,status:cur==="Absent Logged"?"Cover Assigned":cur==="Cover Assigned"?"Completed":"Sent to Finance"}:a));
-
-  // ── Print report helpers ───────────────────────────────────────────────
-  const daysOfAbsence=a=>{const s=new Date(a.startDate),e=new Date(a.endDate||a.startDate);return Math.max(1,Math.round((e-s)/86400000)+1);};
-  const statsOf=(ab,cv)=>{
-    const totalDays=ab.reduce((s,a)=>s+daysOfAbsence(a),0);
-    const absentStaff=new Set(ab.map(a=>a.cleaner).filter(Boolean)).size;
-    const uncovered=ab.filter(a=>a.needsReplacement&&!cv.some(c=>c.absentCleaner===a.cleaner&&c.startDate===a.startDate)).length;
-    return{absences:ab.length,covers:cv.length,totalDays,absentStaff,uncovered};
-  };
-  const kpisOf=s=>[{label:"Total Absences",value:s.absences,color:O},{label:"Absence Days",value:s.totalDays,color:RED},{label:"Staff Affected",value:s.absentStaff,color:BLUE},{label:"Covers Assigned",value:s.covers,color:"#16a34a"},{label:"Uncovered",value:s.uncovered,color:s.uncovered>0?RED:"#6b7280"}];
-  const absRow=a=>`<tr><td>${a.cleaner||"--"}</td><td>${a.site||"--"}</td><td>${fmtD(a.startDate)}</td><td>${fmtD(a.endDate||a.startDate)}</td><td style="text-align:center">${daysOfAbsence(a)}</td><td>${a.leaveType||"Sick"}</td><td style="text-align:right">${a.deductionAmount?"&#x20a6;"+a.deductionAmount.toLocaleString():"-"}</td><td>${a.status||"Absent Logged"}</td></tr>`;
-  const covRow=c=>`<tr><td>${c.replacement||"--"}</td><td>${c.absentCleaner||"--"}</td><td>${c.site||"--"}</td><td>${fmtD(c.startDate)}</td><td>${fmtD(c.endDate||c.startDate)}</td><td style="text-align:center">${c.days||1}</td><td style="text-align:right">${c.compensation?(c.coverAmount?"&#x20a6;"+c.coverAmount.toLocaleString():"Yes"):"No"}</td></tr>`;
-  const absTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No absences</p>`:`<table><thead><tr><th>Staff</th><th>Site</th><th>From</th><th>To</th><th>Days</th><th>Type</th><th>Deduction</th><th>Status</th></tr></thead><tbody>${list.map(absRow).join("")}</tbody></table>`;
-  const covTable=list=>list.length===0?`<p style="font-size:10px;color:#9ca3af;margin:4px 0">No covers</p>`:`<table><thead><tr><th>Replacement</th><th>Covering For</th><th>Site</th><th>From</th><th>To</th><th>Days</th><th>Compensation</th></tr></thead><tbody>${list.map(covRow).join("")}</tbody></table>`;
-  const printMonth=()=>{
-    if(monthAbsences.length===0&&monthCovers.length===0){alert(`No absences or covers for ${mkLabel(selMK)}`);return;}
-    const s=statsOf(monthAbsences,monthCovers);
-    openPrintWin(buildReportHtml({moduleName:"Absence & Cover",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Absences",table:absTable(monthAbsences)},{label:"Cover Assignments",table:covTable(monthCovers)}]}));
-  };
-  const printAll=()=>{
-    if(combined.length===0){alert("No absences or covers recorded yet");return;}
-    const s=statsOf(absences,covers);
-    const byMonth={};combined.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;if(!byMonth[mk])byMonth[mk]={abs:[],cov:[]};if(r.absentCleaner)byMonth[mk].cov.push(r);else byMonth[mk].abs.push(r);});
-    const months=Object.keys(byMonth).sort().reverse();
-    openPrintWin(buildReportHtml({moduleName:"Absence & Cover",periodLabel:"All History",summaryKpis:kpisOf(s),sections:months.map(mk=>{const sub=statsOf(byMonth[mk].abs,byMonth[mk].cov);return{label:`${mkLabel(mk)} — ${sub.absences} absence(s), ${sub.covers} cover(s)`,kpis:kpisOf(sub),table:absTable(byMonth[mk].abs)+covTable(byMonth[mk].cov)};})}));
-  };
-
-  return(<div className="space-y-5">{confirmEl}
-    {/* Month tabs + Print buttons */}
-    <div className="flex items-start justify-between flex-wrap gap-3">
-      <MonthTabs records={combined} getMK={getMK} selMK={selMK} setSelMK={setSelMK}/>
-      <PrintReportButtons onPrintMonth={printMonth} onPrintAll={printAll}/>
-    </div>
-    <div className="flex items-center justify-between flex-wrap gap-3"><div className="flex gap-2 border border-gray-200 rounded-xl p-1 bg-white"><button onClick={()=>setTab("absences")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="absences"?"text-white":"text-gray-500"}`} style={tab==="absences"?{background:G}:{}}>Absences ({monthAbsences.length})</button><button onClick={()=>setTab("covers")} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="covers"?"text-white":"text-gray-500"}`} style={tab==="covers"?{background:G}:{}}>Cover ({monthCovers.length})</button></div><div className="flex items-center gap-2">{tab==="absences"&&<button onClick={()=>{const rows=[["Staff","Site","Start","End","Leave Type","Deduction (₦)","Status"],...monthAbsences.map(a=>[a.cleaner,a.site,a.startDate,a.endDate||a.startDate,a.leaveType||"Sick",a.deductionAmount||0,a.status||"Absent Logged"])];const csv=rows.map(r=>r.join(",")).join("\n");const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`absences-${selMK}.csv`;a.click();URL.revokeObjectURL(u);}} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border" style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}><FileText size={14}/>Export CSV</button>}<button onClick={()=>setModal({type:tab==="absences"?"absence":"cover"})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>{tab==="absences"?"Log Absence":"Assign Cover"}</button></div></div>
-    {tab==="absences"&&<Card><div className="divide-y divide-gray-50">{monthAbsences.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No absences in {mkLabel(selMK)}</div>}{monthAbsences.map(a=><div key={a.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:RED}}>{(a.cleaner||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{a.cleaner}</p><p className="text-xs text-gray-500">Site: {a.site}  {fmtD(a.startDate)}{a.endDate&&a.endDate!==a.startDate?` - ${fmtD(a.endDate)}`:""}</p>{a.reason&&<p className="text-xs text-gray-400 italic">Reason: {a.reason}</p>}<p className="text-xs text-gray-400">Type: {a.leaveType||"Sick"}  Replacement: {a.needsReplacement?"Needed":"Not required"}{a.deductionAmount>0?<span className="text-red-500 font-medium ml-1">  Deduction: ₦{a.deductionAmount.toLocaleString()}</span>:null}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><SBadge s={a.status||"Absent Logged"} custom={SC[a.status||"Absent Logged"]}/>{a.status!=="Sent to Finance"&&<button onClick={()=>advanceAbs(a.id,a.status||"Absent Logged")} className="text-xs px-2 py-1 rounded-lg font-semibold text-white flex items-center gap-0.5" style={{background:BLUE}}><ArrowRight size={9}/>Next</button>}<button onClick={()=>delA(a.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
-    {tab==="covers"&&<Card><div className="divide-y divide-gray-50">{monthCovers.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No cover assignments in {mkLabel(selMK)}</div>}{monthCovers.map(c=><div key={c.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50"><div className="flex items-start gap-3 min-w-0"><div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:G}}>{(c.replacement||"?")[0]}</div><div><p className="font-semibold text-gray-800 text-sm">{c.replacement} <span className="font-normal text-gray-400">covered for</span> {c.absentCleaner}</p><p className="text-xs text-gray-500">Site: {c.site}  {fmtD(c.startDate)}{c.endDate&&c.endDate!==c.startDate?` - ${fmtD(c.endDate)}`:""}</p><p className="text-xs text-gray-400">{c.days} day(s)  Compensation: {c.compensation?"Yes":"No"}</p></div></div><div className="flex items-center gap-2 flex-shrink-0 ml-4"><button onClick={()=>delC(c.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button></div></div>)}</div></Card>}
-    {modal?.type==="absence"&&<ModalWrap title="Log Staff Absence" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Staff"><StaffSelect staff={staff} value={modal.cleaner||""} onChange={v=>setModal(p=>({...p,cleaner:v}))} placeholder="-- Select staff --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld></div><Fld label="Reason"><input className={inp} value={modal.reason||""} onChange={e=>setModal(p=>({...p,reason:e.target.value}))}/></Fld><Fld label="Replacement Needed?"><RadioG value={modal.needsReplacement?"Yes":"No"} onChange={v=>setModal(p=>({...p,needsReplacement:v==="Yes"}))} options={["Yes","No"]}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Leave Type"><select className={inp} value={modal.leaveType||"Sick"} onChange={e=>setModal(p=>({...p,leaveType:e.target.value}))}><option>Sick</option><option>Annual</option><option>Emergency</option><option>AWOL</option><option>Maternity</option><option>Other</option></select></Fld><Fld label="Deduction (₦)"><input className={inp} type="number" min="0" value={modal.deductionAmount||""} onChange={e=>setModal(p=>({...p,deductionAmount:Number(e.target.value)}))} placeholder="0 if none"/></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...absences,{...modal,id:"abs"+Date.now(),status:"Absent Logged"}];setAbsences(nl);dbSync("absences",nl);toast.success("Absence logged");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Log Absence</button></div></ModalWrap>}
-    {modal?.type==="cover"&&<ModalWrap title="Assign Cover" onClose={()=>setModal(null)}><div className="space-y-4"><Fld label="Absent Cleaner"><StaffSelect staff={staff} value={modal.absentCleaner||""} onChange={v=>setModal(p=>({...p,absentCleaner:v}))} placeholder="-- Select absent staff --"/></Fld><Fld label="Replacement Cleaner"><StaffSelect staff={staff} value={modal.replacement||""} onChange={v=>setModal(p=>({...p,replacement:v}))} placeholder="-- Select replacement --"/></Fld><Fld label="Site"><select className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))}><option value="">-- Select --</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></Fld><div className="grid grid-cols-3 gap-4"><Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld><Fld label="End Date"><input className={inp} type="date" value={modal.endDate||""} onChange={e=>setModal(p=>({...p,endDate:e.target.value}))}/></Fld><Fld label="Days Covered"><input className={inp} type="number" min="1" value={modal.days||1} onChange={e=>setModal(p=>({...p,days:Number(e.target.value)}))}/></Fld></div><Fld label="Compensation?"><RadioG value={modal.compensation?"Yes":"No"} onChange={v=>setModal(p=>({...p,compensation:v==="Yes"}))} options={["Yes","No"]}/></Fld>{modal.compensation&&<Fld label="Cover Amount (₦)"><input className={inp} type="number" min="0" value={modal.coverAmount||""} onChange={e=>setModal(p=>({...p,coverAmount:Number(e.target.value)}))} placeholder="Amount to pay cover staff"/></Fld>}<Fld label="Remarks"><textarea className={inp} rows={2} value={modal.remarks||""} onChange={e=>setModal(p=>({...p,remarks:e.target.value}))}/></Fld></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const nl=[...covers,{...modal,id:"cov"+Date.now()}];setCovers(nl);dbSync("covers",nl);toast.success("Cover assigned");setModal(null);}} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>Assign</button></div></ModalWrap>}
-  </div>);}
 
 
 // -- IMPREST -------------------------------------------------------------------
@@ -1860,206 +1759,7 @@ function ImprestPage({imprests,setImprests,staff=[]}){
   </div>);}
 
 
-// -- ANALYTICS -----------------------------------------------------------------
-function AnalyticsPage({clients,siteReports,jobs,staff,absences=[],requests=[]}){
-  // Coerce numeric fields once so all downstream sums / sorts are safe against legacy strings
-  const ws=useMemo(()=>clients.map(c=>({...c,tot:Number(c.tot)||0,sal:Number(c.sal)||0,con:Number(c.con)||0,sc:Number(c.sc)||0,vat:Number(c.vat)||0,status:cStatus(c.ce)})),[clients]);
-  const top=[...ws].sort((a,b)=>b.tot-a.tot).slice(0,7);
-  const svcRev=[{name:"Cleaning",value:ws.filter(c=>c.svc==="Cleaning").reduce((s,c)=>s+c.tot,0)},{name:"Pest Control",value:ws.filter(c=>c.svc==="Pest Control").reduce((s,c)=>s+c.tot,0)},{name:"Both",value:ws.filter(c=>c.svc==="Both").reduce((s,c)=>s+c.tot,0)}];
-  const totalJobs=jobs.length;
-  const completedJobs=jobs.filter(j=>j.status==="Completed"||j.status==="Closed").length;
-  const completionRate=totalJobs>0?Math.round(completedJobs/totalJobs*100):0;
-  const avgQuality=siteReports.length>0?Math.round(siteReports.reduce((s,r)=>s+(r.overallRating||0),0)/siteReports.length*10)/10:0;
-  const techMap={};jobs.forEach(j=>{(j.techs||"").split(",").map(t=>t.trim()).filter(Boolean).forEach(t=>{techMap[t]=(techMap[t]||0)+1;});});
-  const techData=Object.entries(techMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,count])=>({name,count}));
-  const monthlyJobs=useMemo(()=>{const m={};jobs.forEach(j=>{if(j.date){const k=j.date.slice(0,7);m[k]=(m[k]||0)+1;}});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v])=>({month:k.slice(5)+" "+k.slice(0,4),count:v}));
-},[jobs]);
-  // Revenue trend: monthly contract totals from client start dates
-  const revenueTrend=useMemo(()=>{const m={};clients.forEach(c=>{if(c.cs){const k=c.cs.slice(0,7);m[k]=(m[k]||0)+(Number(c.tot)||0);}});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).slice(-8).map(([k,v])=>({month:k.slice(5)+"/"+k.slice(2,4),revenue:v}));},[clients]);
-  // Contract health
-  const expired=ws.filter(c=>c.status==="Expired").length;
-  const expiring=ws.filter(c=>c.status==="Expiring Soon"||c.status==="Critical").length;
-  const renewalRate=ws.length>0?Math.round((ws.length-expired)/ws.length*100):0;
-  // Attendance: absences per month
-  const absenceByMonth=useMemo(()=>{const m={};absences.forEach(a=>{if(a.startDate){const k=a.startDate.slice(0,7);m[k]=(m[k]||0)+1;}});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v])=>({month:k.slice(5)+"/"+k.slice(2,4),absences:v}));},[absences]);
-  // Request conversion rate
-  const converted=requests.filter(r=>r.status==="Converted").length;
-  const convRate=requests.length>0?Math.round(converted/requests.length*100):0;
-  return(<div className="space-y-6">
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[{l:"Total Clients",v:clients.length},{l:"Active Contracts",v:ws.filter(c=>c.status==="Active").length},{l:"Jobs Completed",v:jobs.filter(j=>j.status==="Completed").length},{l:"Site Reports",v:siteReports.length}].map(k=><Card key={k.l} className="p-5"><div className="text-2xl font-black text-gray-800">{k.v}</div><div className="text-xs font-bold text-gray-500 mt-1">{k.l}</div></Card>)}</div>
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card className="p-5"><div className="text-2xl font-black" style={{color:completionRate>=80?G:completionRate>=50?AMBER:RED}}>{completionRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Job Completion Rate</div><div className="text-xs text-gray-400 mt-0.5">{completedJobs} of {totalJobs} jobs</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{avgQuality>0?avgQuality:"--"}</div><div className="text-xs font-bold text-gray-500 mt-1">Avg Quality Score</div><div className="text-xs text-gray-400 mt-0.5">From {siteReports.length} reports</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black" style={{color:renewalRate>=90?G:renewalRate>=70?AMBER:RED}}>{renewalRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Contract Renewal Rate</div><div className="text-xs text-gray-400 mt-0.5">{expired} expired · {expiring} expiring soon</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black" style={{color:convRate>=60?G:convRate>=30?AMBER:RED}}>{convRate}%</div><div className="text-xs font-bold text-gray-500 mt-1">Request Conversion</div><div className="text-xs text-gray-400 mt-0.5">{converted} of {requests.length} requests</div></Card>
-    </div>
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{techData.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Active Technicians</div><div className="text-xs text-gray-400 mt-0.5">With jobs assigned</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{monthlyJobs.length>0?monthlyJobs[monthlyJobs.length-1].count:0}</div><div className="text-xs font-bold text-gray-500 mt-1">Jobs This Month</div><div className="text-xs text-gray-400 mt-0.5">Last 6 months tracked</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black text-gray-800">{absences.length}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Absences</div><div className="text-xs text-gray-400 mt-0.5">All time</div></Card>
-      <Card className="p-5"><div className="text-2xl font-black" style={{color:G}}>{fmt(ws.filter(c=>c.status!=="Expired").reduce((s,c)=>s+(Number(c.tot)||0),0))}</div><div className="text-xs font-bold text-gray-500 mt-1">Total Portfolio (₦)</div><div className="text-xs text-gray-400 mt-0.5">Non-expired contracts only</div></Card>
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">Top Clients by Value</h3><ResponsiveContainer width="100%" height={220}><BarChart data={top} layout="vertical" barSize={14}><XAxis type="number" tickFormatter={v=>`${(v/1000).toFixed(0)}k`} tick={{fontSize:9,fill:"#9ca3af"}} axisLine={false} tickLine={false}/><YAxis type="category" dataKey="name" tick={{fontSize:10,fill:"#6b7280"}} width={130} axisLine={false} tickLine={false}/><Tooltip formatter={v=>[fmt(v),"Value"]} contentStyle={{borderRadius:"12px"}}/><Bar dataKey="tot" fill={G} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Card>
-      <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Revenue by Service</h3><ResponsiveContainer width="100%" height={140}><BarChart data={svcRev} barSize={45}><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize:12,fill:"#6b7280"}}/><YAxis tickFormatter={v=>`${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} tick={{fontSize:10}}/><Tooltip formatter={v=>[fmt(v),"Revenue"]}/><Bar dataKey="value" radius={[8,8,0,0]}>{svcRev.map((_,i)=><Cell key={i} fill={[G,O,BLUE][i]}/>)}</Bar></BarChart></ResponsiveContainer></Card>
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Monthly Jobs (Last 6 Months)</h3><ResponsiveContainer width="100%" height={160}><BarChart data={monthlyJobs} barSize={28}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" fill={BLUE} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>
-      {techData.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Jobs per Technician</h3><ResponsiveContainer width="100%" height={160}><BarChart data={techData} layout="vertical" barSize={12}><XAxis type="number" axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="count" fill={G} radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></Card>}
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {revenueTrend.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Contract Revenue Trend</h3><ResponsiveContainer width="100%" height={160}><BarChart data={revenueTrend} barSize={22}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis tickFormatter={v=>`₦${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} tick={{fontSize:9}}/><Tooltip formatter={v=>[`₦${fmt(v)}`,"Revenue"]} contentStyle={{borderRadius:"12px"}}/><Bar dataKey="revenue" fill={G} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>}
-      {absenceByMonth.length>0&&<Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Absences per Month</h3><ResponsiveContainer width="100%" height={160}><BarChart data={absenceByMonth} barSize={22}><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize:9,fill:"#6b7280"}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:9}} allowDecimals={false}/><Tooltip contentStyle={{borderRadius:"12px"}}/><Bar dataKey="absences" fill={RED} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></Card>}
-    </div>
-    <Card className="p-6"><h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Full Revenue Breakdown</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b">{["Client","Cat","Service","Salary","Consumables","Svc Charge","VAT","Total","Status"].map(h=><th key={h} className="text-right first:text-left px-3 py-2 text-xs font-bold text-gray-400 uppercase">{h}</th>)}</tr></thead><tbody className="divide-y divide-gray-50">{[...ws].sort((a,b)=>b.tot-a.tot).map(c=><tr key={c.id} className="hover:bg-gray-50"><td className="px-3 py-2.5 font-medium text-gray-700">{c.name}</td><td className="px-3 py-2.5 text-right text-xs text-gray-500">{c.cat}</td><td className="px-3 py-2.5 text-right text-xs text-gray-500">{c.svc}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.sal)}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.con)}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.sc)}</td><td className="px-3 py-2.5 text-right text-xs">{fmt(c.vat)}</td><td className="px-3 py-2.5 text-right font-bold text-gray-800">{fmt(c.tot)}</td><td className="px-3 py-2.5 text-right"><SBadge s={c.status}/></td></tr>)}<tr className="border-t-2 font-black" style={{background:GL}}><td className="px-3 py-2.5 text-gray-800" colSpan={3}>TOTAL</td>{[ws.reduce((s,c)=>s+c.sal,0),ws.reduce((s,c)=>s+c.con,0),ws.reduce((s,c)=>s+c.sc,0),ws.reduce((s,c)=>s+c.vat,0),ws.reduce((s,c)=>s+c.tot,0)].map((v,i)=><td key={i} className="px-3 py-2.5 text-right" style={i===4?{color:G}:{}}>{fmt(v)}</td>)}<td/></tr></tbody></table></div></Card>
-  </div>);}
 
-// -- USERS ----------------------------------------------------------------------
-function StaffPage({staff,setStaff}){
-  const[tab,setTab]=useState("cleaning");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();const[payrollMonth,setPayrollMonth]=useState(()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;})
-  const[search,setSearch]=useState("");
-  const CATEGORIES=["Office Staff","Cleaning Staff","Gardening Staff"];
-  const TAB_MAP={"office":"Office Staff","cleaning":"Cleaning Staff","gardening":"Gardening Staff"};
-  // Fallback: infer category from role when the record has no category set
-  const inferCat=s=>s.category||(s.role==="Gardener"||s.role==="Gardening"?"Gardening Staff":s.role==="Supervisor"||s.role==="Technical Supervisor"||s.role==="Finance"||s.category==="Office Staff"?"Office Staff":"Cleaning Staff");
-  const filtered=staff.filter(s=>inferCat(s)===TAB_MAP[tab]&&[s.name,s.site,s.phone,s.role].join(" ").toLowerCase().includes(search.toLowerCase()));
-  const del=id=>confirm("Remove this staff member?",()=>{setStaff(ss=>ss.filter(s=>s.id!==id));dbDelete("staff",id);toast.success("Staff member removed");});
-  const save=data=>{
-    let ns;if(data.id)ns=staff.map(s=>s.id===data.id?{...s,...data}:s);else ns=[...staff,{...data,id:"st"+Date.now()}];
-    setStaff(ns);dbSync("staff",ns);toast.success(data.id?"Staff record updated":"Staff member added");setModal(null);
-  };
-  const blank={name:"",category:TAB_MAP[tab],role:"",site:"",phone:"",email:"",homeAddress:"",emergencyContact:"",emergencyPhone:"",emergencyAddress:"",dob:"",employmentType:"Full Time",startDate:"",workDays:"",bankName:"",accountName:"",accountNumber:"",salary:0};
-
-  const counts=Object.fromEntries(CATEGORIES.map(c=>[c,staff.filter(s=>s.category===c).length]));
-
-  return(<div className="space-y-5">{confirmEl}
-    <div className="grid grid-cols-3 gap-4">
-      <KPI icon="" label="Office Staff" value={counts["Office Staff"]||0} sub="Admin & Supervisors" bg="#eff6ff"/>
-      <KPI icon="" label="Cleaning Staff" value={counts["Cleaning Staff"]||0} sub="Field cleaners" bg={GL}/>
-      <KPI icon="" label="Gardening Staff" value={counts["Gardening Staff"]||0} sub="Gardeners" bg="#f0fdf4"/>
-    </div>
-    <div className="flex items-center justify-between gap-3 flex-wrap">
-      <div className="flex flex-wrap gap-1 border border-gray-200 rounded-xl p-1 bg-white">
-        {[{id:"office",l:"Office Staff"},{id:"cleaning",l:"Cleaning Staff"},{id:"gardening",l:"Gardening Staff"},{id:"payroll",l:"💳 Payroll"}].map(t=>
-          <button key={t.id} onClick={()=>{setTab(t.id);setSearch("");}} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab===t.id?"text-white":"text-gray-500"}`} style={tab===t.id?{background:t.id==="payroll"?O:G}:{}}>{t.l}{t.id!=="payroll"?` (${counts[TAB_MAP[t.id]]||0})`:""}</button>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-2.5 text-gray-400"/><input className={inp+" pl-9 w-48"} placeholder="Search staff..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-        <button onClick={()=>setModal({...blank,category:TAB_MAP[tab]})} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{background:G}}><Plus size={14}/>Add Staff</button>
-      </div>
-    </div>
-    {tab==="payroll"&&(()=>{
-      const allStaff=staff.filter(s=>s.salary>0||s.bankName);
-      const total=allStaff.reduce((s,m)=>s+(m.salary||0),0);
-      const exportCSV=()=>{
-        const rows=[["Staff Name","Bank Name","Account Number","Account Name","Amount (NGN)","Description"],...allStaff.map(s=>[s.name,s.bankName||"",s.accountNumber||"",s.accountName||"",(s.salary||0),`Salary - ${payrollMonth}`])];
-        const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-        const b=new Blob([csv],{type:"text/csv"});
-        const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`payroll-${payrollMonth}.csv`;a.click();URL.revokeObjectURL(u);
-        toast.success("Payroll CSV downloaded");
-      };
-      return(<div className="space-y-5">
-        <Card className="p-5"><div className="flex flex-wrap items-center justify-between gap-4">
-          <div><p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Monthly Payroll</p><p className="text-3xl font-black" style={{color:G}}>₦{fmt(total)}</p><p className="text-xs text-gray-400 mt-1">{allStaff.length} staff members with salary records</p></div>
-          <div className="flex items-center gap-3">
-            <Fld label="Pay Month"><input className={inp} type="month" value={payrollMonth} onChange={e=>setPayrollMonth(e.target.value)}/></Fld>
-            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-bold" style={{background:O}}><Download size={14}/>Export CSV</button>
-          </div>
-        </div></Card>
-        <Card>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{background:"#f9fafb"}} className="border-b">{["Name","Bank","Acc Number","Account Name","Salary (₦)"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-400 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {staff.filter(s=>s.category!=="").sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(s=>(
-                <tr key={s.id} className="hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-semibold text-gray-800 text-sm">{s.name}<p className="text-xs text-gray-400 font-normal">{s.role}{s.site?` · ${s.site}`:""}</p></td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{s.bankName||<span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-xs font-mono text-gray-700">{s.accountNumber||<span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{s.accountName||<span className="text-gray-300">—</span>}</td>
-                  <td className="px-4 py-3 font-bold text-gray-800">{s.salary>0?`₦${fmt(s.salary)}`:<span className="text-gray-300 font-normal">Not set</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot><tr style={{background:GL}} className="border-t-2"><td className="px-4 py-3 font-bold text-gray-700 text-sm" colSpan={4}>Total Payroll</td><td className="px-4 py-3 font-black text-lg" style={{color:G}}>₦{fmt(total)}</td></tr></tfoot>
-          </table></div>
-        </Card>
-        {staff.filter(s=>!s.salary&&!s.bankName).length>0&&<div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-700"><strong>{staff.filter(s=>!s.salary&&!s.bankName).length} staff</strong> have no salary or bank details. Edit their records to add payroll information.</div>}
-      </div>);
-    })()}
-    {tab!=="payroll"&&<Card><div className="divide-y divide-gray-50">
-      {filtered.length===0&&<div className="text-center py-12 text-gray-400 text-sm">No {TAB_MAP[tab].toLowerCase()} found</div>}
-      {filtered.map(s=><div key={s.id} className="flex items-start justify-between px-5 py-4 hover:bg-gray-50">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl text-white text-xs font-bold flex items-center justify-center flex-shrink-0" style={{background:tab==="cleaning"?G:tab==="gardening"?"#16a34a":O}}>{(s.name||"?")[0]}</div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold text-gray-800 text-sm">{s.name}</p>
-              {s.employmentType&&<span className="text-xs px-2 py-0.5 rounded-full border font-medium" style={s.employmentType==="Full Time"?{background:"#dcfce7",color:"#166534",borderColor:"#bbf7d0"}:{background:"#fff7ed",color:"#9a3412",borderColor:"#fed7aa"}}>{s.employmentType}</span>}
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5">{s.role}{s.site?` · ${s.site}`:""}</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
-              {s.phone&&<p className="text-xs text-gray-400"> {s.phone}{s.email?` · ${s.email}`:""}</p>}
-              {s.workDays&&<p className="text-xs text-gray-400"> {s.workDays}</p>}
-              {s.startDate&&<p className="text-xs text-gray-400"> Started {fmtD(s.startDate)}</p>}
-            </div>
-            {s.homeAddress&&<p className="text-xs text-gray-400 truncate max-w-sm mt-0.5"> {s.homeAddress}</p>}
-            {s.emergencyContact&&<p className="text-xs text-gray-400"> EC: {s.emergencyContact}{s.emergencyPhone?` · ${s.emergencyPhone}`:""}</p>}
-            {s.bankName&&<p className="text-xs text-gray-400"> {s.bankName}{s.accountNumber?` · ${s.accountNumber}`:""}{s.accountName?` (${s.accountName})`:""}</p>}
-          </div>
-        </div>
-        <div className="flex gap-1.5 flex-shrink-0">
-          <button onClick={()=>setModal({...s,_editing:true})} className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"><Edit2 size={13}/></button>
-          <button onClick={()=>del(s.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"><Trash2 size={13}/></button>
-        </div>
-      </div>)}
-    </div></Card>}
-    {modal&&<ModalWrap title={modal._editing?"Edit Staff Member":"Add Staff Member"} onClose={()=>setModal(null)} xl>
-      <div className="space-y-5">
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Personal Information</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Fld label="Full Name" required><input className={inp} value={modal.name||""} onChange={e=>setModal(p=>({...p,name:e.target.value}))}/></Fld>
-            <Fld label="Date of Birth"><input className={inp} type="date" value={modal.dob||""} onChange={e=>setModal(p=>({...p,dob:e.target.value}))}/></Fld>
-            <Fld label="Phone Number"><input className={inp} type="tel" value={modal.phone||""} onChange={e=>setModal(p=>({...p,phone:e.target.value}))}/></Fld>
-            <Fld label="Email Address"><input className={inp} type="email" value={modal.email||""} onChange={e=>setModal(p=>({...p,email:e.target.value}))}/></Fld>
-            <Fld label="Home Address" col><input className={inp} value={modal.homeAddress||""} onChange={e=>setModal(p=>({...p,homeAddress:e.target.value}))}/></Fld>
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Employment Details</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Fld label="Category"><select className={inp} value={modal.category||"Cleaning Staff"} onChange={e=>setModal(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></Fld>
-            <Fld label="Role / Position"><input className={inp} value={modal.role||""} onChange={e=>setModal(p=>({...p,role:e.target.value}))} placeholder="e.g. Cleaner, Supervisor, Gardener..."/></Fld>
-            <Fld label="Employment Type"><select className={inp} value={modal.employmentType||"Full Time"} onChange={e=>setModal(p=>({...p,employmentType:e.target.value}))}>{["Full Time","Part Time","Contract"].map(t=><option key={t}>{t}</option>)}</select></Fld>
-            <Fld label="Site / Location Assigned"><input className={inp} value={modal.site||""} onChange={e=>setModal(p=>({...p,site:e.target.value}))} placeholder="e.g. IFRC, Mabushi, Multiple..."/></Fld>
-            <Fld label="Start Date"><input className={inp} type="date" value={modal.startDate||""} onChange={e=>setModal(p=>({...p,startDate:e.target.value}))}/></Fld>
-            <Fld label="Usual Days of Work"><input className={inp} value={modal.workDays||""} onChange={e=>setModal(p=>({...p,workDays:e.target.value}))} placeholder="e.g. Mon–Fri, Mon–Sat"/></Fld>
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Emergency Contact</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Fld label="Contact Name"><input className={inp} value={modal.emergencyContact||""} onChange={e=>setModal(p=>({...p,emergencyContact:e.target.value}))}/></Fld>
-            <Fld label="Contact Phone"><input className={inp} type="tel" value={modal.emergencyPhone||""} onChange={e=>setModal(p=>({...p,emergencyPhone:e.target.value}))}/></Fld>
-            <Fld label="Contact Address" col><input className={inp} value={modal.emergencyAddress||""} onChange={e=>setModal(p=>({...p,emergencyAddress:e.target.value}))}/></Fld>
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Bank Account & Payroll</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Fld label="Bank Name"><input className={inp} value={modal.bankName||""} onChange={e=>setModal(p=>({...p,bankName:e.target.value}))}/></Fld>
-            <Fld label="Account Number"><input className={inp} value={modal.accountNumber||""} onChange={e=>setModal(p=>({...p,accountNumber:e.target.value}))}/></Fld>
-            <Fld label="Account Owner Name"><input className={inp} value={modal.accountName||""} onChange={e=>setModal(p=>({...p,accountName:e.target.value}))}/></Fld>
-            <Fld label="Monthly Salary (₦)"><input className={inp} type="number" min="0" value={modal.salary||""} onChange={e=>setModal(p=>({...p,salary:Number(e.target.value)}))}/></Fld>
-          </div>
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
-        <button onClick={()=>setModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button>
-        <button onClick={()=>save(modal)} disabled={!modal.name} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>{modal._editing?"Save Changes":"Add Staff Member"}</button>
-      </div>
-    </ModalWrap>}
-  </div>);}
 
 // -- SETTINGS ------------------------------------------------------------------
 function SettingsPage({users,setUsers,activityLog=[]}){
