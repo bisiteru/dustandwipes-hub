@@ -1,12 +1,30 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
 import React, { useState, useMemo, useEffect, useRef, useCallback, Component } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ChevronDown, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
-import { validateRows, validateRecord, SCHEMAS } from "./lib/schemas";
+import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
+
+// ── lib/ extractions (Phase 2 of TS migration) ───────────────────────────────
+import {
+  GD, G, GL, O, OL, AMBER, RED, BLUE, TODAY, MONTHS,
+  FREQ_DAYS, STATUS_COLORS, CONTRACT_COLORS, IMPREST_CATS,
+} from "./lib/constants";
+import {
+  fmt, fmtD, fmtDT, calcDur, monthName, cStatus, dLeft,
+} from "./lib/format";
+import { hashPw } from "./lib/auth";
+import { queueOfflineAction, drainOfflineQueue } from "./lib/offline";
+import {
+  SUPABASE_URL, SUPABASE_ANON_KEY, T,
+  dbLoad, dbDelete, dbSync,
+  loadContacts, loadActivityLog, saveContact,
+} from "./lib/supabase";
+import {
+  monthOf, mkLabel, curMonthKey, nextMonthKey,
+  openPrintWin, buildReportHtml,
+  MonthTabs, PrintReportButtons,
+} from "./lib/monthly";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
-const TODAY=new Date(); // always uses current date
-const GD="#0B3518",G="#1B6B2F",GL="#E8F5E9",O="#E85D04",OL="#FFF3E0",AMBER="#D97706",RED="#DC2626",BLUE="#2563EB";
 const LOGO_B64_PARTS = [
   "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9Y",
   "WVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCADwASwDASIAAhEBAxEB/8QAHAABAAEFAQEAAAAAAAAAAAAAAAcBAgUGCAQD/8QAUhAAAQMDAgMFBAMLBwoEBwAAAQIDBAAFEQYSByExCBNBUWEUIjJxFYGRIzNCUmJydIKhsrMkNTc4dZKxFhclNDZT",
@@ -52,319 +70,16 @@ const LOGO_DATA = "data:image/jpeg;base64," + LOGO_B64_PARTS.join("");
 // For production (Vercel), the file /public/icons/logo.png is also served
 const LOGO = LOGO_DATA;
 
-// --- SUPABASE CLIENT ----------------------------------------------------------
-// Keys are loaded from environment variables — never hardcode secrets in source.
-// Local:   .env.local  (gitignored)
-// Vercel:  Dashboard → Settings → Environment Variables
-const SUPABASE_URL      = process.env.REACT_APP_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error("[Config] REACT_APP_SUPABASE_URL / REACT_APP_SUPABASE_ANON_KEY not set. Check .env.local or Vercel environment variables.");
-}
-// Supabase REST calls use direct fetch() -- see dbLoad/dbSync below
-
-// DB table names -- prefixed to avoid reserved word conflicts
-const T = (name) => `dw_${name}`;
-
-// Load all contacts from dw_contacts table
-const loadContacts = async (setter) => {
-  try {
-    const url = `${SUPABASE_URL}/rest/v1/dw_contacts?select=id,name,phone,email,address&order=name.asc&limit=1000`;
-    const r = await fetch(url, {
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
-      }
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    if (Array.isArray(data)) {
-      // Make it available globally for ContactSearchSelect
-      window.__DW_CONTACTS__ = data;
-      if (setter) setter(data);
-    }
-  } catch(e) { console.warn('[DB] load contacts:', e.message); }
-};
-
-// Load recent activity log entries
-const loadActivityLog = async (setter) => {
-  try {
-    const url = `${SUPABASE_URL}/rest/v1/dw_activity_log?select=*&order=created_at.desc&limit=200`;
-    const r = await fetch(url, {
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
-      }
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    if (Array.isArray(data) && setter) setter(data);
-  } catch(e) { console.warn("[DB] load activity log:", e.message); }
-};
-
-// Save a new contact to dw_contacts (called on requisition approval)
-const saveContact = async (contact) => {
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/dw_contacts`, {
-      method: 'POST',
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
-      },
-      body: JSON.stringify({
-        name: contact.name,
-        phone: contact.phone || '',
-        email: contact.email || '',
-        address: contact.address || '',
-        source: 'auto_requisition'
-      })
-    });
-  } catch(e) { console.warn('[DB] save contact:', e.message); }
-};
-
-// Log an activity to dw_activity_log (fire-and-forget, never blocks UI)
-// eslint-disable-next-line no-unused-vars
-const logActivity = async ({userName="",userRole="",action,module,recordId="",description=""}) => {
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/dw_activity_log`,{
-      method:"POST",
-      headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json","Prefer":"return=minimal"},
-      body:JSON.stringify({user_name:userName,user_role:userRole,action,module,record_id:recordId,description,created_at:new Date().toISOString()})
-    });
-  } catch(e){console.warn("[DB] activity log:",e.message);}
-};
+// SUPABASE: extracted to ./lib/supabase.ts in Phase 2 — imported at top of file.
 
 
-// Load all records from a table and populate React state
-const dbLoad = async (table, setter) => {
-  try {
-    const url = `${SUPABASE_URL}/rest/v1/${T(table)}?select=id,record&order=updated_at.desc`;
-    const r = await fetch(url, {
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
-      }
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    if (Array.isArray(data) && data.length) {
-      const records = data.map(r => r.record).filter(Boolean);
-      // Zod validation (coerce + warn mode) — kills the string/number bug class
-      // at the boundary, so the React tree never sees a corrupted record.
-      const validated = SCHEMAS[table] ? validateRows(table, records) : records;
-      setter(validated);
-    }
-  } catch(e) { console.warn(`[DB] load ${table}:`, e.message); }
-};
+// Offline queue + hashPw moved to ./lib/offline.ts and ./lib/auth.ts (Phase 2).
 
-// Delete a single record from Supabase by id
-const dbDelete = async (table, id) => {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}?id=eq.${encodeURIComponent(String(id))}`, {
-      method: "DELETE",
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      }
-    });
-    if (!r.ok) { const e = await r.text(); throw new Error(e); }
-  } catch(e) { console.warn(`[DB] delete ${table}:`, e.message); }
-};
-
-// Sync an entity array to Supabase via direct REST calls
-const dbSync = async (table, data) => {
-  // UPSERT-ONLY: never delete from DB via sync.
-  // Deletion is handled explicitly via the delete button in the UI.
-  // This prevents data loss from race conditions (multiple tabs, slow loads).
-  try {
-    if (!data || data.length === 0) return;
-    const headers = {
-      "apikey": SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": "resolution=merge-duplicates,return=minimal"
-    };
-    // Zod validation on writes — coerces numeric strings → numbers, prunes
-    // invalid records, prevents the string-concat portfolio bug at source.
-    const validated = SCHEMAS[table]
-      ? data.map(r => validateRecord(table, r)).filter(Boolean)
-      : data;
-    if (validated.length === 0) return;
-    const rows = validated.map(r => ({ id: String(r.id), record: r, updated_at: new Date().toISOString() }));
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${T(table)}`, {
-      method: "POST", headers, body: JSON.stringify(rows)
-    });
-    if (!r.ok) { const e = await r.text(); throw new Error(e); }
-  } catch(e) { console.warn(`[DB] sync ${table}:`, e.message); }
-};
-
-
-// ── Offline job-action queue (localStorage-backed, drained on reconnect) ──────
-// Queued items survive page reloads; merged and synced when connectivity returns.
-const OFFLINE_Q_KEY="dw_offline_queue";
-const queueOfflineAction=(type,data)=>{
-  try{
-    const q=JSON.parse(localStorage.getItem(OFFLINE_Q_KEY)||"[]");
-    q.push({type,data,queuedAt:new Date().toISOString()});
-    localStorage.setItem(OFFLINE_Q_KEY,JSON.stringify(q));
-    // Register background sync tag if supported (best-effort)
-    if("serviceWorker"in navigator&&"SyncManager"in window){
-      navigator.serviceWorker.ready.then(r=>r.sync.register("dw-job-sync").catch(()=>{})).catch(()=>{});
-    }
-  }catch(e){console.warn("[Offline] Queue write:",e.message);}
-};
-const drainOfflineQueue=(setJobsFn)=>{
-  try{
-    const q=JSON.parse(localStorage.getItem(OFFLINE_Q_KEY)||"[]");
-    if(q.length===0)return 0;
-    setJobsFn(current=>{
-      let updated=[...current];
-      q.forEach(item=>{
-        if(item.type==="job_update"){
-          const idx=updated.findIndex(j=>j.id===item.data.id);
-          if(idx>=0)updated[idx]={...updated[idx],...item.data};
-          else updated.push(item.data);
-        }
-      });
-      dbSync("jobs",updated);
-      return updated;
-    });
-    localStorage.removeItem(OFFLINE_Q_KEY);
-    return q.length;
-  }catch(e){console.warn("[Offline] Queue drain:",e.message);return 0;}
-};
-
-// SHA-256 password hash (Web Crypto API — no extra library, salted with userId)
-const hashPw=async(pw,salt="dw")=>{
-  try{
-    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${salt}:${pw}`));
-    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-  }catch{return null;}
-};
-
-const cStatus=end=>{if(!end)return"Unknown";const d=Math.ceil((new Date(end)-TODAY)/86400000);return d<0?"Expired":d<=30?"Critical":d<=60?"Expiring Soon":"Active";};
-const dLeft=end=>end?Math.ceil((new Date(end)-TODAY)/86400000):null;
-const fmt=n=>""+Number(n||0).toLocaleString("en-NG",{maximumFractionDigits:0});
-const fmtD=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"--";
-const fmtT=t=>{if(!t)return"--";if(t.includes("T")||t.length>8)return new Date(t).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});const[h,m]=t.split(":");return`${h}:${m}`;};
-const fmtDT=t=>t?`${fmtD(t.split("T")[0])} ${fmtT(t)}`:"--";
-const calcDur=(s,e)=>{if(!s||!e)return null;const d=new Date(e)-new Date(s);if(d<0)return" Invalid";return`${Math.floor(d/3600000)}h ${Math.floor((d%3600000)/60000)}m`;};
-const monthName=m=>["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m];
+// Format helpers + brand constants moved to ./lib/format.ts and ./lib/constants.ts (Phase 2).
+// Only App.js-local UI tokens remain:
 const inp="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white";
 const JOB_STATUSES=["New","Scheduled","Assigned","In Progress","Awaiting Approval","Completed","Closed"];
-const FREQ_DAYS={"Daily":1,"Weekly":7,"Bi-weekly":14,"Monthly":30,"Quarterly":91,"One-Time":null};
-const STATUS_COLORS={"New":{bg:"#f0f9ff",color:"#0369a1",border:"#bae6fd"},"Scheduled":{bg:"#faf5ff",color:"#7c3aed",border:"#ddd6fe"},"Assigned":{bg:"#eff6ff",color:"#1d4ed8",border:"#bfdbfe"},"In Progress":{bg:"#fffbeb",color:"#d97706",border:"#fde68a"},"Awaiting Approval":{bg:"#fff7ed",color:"#ea580c",border:"#fed7aa"},"Completed":{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},"Closed":{bg:"#f9fafb",color:"#6b7280",border:"#e5e7eb"}};
-const CONTRACT_COLORS={"Active":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Expiring Soon":{bg:"#fffbeb",color:"#92400e",border:"#fde68a"},"Critical":{bg:"#fee2e2",color:"#991b1b",border:"#fca5a5"},"Expired":{bg:"#f3f4f6",color:"#6b7280",border:"#d1d5db"}};
-const IMPREST_CATS=["Transportation","Emergency Supplies","Minor Repairs","Fuel/Logistics","Site Support","Consumables Procurement","Other"];
-const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-// ─── MONTHLY TABS + PRINT REPORT HELPERS ─────────────────────────────────────
-// Shared across Site Reports, Absence & Cover, Jobs, Service Requests, Requisitions
-// Each module passes a getMK(record) accessor that returns either YYYY-MM,
-// YYYY-MM-DD, or an ISO datetime. Falls back to parsing Date.now() from the id.
-const monthOf=(r,getMK)=>{
-  try{
-    const v=getMK?getMK(r):null;
-    if(typeof v==="string"){
-      if(/^\d{4}-\d{2}$/.test(v))return v;
-      if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(0,7);
-      const d=new Date(v);if(!isNaN(d))return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    }
-  }catch{}
-  // Fallback — legacy records may not have a date field; parse from id like "j1747032198432"
-  const m=String(r?.id||"").match(/\d{10,}/);
-  if(m){const d=new Date(Number(m[0]));if(!isNaN(d))return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
-  return null;
-};
-const mkLabel=mk=>{if(!mk||!/^\d{4}-\d{2}$/.test(mk))return"Unknown";const[y,m]=mk.split("-").map(Number);return`${MONTHS[m-1]} ${y}`;};
-const curMonthKey=()=>{const t=new Date();return`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}`;};
-const nextMonthKey=mk=>{const[y,m]=mk.split("-").map(Number);const d=new Date(y,m,1);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;};
-
-// Monthly tab strip — last 6 months as buttons + "More ▾" dropdown for older.
-// onOpenNext (optional): renders a "+ Open Next Month" button next to the tabs.
-function MonthTabs({records,getMK,selMK,setSelMK,onOpenNext}){
-  const curMK=curMonthKey();
-  const[dropOpen,setDropOpen]=useState(false);
-  const ddRef=useRef(null);
-  useEffect(()=>{const h=e=>{if(ddRef.current&&!ddRef.current.contains(e.target))setDropOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
-  const allMonths=useMemo(()=>{
-    const s=new Set([curMK]);
-    (records||[]).forEach(r=>{const mk=monthOf(r,getMK);if(mk)s.add(mk);});
-    return[...s].sort().reverse();
-  },[records,getMK,curMK]);
-  const visible=allMonths.slice(0,6);
-  const older=allMonths.slice(6);
-  return(
-    <div className="flex items-center gap-2 flex-wrap">
-      {visible.map(mk=>{const active=mk===selMK;return(
-        <button key={mk} onClick={()=>setSelMK(mk)}
-          className="px-3.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all"
-          style={active?{background:G,color:"#fff"}:{background:"#f3f4f6",color:"#6b7280"}}>
-          {mkLabel(mk)}{mk===curMK?" ●":""}
-        </button>
-      );})}
-      {older.length>0&&(
-        <div className="relative" ref={ddRef}>
-          <button onClick={()=>setDropOpen(o=>!o)}
-            className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg text-sm font-semibold"
-            style={{background:"#f3f4f6",color:"#374151"}}>
-            More <ChevronDown size={12}/>
-          </button>
-          {dropOpen&&(
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px] max-h-72 overflow-y-auto">
-              {older.map(mk=>(
-                <button key={mk} onClick={()=>{setSelMK(mk);setDropOpen(false);}}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 whitespace-nowrap"
-                  style={mk===selMK?{background:GL,color:G,fontWeight:700}:{}}>
-                  {mkLabel(mk)}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {onOpenNext&&(
-        <button onClick={onOpenNext}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white"
-          style={{background:BLUE}}>
-          <Plus size={13}/>Open Next Month
-        </button>
-      )}
-    </div>
-  );
-}
-
-// "Print This Month" + "Print All History" buttons.
-function PrintReportButtons({onPrintMonth,onPrintAll}){
-  return(
-    <div className="flex items-center gap-2 flex-wrap">
-      <button onClick={onPrintMonth}
-        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border"
-        style={{color:BLUE,borderColor:"#bfdbfe",background:"#eff6ff"}}>
-        <Download size={13}/>Print This Month
-      </button>
-      <button onClick={onPrintAll}
-        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold border"
-        style={{color:G,borderColor:"#bbf7d0",background:"#f0fdf4"}}>
-        <FileText size={13}/>Print All History
-      </button>
-    </div>
-  );
-}
-
-// Open a print preview window with HTML content (triggers browser Save-as-PDF).
-const openPrintWin=html=>{const w=window.open("","_blank","width=920,height=1000");if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);}};
-
-// Build a print-ready HTML report. `sections` = [{label, kpis, table, note}] (newest first).
-const buildReportHtml=({moduleName,periodLabel,summaryKpis,sections})=>{
-  const today=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
-  const kpiHtml=kpis=>(kpis||[]).map(k=>`<div style="text-align:center;min-width:110px"><p style="font-size:9px;color:#6b7280;font-weight:bold;margin:0;text-transform:uppercase;letter-spacing:.05em">${k.label}</p><p style="font-size:22px;font-weight:bold;color:${k.color||"#1B6B2F"};margin:2px 0">${k.value}</p>${k.sub?`<p style="font-size:9px;color:#9ca3af;margin:0">${k.sub}</p>`:""}</div>`).join("");
-  const sectionsHtml=(sections||[]).map(s=>`<div style="margin-bottom:26px;page-break-inside:avoid">${s.label?`<h3 style="margin:0 0 8px;font-size:13px;color:#1B6B2F;border-bottom:2px solid #1B6B2F;padding-bottom:4px">${s.label}</h3>`:""}${s.kpis?`<div style="display:flex;gap:24px;margin-bottom:10px;padding:8px 12px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;flex-wrap:wrap">${kpiHtml(s.kpis)}</div>`:""}${s.table||""}${s.note?`<p style="font-size:10px;color:#6b7280;font-style:italic;margin-top:6px">${s.note}</p>`:""}</div>`).join("");
-  return`<!DOCTYPE html><html><head><title>${moduleName} Report — ${periodLabel}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:28px;color:#111}h1{color:#1B6B2F;margin-bottom:2px}h2{color:#374151;font-size:13px;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:10px;margin-top:6px}th{background:#f3f4f6;padding:6px 8px;text-align:left;border:1px solid #e5e7eb;font-weight:bold}td{padding:5px 8px;border:1px solid #e5e7eb;vertical-align:top}@media print{button{display:none}}</style></head><body><h1>Dust &amp; Wipes Limited — ${moduleName} Report</h1><h2>Period: ${periodLabel} &nbsp;&nbsp; Generated: ${today}</h2>${summaryKpis&&summaryKpis.length?`<div style="display:flex;gap:32px;margin-bottom:24px;padding:14px 18px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;flex-wrap:wrap">${kpiHtml(summaryKpis)}</div>`:""}${sectionsHtml}</body></html>`;
-};
 
 // -- MASTER SUPPLY ITEMS (APRIL 2026 actuals + standard stock) ----------------
 const INITIAL_SUPPLY_MASTER=[
@@ -3566,12 +3281,12 @@ export default function App(){
   useEffect(()=>{
     // Drain any queue items left from a previous offline session
     if(navigator.onLine&&dbLoaded.current){
-      const n=drainOfflineQueue(setJobs);
+      const n=drainOfflineQueue(setJobs, dbSync);
       if(n>0)Toaster._add?.({type:"success",msg:`${n} offline action${n>1?"s":""} synced`});
     }
     const handleOnline=()=>{
       setIsOnline(true);
-      const n=drainOfflineQueue(setJobs);
+      const n=drainOfflineQueue(setJobs, dbSync);
       if(n>0)Toaster._add?.({type:"success",msg:`${n} offline action${n>1?"s":""} synced to server`});
     };
     const handleOffline=()=>{
@@ -3581,7 +3296,7 @@ export default function App(){
     // Service Worker background-sync message handler
     const handleSwMessage=e=>{
       if(e.data?.type==="DW_DRAIN_OFFLINE_QUEUE"){
-        const n=drainOfflineQueue(setJobs);
+        const n=drainOfflineQueue(setJobs, dbSync);
         if(n>0)Toaster._add?.({type:"success",msg:`${n} queued action${n>1?"s":""} synced via background sync`});
       }
     };
