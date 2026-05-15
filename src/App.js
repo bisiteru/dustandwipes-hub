@@ -1,12 +1,13 @@
 // Dust & Wipes Operations Hub -- OperationsHub_v6.jsx
-import React, { useState, useMemo, useEffect, useRef, useCallback, Component } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Users, FileText, BarChart2, Settings, LogOut, Menu, Plus, Edit2, Trash2, Bell, Home, Bug, Eye, EyeOff, AlertTriangle, Search, X, ClipboardList, Package, Clock, Briefcase, ChevronRight, ArrowRight, Inbox, UserPlus, Gift, Wallet, ClipboardCheck, UserCheck, Info, MapPin, Download, WifiOff } from "lucide-react";
 
 // ── lib/ extractions (Phase 2 of TS migration) ───────────────────────────────
 import {
   GD, G, GL, O, OL, AMBER, RED, BLUE, TODAY, MONTHS,
-  FREQ_DAYS, STATUS_COLORS, CONTRACT_COLORS, IMPREST_CATS,
+  FREQ_DAYS, STATUS_COLORS, IMPREST_CATS,
+  JOB_STATUSES, inp,
 } from "./lib/constants";
 import {
   fmt, fmtD, fmtDT, calcDur, monthName, cStatus, dLeft,
@@ -23,6 +24,18 @@ import {
   openPrintWin, buildReportHtml,
   MonthTabs, PrintReportButtons,
 } from "./lib/monthly";
+
+// ── UI primitives + composite components (Phase 3) ───────────────────────────
+import {
+  Card, Fld, SBadge, KPI, RadioG, StarRating,
+} from "./components/ui/primitives";
+import { ModalWrap } from "./components/ui/ModalWrap";
+import { Toaster, useToast } from "./components/ui/Toaster";
+import { useConfirm } from "./components/ui/useConfirm";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
+import { StaffSelect, StaffMultiPicker, ContactSearchSelect } from "./components/pickers";
+import { GlobalSearch } from "./components/GlobalSearch";
+import { buildNotifs, NotifPanel } from "./components/NotifPanel";
 
 const APP_NAME="Operations Hub", APP_SUB="Dust & Wipes Limited";
 const LOGO_B64_PARTS = [
@@ -77,8 +90,6 @@ const LOGO = LOGO_DATA;
 
 // Format helpers + brand constants moved to ./lib/format.ts and ./lib/constants.ts (Phase 2).
 // Only App.js-local UI tokens remain:
-const inp="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white";
-const JOB_STATUSES=["New","Scheduled","Assigned","In Progress","Awaiting Approval","Completed","Closed"];
 
 
 // -- MASTER SUPPLY ITEMS (APRIL 2026 actuals + standard stock) ----------------
@@ -212,176 +223,6 @@ const printAllRequisitions = (requisitions, supplyItems, users) => {
   w.document.close();
 };
 
-function SBadge({s,custom}){const st=custom||CONTRACT_COLORS[s]||STATUS_COLORS[s]||{bg:"#f9fafb",color:"#6b7280",border:"#e5e7eb"};return <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold whitespace-nowrap border" style={{background:st.bg,color:st.color,borderColor:st.border}}>{s}</span>;}
-function Card({children,className=""}){return <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm ${className}`}>{children}</div>;}
-function Fld({label,children,col=false,required=false}){return <div className={col?"col-span-2":""}><label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">{label}{required&&<span className="text-red-400 ml-1">*</span>}</label>{children}</div>;}
-function KPI({icon,label,value,sub,bg,onClick}){return <Card className={`p-5 overflow-hidden ${onClick?"cursor-pointer hover:shadow-md transition-shadow":""}`} onClick={onClick}><div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg mb-3" style={{background:bg}}>{icon}</div><div className="text-2xl font-black text-gray-800">{value}</div><div className="text-xs font-bold text-gray-500 mt-1">{label}</div><div className="text-xs text-gray-400 mt-0.5">{sub}</div></Card>;}
-function ModalWrap({title,children,onClose,wide=false,xl=false}){
-  return(<div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
-    <div className={`bg-white rounded-2xl shadow-2xl w-full max-h-[92vh] flex flex-col ${xl?"max-w-4xl":wide?"max-w-2xl":"max-w-lg"}`}>
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-        <h2 className="text-base font-bold text-gray-800">{title}</h2>
-        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"><X size={16}/></button>
-      </div>
-      <div className="p-6 overflow-y-auto flex-1">{children}</div>
-    </div>
-  </div>);}
-function ConfirmModal({msg,onYes,onNo}){return(<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4"><div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"><div className="flex items-center gap-3 mb-4"><AlertTriangle size={20} style={{color:O}}/><p className="font-semibold text-gray-800">{msg}</p></div><div className="flex justify-end gap-3"><button onClick={onNo} className="px-5 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Cancel</button><button onClick={onYes} className="px-5 py-2 rounded-xl text-white text-sm font-bold" style={{background:RED}}>Delete</button></div></div></div>);}
-function useConfirm(){const[state,setState]=useState(null);const confirm=(msg,onYes)=>setState({msg,onYes});const el=state?<ConfirmModal msg={state.msg} onYes={()=>{state.onYes();setState(null);}} onNo={()=>setState(null)}/>:null;return[confirm,el];}
-function RadioG({value,onChange,options,danger=[]}){return <div className="flex flex-wrap gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border cursor-pointer transition-all text-sm ${value===o?(danger.includes(o)?"border-red-500 bg-red-50 font-semibold text-red-800":"border-green-500 bg-green-50 font-semibold text-green-800"):"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="radio" checked={value===o} onChange={()=>onChange(o)} className="accent-green-600"/>{o}</label>)}</div>;}
-
-// Save button with built-in async loading state
-// Usage: <SaveBtn onClick={asyncFn} label="Save" savingLabel="Saving…" color={G}/>
-// eslint-disable-next-line no-unused-vars
-function SaveBtn({onClick,label="Save",savingLabel,disabled=false,color,className=""}){
-  const[busy,setBusy]=useState(false);
-  const go=async()=>{
-    if(busy||disabled)return;
-    setBusy(true);
-    try{await onClick();}finally{setBusy(false);}
-  };
-  return(
-    <button onClick={go} disabled={busy||disabled}
-      className={`px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-50 flex items-center gap-2 ${className}`}
-      style={{background:color||G}}>
-      {busy&&<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"/>}
-      {busy?(savingLabel||label+"…"):label}
-    </button>
-  );
-}
-
-// ── GLOBAL TOAST SYSTEM ──────────────────────────────────────────────────────
-// Usage: const toast = useToast();  then  toast.success("Saved!") / toast.error("Failed")
-// The <Toaster/> component must be rendered once at the app root.
-function Toaster(){
-  const[toasts,setToasts]=useState([]);
-  const add=useCallback((msg,type="success")=>{
-    const id=Date.now()+Math.random();
-    setToasts(t=>[...t,{id,msg,type}]);
-    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),3500);
-  },[]);
-  // expose via context
-  Toaster._add=add;
-  const icons={success:"✓",error:"✕",info:"ℹ"};
-  const styles={
-    success:{bg:"#f0fdf4",border:"#bbf7d0",color:"#166534"},
-    error:  {bg:"#fef2f2",border:"#fecaca",color:"#991b1b"},
-    info:   {bg:"#eff6ff",border:"#bfdbfe",color:"#1e40af"},
-  };
-  return(
-    <div className="fixed bottom-5 right-5 z-[300] flex flex-col gap-2 pointer-events-none">
-      {toasts.map(t=>{const s=styles[t.type]||styles.success;return(
-        <div key={t.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-lg text-sm font-semibold pointer-events-auto animate-fade-in"
-          style={{background:s.bg,border:`1px solid ${s.border}`,color:s.color,minWidth:240,maxWidth:360}}>
-          <span className="text-base leading-none">{icons[t.type]}</span>
-          <span className="flex-1">{t.msg}</span>
-        </div>
-      );})}
-    </div>
-  );
-}
-function useToast(){
-  return{
-    success:(msg)=>Toaster._add&&Toaster._add(msg,"success"),
-    error:  (msg)=>Toaster._add&&Toaster._add(msg,"error"),
-    info:   (msg)=>Toaster._add&&Toaster._add(msg,"info"),
-  };
-}
-
-// -- GLOBAL SEARCH (⌘K / Ctrl+K) ----------------------------------------------
-function GlobalSearch({clients=[],jobs=[],staff=[],inventory=[],requests=[],onNav,onClose}){
-  const[q,setQ]=useState("");
-  const inp2=useRef(null);
-  useEffect(()=>{inp2.current?.focus();},[]);
-
-  const results=useMemo(()=>{
-    const s=q.toLowerCase().trim();
-    if(s.length<2)return[];
-    const hits=[];
-    // Clients
-    clients.filter(c=>[c.name,c.addr,c.cp,c.phone].join(" ").toLowerCase().includes(s))
-      .slice(0,4).forEach(c=>hits.push({type:"Client",icon:"🏢",label:c.name,sub:c.svc||"",nav:"clients"}));
-    // Jobs
-    jobs.filter(j=>[j.clientName,j.svc,j.loc,j.sup].join(" ").toLowerCase().includes(s))
-      .slice(0,4).forEach(j=>hits.push({type:"Job",icon:"🛠",label:j.clientName,sub:`${j.svc} · ${j.status}`,nav:"jobs"}));
-    // Staff
-    staff.filter(st=>[st.name,st.role,st.site,st.phone].join(" ").toLowerCase().includes(s))
-      .slice(0,4).forEach(st=>hits.push({type:"Staff",icon:"👤",label:st.name,sub:`${st.role||""}${st.site?` · ${st.site}`:""}`,nav:"staff"}));
-    // Inventory
-    inventory.filter(i=>[i.item,i.cat].join(" ").toLowerCase().includes(s))
-      .slice(0,3).forEach(i=>hits.push({type:"Stock",icon:"📦",label:i.item,sub:`${i.qty} in stock · ${i.cat}`,nav:"inventory"}));
-    // Requests
-    requests.filter(r=>[r.clientName,r.svc,r.loc].join(" ").toLowerCase().includes(s))
-      .slice(0,3).forEach(r=>hits.push({type:"Request",icon:"📋",label:r.clientName,sub:`${r.svc} · ${r.status}`,nav:"requests"}));
-    return hits;
-  },[q,clients,jobs,staff,inventory,requests]);
-
-  const go=nav=>{onNav(nav);onClose();};
-  return(
-    <div className="fixed inset-0 bg-black/50 z-[300] flex items-start justify-center pt-24 px-4" onClick={onClose}>
-      <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-          <Search size={16} className="text-gray-400 flex-shrink-0"/>
-          <input ref={inp2} className="flex-1 outline-none text-sm text-gray-800 placeholder-gray-400" placeholder="Search clients, jobs, staff, inventory…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==="Escape"&&onClose()}/>
-          <kbd className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-mono">Esc</kbd>
-        </div>
-        {q.length<2&&<div className="px-4 py-8 text-center text-sm text-gray-400">Type at least 2 characters to search across all modules</div>}
-        {q.length>=2&&results.length===0&&<div className="px-4 py-8 text-center text-sm text-gray-400">No results found for "{q}"</div>}
-        {results.length>0&&<div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
-          {results.map((r,i)=>(
-            <button key={i} onClick={()=>go(r.nav)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors">
-              <span className="text-base">{r.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">{r.label}</p>
-                <p className="text-xs text-gray-400 truncate">{r.sub}</p>
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0" style={{background:"#f0fdf4",color:"#16a34a"}}>{r.type}</span>
-            </button>
-          ))}
-        </div>}
-        <div className="px-4 py-2.5 border-t border-gray-100 flex items-center gap-4 text-xs text-gray-400">
-          <span><kbd className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">↵</kbd> open module</span>
-          <span><kbd className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">Esc</kbd> close</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// -- ERROR BOUNDARY ------------------------------------------------------------
-class ErrorBoundary extends Component{
-  constructor(props){super(props);this.state={hasError:false,error:null};}
-  static getDerivedStateFromError(error){return{hasError:true,error};}
-  componentDidCatch(error,info){console.error("[ErrorBoundary]",error,info);}
-  reset(){this.setState({hasError:false,error:null});}
-  render(){
-    if(!this.state.hasError)return this.props.children;
-    const{module="this module"}=this.props;
-    return(
-      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-4" style={{background:"#fee2e2"}}>⚠️</div>
-        <h2 className="text-lg font-bold text-gray-800 mb-1">{module} encountered an error</h2>
-        <p className="text-sm text-gray-500 mb-1 max-w-sm">Something went wrong while rendering {module}. Your data is safe — this is a display error only.</p>
-        {this.state.error&&<p className="text-xs font-mono text-red-500 bg-red-50 rounded-lg px-4 py-2 mb-4 max-w-sm break-all">{this.state.error.message}</p>}
-        <button onClick={()=>this.reset()} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:"#1B6B2F"}}>Try Again</button>
-      </div>
-    );
-  }
-}
-
-function buildNotifs(clients,jobs,inventory){
-  const n=[];
-  clients.forEach(c=>{const s=cStatus(c.ce);const dl=dLeft(c.ce);if(s==="Critical")n.push({id:`nc-${c.id}`,icon:"",title:`Critical: ${c.name}`,body:`Expires in ${dl}d`,read:false});else if(s==="Expiring Soon")n.push({id:`na-${c.id}`,icon:"",title:`Expiring Soon: ${c.name}`,body:`${dl} days left`,read:false});else if(s==="Expired")n.push({id:`ne-${c.id}`,icon:"",title:`Expired: ${c.name}`,body:`Ended ${fmtD(c.ce)}`,read:false});});
-  jobs.filter(j=>j.status==="Awaiting Approval").forEach(j=>n.push({id:`nj-${j.id}`,icon:"",title:"Awaiting approval",body:`${j.clientName}`,read:false}));
-  inventory.filter(i=>i.qty<=i.reorder).forEach(i=>n.push({id:`ni-${i.id}`,icon:"",title:"Low stock",body:`${i.item}: ${i.qty} left`,read:false}));
-  return n;
-}
-function NotifPanel({notes,onRead,onClose}){
-  const unread=notes.filter(n=>!n.read).length;
-  return(<div className="absolute right-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
-    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100"><div className="flex items-center gap-2"><Bell size={14} style={{color:G}}/><span className="text-sm font-bold text-gray-800">Notifications</span>{unread>0&&<span className="text-xs px-2 py-0.5 rounded-full text-white font-bold" style={{background:RED}}>{unread}</span>}</div><div className="flex gap-2"><button onClick={()=>notes.forEach(n=>onRead(n.id))} className="text-xs text-green-700 hover:underline">Mark all read</button><button onClick={onClose}><X size={14} className="text-gray-400"/></button></div></div>
-    <div className="max-h-80 overflow-y-auto">{notes.length===0?<div className="text-center py-8 text-gray-400 text-sm">All clear!</div>:notes.map(n=>(<div key={n.id} onClick={()=>onRead(n.id)} className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 ${!n.read?"bg-green-50/40":""}`}><span className="text-base flex-shrink-0">{n.icon}</span><div className="flex-1 min-w-0"><p className={`text-xs ${!n.read?"font-bold text-gray-800":"font-medium text-gray-600"}`}>{n.title}</p><p className="text-xs text-gray-400 truncate">{n.body}</p></div>{!n.read&&<div className="w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{background:G}}/>}</div>))}</div>
-  </div>);}
 
 // -- LOGIN --------------------------------------------------------------------
 function LoginScreen({onLogin,users,clients}){
@@ -1001,70 +842,9 @@ function CheckGroup({options,value=[],onChange}){
   return <div className="grid grid-cols-2 gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${value.includes(o)?"border-green-500 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="checkbox" checked={value.includes(o)} onChange={()=>tog(o)} className="accent-green-600 flex-shrink-0"/>{o}</label>)}</div>;
 }
 
-function StaffSelect({staff=[],value,onChange,placeholder="-- Select staff --",filter=null}){
-  const list=filter?staff.filter(filter):staff;
-  return(
-    <select className={inp} value={value||""} onChange={e=>onChange(e.target.value)}>
-      <option value="">{placeholder}</option>
-      {list.map(s=><option key={s.id} value={s.name}>{s.name}{s.site?` — ${s.site}`:""}</option>)}
-    </select>
-  );
-}
-
-function StaffMultiPicker({staff=[],value,onChange}){
-  const names=value?value.split("\n").filter(Boolean):[];
-  const tog=name=>onChange(names.includes(name)?names.filter(n=>n!==name):[...names,name]);
-  const [search,setSearch]=useState("");
-  const visible=search?staff.filter(s=>s.name.toLowerCase().includes(search.toLowerCase())):staff;
-  return(<div className="space-y-2">
-    <div className="relative"><Search size={13} className="absolute left-2.5 top-2.5 text-gray-400"/><input className={inp+" pl-8 py-2"} placeholder="Search crew..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-    <div className="max-h-44 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-50">
-      {visible.length===0&&<p className="text-xs text-gray-400 text-center py-3">No staff found</p>}
-      {visible.map(s=><label key={s.id} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-xs transition-all ${names.includes(s.name)?"bg-green-50":"hover:bg-gray-50"}`}>
-        <input type="checkbox" checked={names.includes(s.name)} onChange={()=>tog(s.name)} className="accent-green-600 flex-shrink-0"/>
-        <span className={names.includes(s.name)?"font-semibold text-green-800":"text-gray-700"}>{s.name}</span>
-        {s.site&&<span className="text-gray-400 ml-auto truncate">{s.site}</span>}
-      </label>)}
-    </div>
-    {names.length>0&&<p className="text-xs text-gray-500 font-medium"> {names.length} selected: {names.join(", ")}</p>}
-  </div>);
-}
-
-function StarRating({value,onChange,label}){
-  const lbl=["","Poor","Below Average","Average","Good","Excellent"];
-  return(<div><label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">{label}</label>
-    <div className="flex items-center gap-2">{[1,2,3,4,5].map(n=><button key={n} type="button" onClick={()=>onChange(n)} className="w-10 h-10 rounded-xl font-black text-sm transition-all" style={value===n?{background:n<=2?RED:n===3?AMBER:G,color:"#fff"}:{background:"#f3f4f6",color:"#9ca3af"}}>{n}</button>)}{value>0&&<span className="text-xs font-semibold ml-1" style={{color:value<=2?RED:value===3?AMBER:G}}>{lbl[value]}</span>}</div>
-  </div>);
-}
 
 const SR_SECTIONS=["General Info","Job Details","Quality Control","Safety","Client Feedback","Photos & Notes","Confirmation"];
 
-function ContactSearchSelect({value,onSelect,clients,contacts=[]}){
-  const[search,setSearch]=useState(value||"");const[open,setOpen]=useState(false);const ref=useRef(null);
-  // Merge live contacts from Supabase + app clients, deduplicated by name
-  const allContacts=useMemo(()=>{
-    const names=new Set();const list=[];
-    const dbContacts=window.__DW_CONTACTS__||contacts||[];
-    [...clients.map(c=>({name:c.name,phone:c.phone||"",address:c.addr||""})),...dbContacts].forEach(c=>{
-      if(c.name&&!names.has(c.name)){names.add(c.name);list.push(c);}
-    });
-    return list.sort((a,b)=>a.name.localeCompare(b.name));
-  },[clients,contacts]);
-  const filtered=search.trim()?allContacts.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())).slice(0,30):allContacts.slice(0,30);
-  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
-  const select=c=>{setSearch(c.name);onSelect(c.name);setOpen(false);};
-  return(<div className="relative" ref={ref}>
-    <div className="relative"><Search size={13} className="absolute left-3 top-2.5 text-gray-400"/>
-      <input className={inp+" pl-9"} value={search} onChange={e=>{setSearch(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)} placeholder="Search or type client name..."/>
-      {search&&<button type="button" onClick={()=>{setSearch("");onSelect("");}} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"><X size={14}/></button>}
-    </div>
-    {open&&filtered.length>0&&<div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
-      {filtered.map(c=><button key={c.name} type="button" onClick={()=>select(c)} className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 transition-colors border-b border-gray-50 last:border-0">
-        <p className="font-medium text-gray-800">{c.name}</p>
-        {(c.phone||c.address)&&<p className="text-xs text-gray-400">{[c.phone,c.address].filter(Boolean).join("  ")}</p>}
-      </button>)}
-    </div>}
-  </div>);}
 
 function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}){
   const[showForm,setShowForm]=useState(false);const[view,setView]=useState(null);

@@ -63,3 +63,19 @@ export const IMPREST_CATS = [
   "Consumables Procurement",
   "Other",
 ] as const;
+
+// ── Job lifecycle stages (ordered — index drives advance buttons) ────────────
+export const JOB_STATUSES = [
+  "New",
+  "Scheduled",
+  "Assigned",
+  "In Progress",
+  "Awaiting Approval",
+  "Completed",
+  "Closed",
+] as const;
+
+// ── Shared <input>/<select>/<textarea> Tailwind class string ─────────────────
+// Single source of truth for form-field styling — every page imports this.
+export const inp =
+  "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white";
