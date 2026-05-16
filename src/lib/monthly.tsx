@@ -70,6 +70,23 @@ export const nextMonthKey = (mk: string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
+/**
+ * Return the YYYY-MM-DD a new-record form should default to, given the
+ * currently-selected month tab. If the user is viewing the current month,
+ * default to today (most common case, preserves muscle memory). If they
+ * are viewing a past or future month, default to the first day of that
+ * month so the new record lands in the tab they were looking at — instead
+ * of silently jumping to whatever today's month is.
+ *
+ * This closes the "I'm on the April tab, I click New Requisition, I save,
+ * the row appears under May" misfiling bug.
+ */
+export const defaultDateForMK = (mk: string): string => {
+  if (!/^\d{4}-\d{2}$/.test(mk)) return new Date().toISOString().slice(0, 10);
+  if (mk === curMonthKey()) return new Date().toISOString().slice(0, 10);
+  return `${mk}-01`;
+};
+
 // ── PDF report builder (window.open + window.print → Save as PDF) ────────────
 
 /** Open a new browser window with HTML content and trigger the print dialog. */

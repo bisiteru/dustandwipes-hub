@@ -14,7 +14,7 @@ import { Plus, Trash2, Eye, ClipboardList, X } from "lucide-react";
 import { G, GL, O, AMBER, RED, BLUE, inp } from "../lib/constants";
 import { fmtD } from "../lib/format";
 import { dbSync, dbDelete, SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
-import { monthOf, mkLabel, curMonthKey, openPrintWin, buildReportHtml, MonthTabs, PrintReportButtons } from "../lib/monthly";
+import { monthOf, mkLabel, curMonthKey, defaultDateForMK, openPrintWin, buildReportHtml, MonthTabs, PrintReportButtons } from "../lib/monthly";
 import { Card, Fld, SBadge, StarRating, RadioG } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
 import { ContactSearchSelect, StaffMultiPicker } from "../components/pickers";
@@ -101,6 +101,10 @@ interface SiteReportsPageProps {
 }
 
 interface SiteReportModalProps {
+  /** YYYY-MM of the currently-selected month tab. Form defaults the
+   *  arrival/departure dates to this month's first day if it isn't the
+   *  current month, so the new report lands in the tab the user was on. */
+  initialMK: string;
   onSave: (data: SiteReport) => void;
   onClose: () => void;
   user: CurrentUser;
@@ -225,18 +229,22 @@ function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:
         </div>);
       })}</div>}
     </Card>
-    {showForm&&<SiteReportModal onSave={data=>{const newList=[data,...reports];setReports(newList);dbSync("reports",newList);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients} contacts={contacts} staff={staff}/>}
+    {showForm&&<SiteReportModal initialMK={selMK} onSave={data=>{const newList=[data,...reports];setReports(newList);dbSync("reports",newList);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients} contacts={contacts} staff={staff}/>}
     {view&&<SiteReportViewer report={view} onClose={()=>setView(null)}/>}
   </div>);}
 
-function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:SiteReportModalProps){
+function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staff=[]}:SiteReportModalProps){
   const[sec,setSec]=useState(0);
   const[gpsLoading,setGpsLoading]=useState(false);
+  // If the user opened the form while viewing a non-current month tab, default
+  // the arrival/departure dates to that month's first day so the new report
+  // lands under the tab they were looking at instead of jumping to today.
+  const defaultDate = defaultDateForMK(initialMK);
   const[f,setF]=useState<SiteReportForm>({
     supervisorName:user.name, supervisorEmail:user.email||"",
     clientName:"",address:"",
-    arrivalDate:new Date().toISOString().split("T")[0]||"",arrivalTime:"",
-    departureDate:new Date().toISOString().split("T")[0]||"",departureTime:"",
+    arrivalDate:defaultDate,arrivalTime:"",
+    departureDate:defaultDate,departureTime:"",
     gpsLat:"",gpsLng:"",gpsAcquired:false,
     jobType:"",contractType:"",serviceCategory:[],
     cleaningTasks:[],pestTasks:[],otherTasks:"",
