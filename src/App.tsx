@@ -9,7 +9,7 @@
 //  See ARCHITECTURE notes at the bottom of this file.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
@@ -39,23 +39,35 @@ import { GlobalSearch } from "./components/GlobalSearch";
 import { buildNotifs, NotifPanel } from "./components/NotifPanel";
 
 // ── Page modules (Phase 4) ───────────────────────────────────────────────────
-import { BirthdaysPage }   from "./pages/Birthdays";
-import { ContractsPage }   from "./pages/Contracts";
-import { SchedulePage }    from "./pages/Schedule";
-import { InventoryPage }   from "./pages/Inventory";
-import { RequestsPage }    from "./pages/Requests";
-import { AbsenceCoverPage }from "./pages/AbsenceCover";
-import { AnalyticsPage }   from "./pages/Analytics";
-import { StaffPage }       from "./pages/Staff";
+// Code-split via React.lazy (Phase 5c — Performance). Each page becomes its own
+// chunk, so the main bundle only loads what's needed at boot (login + shell).
+// LoginScreen stays eager — it's always the first thing a logged-out user sees.
 import { LoginScreen }     from "./pages/Login";
-import { Dashboard }       from "./pages/Dashboard";
-import { ClientsPage }     from "./pages/Clients";
-import { JobsPage }        from "./pages/Jobs";
-import { SettingsPage }    from "./pages/Settings";
-import { SiteReportsPage } from "./pages/SiteReports";
-import { RequisitionsPage }from "./pages/Requisitions";
-import { ImprestPage }     from "./pages/Imprest";
-import { AssessmentsPage } from "./pages/Assessments";
+const Dashboard        = lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
+const ClientsPage      = lazy(() => import("./pages/Clients").then(m => ({ default: m.ClientsPage })));
+const ContractsPage    = lazy(() => import("./pages/Contracts").then(m => ({ default: m.ContractsPage })));
+const RequestsPage     = lazy(() => import("./pages/Requests").then(m => ({ default: m.RequestsPage })));
+const JobsPage         = lazy(() => import("./pages/Jobs").then(m => ({ default: m.JobsPage })));
+const SchedulePage     = lazy(() => import("./pages/Schedule").then(m => ({ default: m.SchedulePage })));
+const SiteReportsPage  = lazy(() => import("./pages/SiteReports").then(m => ({ default: m.SiteReportsPage })));
+const InventoryPage    = lazy(() => import("./pages/Inventory").then(m => ({ default: m.InventoryPage })));
+const RequisitionsPage = lazy(() => import("./pages/Requisitions").then(m => ({ default: m.RequisitionsPage })));
+const AbsenceCoverPage = lazy(() => import("./pages/AbsenceCover").then(m => ({ default: m.AbsenceCoverPage })));
+const BirthdaysPage    = lazy(() => import("./pages/Birthdays").then(m => ({ default: m.BirthdaysPage })));
+const ImprestPage      = lazy(() => import("./pages/Imprest").then(m => ({ default: m.ImprestPage })));
+const AssessmentsPage  = lazy(() => import("./pages/Assessments").then(m => ({ default: m.AssessmentsPage })));
+const AnalyticsPage    = lazy(() => import("./pages/Analytics").then(m => ({ default: m.AnalyticsPage })));
+const StaffPage        = lazy(() => import("./pages/Staff").then(m => ({ default: m.StaffPage })));
+const SettingsPage     = lazy(() => import("./pages/Settings").then(m => ({ default: m.SettingsPage })));
+
+// Lightweight fallback for in-flight chunk loads — matches the boot skeleton
+// so the visual stays calm when the user crosses a page boundary.
+const PageFallback = () => (
+  <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+    <div className="w-5 h-5 mr-3 rounded-full border-2 border-gray-200 border-t-gray-500 animate-spin"/>
+    Loading…
+  </div>
+);
 
 export default function App(){
   const[page,        setPage]        =useState("dashboard");
@@ -408,6 +420,7 @@ export default function App(){
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-6">
+         <Suspense fallback={<PageFallback/>}>
           {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} inventory={inventory} users={users} staff={staff} onNav={setPage}/></ErrorBoundary>}
           {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
@@ -424,6 +437,7 @@ export default function App(){
           {page==="analytics"   &&<ErrorBoundary module="Analytics"><AnalyticsPage clients={clients} siteReports={siteReports} jobs={jobs} staff={staff} absences={absences} requests={requests}/></ErrorBoundary>}
           {page==="staff"       &&<ErrorBoundary module="Staff"><StaffPage staff={staff} setStaff={setStaff}/></ErrorBoundary>}
           {page==="settings"    &&<ErrorBoundary module="Settings"><SettingsPage users={users} setUsers={setUsers} activityLog={activityLog}/></ErrorBoundary>}
+         </Suspense>
         </main>
       </div>
     </div>
