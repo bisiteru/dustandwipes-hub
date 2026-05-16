@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
-import { GD, O, RED, FREQ_DAYS } from "./lib/constants";
+import { GD, O, RED } from "./lib/constants";
+import { computeAutoJobs } from "./lib/scheduler";
 import { drainOfflineQueue, getOfflineQueueDepth, OFFLINE_Q_KEY } from "./lib/offline";
 import { setSentryUser } from "./lib/sentry";
 import {
@@ -196,47 +197,12 @@ export default function App(){
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
 
   // -- Auto-schedule recurring jobs from contract service frequency -------------
-  // Runs whenever clients or jobs change (after initial DB load).
-  // Creates a "Scheduled" job for each active client whose serviceFreq window is due
-  // within the next 14 days and has no existing job already covering that window.
-  // Uses deterministic IDs (auto-{clientId}-{dueDate}) so re-runs are fully idempotent.
+  // Pure logic lives in `lib/scheduler.ts` so it's unit-tested in isolation.
+  // This effect is just the React glue: gate on dbLoaded, run the computation,
+  // and apply the result to state + Supabase.
   useEffect(()=>{
     if(!dbLoaded.current||clients.length===0)return;
-    const todayStr=new Date().toISOString().split("T")[0];
-    const today=new Date(todayStr);
-    const LOOKAHEAD=14;
-    // Partial<Job>[] — incremental record construction; fields like createdAt/sourceRequestId accrete later
-    const toAdd: Partial<Job>[]=[];
-    clients.forEach(client=>{
-      const freq=client.serviceFreq;
-      if(!freq||!FREQ_DAYS[freq])return; // no freq or One-Time
-      const expiry=client.ce?new Date(client.ce):null;
-      if(expiry&&expiry<today)return; // contract expired
-      const freqDays=FREQ_DAYS[freq]!;
-      // Last job for this client sorted most-recent first
-      const clientJobs=jobs.filter(j=>j.clientName===client.name&&j.date).sort((a,b)=>b.date!.localeCompare(a.date!));
-      let nextDue=new Date(today);
-      if(clientJobs.length>0){
-        const lastDate=new Date(clientJobs[0].date!);
-        nextDue=new Date(lastDate);
-        nextDue.setDate(nextDue.getDate()+freqDays);
-      }
-      // If overdue bring it to today; if beyond lookahead skip
-      if(nextDue<today)nextDue=new Date(today);
-      const windowEnd=new Date(today);
-      windowEnd.setDate(windowEnd.getDate()+LOOKAHEAD);
-      if(nextDue>windowEnd)return;
-      const nextDueStr=nextDue.toISOString().split("T")[0];
-      const autoId=`auto-${client.id}-${nextDueStr}`;
-      // Skip if this exact auto-job already exists
-      if(jobs.some(j=>j.id===autoId))return;
-      // Also skip if any non-closed job for this client already covers a ±3-day window
-      const winStart=new Date(nextDue);winStart.setDate(winStart.getDate()-3);
-      const winStartStr=winStart.toISOString().split("T")[0];
-      const covered=jobs.some(j=>j.clientName===client.name&&j.date&&j.date>=winStartStr&&j.date<=nextDueStr&&j.status!=="Closed");
-      if(covered)return;
-      toAdd.push({id:autoId,clientName:client.name,clientPhone:client.phone||"",loc:client.addr||"",svc:client.svc||"Cleaning",date:nextDueStr,sup:"",techs:"",status:"Scheduled",notes:`Auto-scheduled (${freq})`,autoScheduled:true,checkIn:null,checkOut:null});
-    });
+    const toAdd = computeAutoJobs({ clients, jobs });
     if(toAdd.length===0)return;
     setJobs(js=>{
       const existingIds=new Set(js.map(j=>j.id));
