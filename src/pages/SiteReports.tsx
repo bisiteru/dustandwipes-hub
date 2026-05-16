@@ -1,7 +1,3 @@
-// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
-// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
-// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
-// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Site Reports page
 //  Phase 4d extraction. The most complex form in the app — a multi-section
@@ -13,7 +9,7 @@
 //  lists used by the form.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
 import { Plus, Trash2, Eye, ClipboardList, X } from "lucide-react";
 import { G, GL, O, AMBER, RED, BLUE, inp } from "../lib/constants";
 import { fmtD } from "../lib/format";
@@ -23,6 +19,100 @@ import { Card, Fld, SBadge, StarRating, RadioG } from "../components/ui/primitiv
 import { ModalWrap } from "../components/ui/ModalWrap";
 import { ContactSearchSelect, StaffMultiPicker } from "../components/pickers";
 import { useConfirm } from "../components/ui/useConfirm";
+import type { SiteReport, Client, Staff, Contact, CurrentUser } from "../lib/schemas";
+
+// ── Local types ──────────────────────────────────────────────────────────────
+// Photos are stored as base64 data URLs + filename. Stored as `z.array(z.any())`
+// in the schema so we narrow them here for the form/viewer code paths.
+interface Photo {
+  data: string;
+  name: string;
+}
+
+// Section-by-section form draft. Mirrors the runtime SiteReport shape but
+// keeps the in-progress (pre-submit) view: no id/submittedAt yet, ratings
+// start at 0, photos always an array.
+interface SiteReportForm {
+  supervisorName: string;
+  supervisorEmail: string;
+  clientName: string;
+  address: string;
+  arrivalDate: string;
+  arrivalTime: string;
+  departureDate: string;
+  departureTime: string;
+  gpsLat: string;            // Stored as STRING (toFixed(6)), not number — careful with math
+  gpsLng: string;
+  gpsAcquired: boolean;
+  jobType: string;
+  contractType: string;
+  serviceCategory: string[];
+  cleaningTasks: string[];
+  pestTasks: string[];
+  otherTasks: string;
+  // Union: textarea path stores string; StaffMultiPicker stores string[]
+  crewMembers: string | string[];
+  equipment: string[];
+  supplies: string[];
+  pesticidesUsed: string;
+  activeIngredients: string;
+  cleanlinessRating: number;
+  adherenceRating: number;
+  qualityNotes: string;
+  ppeWorn: string;
+  safeHandling: string;
+  incidents: string;
+  incidentDetails: string;
+  clientPresent: string;
+  clientContactName: string;
+  clientFeedback: string;
+  satisfactionLevel: string;
+  additionalRequirements: string;
+  additionalReqDetails: string;
+  photos: Photo[];
+  operationalNotes: string;
+  overallAssessment: string;
+  signatureName: string;
+  signatureTimestamp: string;
+  staffChallenges: string;
+  recurringIssues: string;
+  followUpActions: string;
+  supervisorFeedback: string;
+  equipmentCondition: string;
+}
+
+// Keys whose values are string[] — used to type the toggle helper.
+type StringArrayKey = {
+  [K in keyof SiteReportForm]: SiteReportForm[K] extends string[] ? K : never;
+}[keyof SiteReportForm];
+
+// Keys whose values are strings — used to type the change-event helper.
+type StringKey = {
+  [K in keyof SiteReportForm]: SiteReportForm[K] extends string ? K : never;
+}[keyof SiteReportForm];
+
+interface SiteReportsPageProps {
+  reports: SiteReport[];
+  setReports: Dispatch<SetStateAction<SiteReport[]>>;
+  user: CurrentUser;
+  clients: Client[];
+  contacts?: Contact[];
+  staff?: Staff[];
+}
+
+interface SiteReportModalProps {
+  onSave: (data: SiteReport) => void;
+  onClose: () => void;
+  user: CurrentUser;
+  clients: Client[];
+  contacts?: Contact[];
+  staff?: Staff[];
+}
+
+interface SiteReportViewerProps {
+  report: SiteReport;
+  onClose: () => void;
+}
 
 // ── Form option lists ────────────────────────────────────────────────────────
 const EQUIPMENT_OPTS=["Vacuum Cleaner","Industrial Vacuum","Steam Cleaner","Scrubbing Machine","Pressure Washer","Carpet Extractor","Dryer/Blower","Power Extension Box","Spray Pump (Manual)","Spray Pump (Motorised)","Mop & Bucket Set","Ladder","Squeegee","Scrubbing Brushes","Telescopic Pole","Glass Scrubber","Hand Drill Machine","PPE Kit"];
@@ -32,46 +122,60 @@ const PEST_TASK_OPTS=["General Fumigation","Termite Treatment","Rodent Control",
 const SR_SECTIONS=["General Info","Job Details","Quality Control","Safety","Client Feedback","Photos & Notes","Confirmation"];
 
 // ── Local checkbox-group helper ─────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CheckGroup({options,value=[],onChange}:any){
-  const tog=o=>onChange(value.includes(o)?value.filter(v=>v!==o):[...value,o]);
+interface CheckGroupProps {
+  options: string[];
+  value?: string[];
+  onChange: (next: string[]) => void;
+}
+function CheckGroup({options,value=[],onChange}:CheckGroupProps){
+  const tog=(o:string)=>onChange(value.includes(o)?value.filter(v=>v!==o):[...value,o]);
   return <div className="grid grid-cols-2 gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${value.includes(o)?"border-green-500 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="checkbox" checked={value.includes(o)} onChange={()=>tog(o)} className="accent-green-600 flex-shrink-0"/>{o}</label>)}</div>;
 }
 
 
+interface ReportStats {
+  total: number;
+  completed: number;
+  flagged: number;
+  sites: number;
+  byInspector: Record<string, number>;
+}
+
 export
-function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:any){
-  const[showForm,setShowForm]=useState(false);const[view,setView]=useState(null);
+function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:SiteReportsPageProps){
+  const[showForm,setShowForm]=useState(false);
+  const[view,setView]=useState<SiteReport|null>(null);
   const[confirm,confirmEl]=useConfirm();
-  const[selMK,setSelMK]=useState(curMonthKey());
-  const getMK=r=>r.submittedAt;
+  const[selMK,setSelMK]=useState<string>(curMonthKey());
+  const getMK=(r:SiteReport):string|null|undefined=>r.submittedAt;
   // Auto-switch to most recent month with data if current month is empty
   useEffect(()=>{if(reports.length>0&&!reports.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(reports.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0] as string);}},[reports]); // eslint-disable-line react-hooks/exhaustive-deps
   const monthReports=reports.filter(r=>monthOf(r,getMK)===selMK);
-  const del=id=>confirm("Delete this report?",()=>{setReports(rs=>rs.filter(r=>r.id!==id));dbDelete("reports",id);});
+  const del=(id:SiteReport["id"])=>confirm("Delete this report?",()=>{setReports(rs=>rs.filter(r=>r.id!==id));dbDelete("reports",id);});
 
   // ── Stats helper for any report subset ────────────────────────────────────
-  const statsOf=list=>{
+  const statsOf=(list:SiteReport[]):ReportStats=>{
     const completed=list.filter(r=>r.overallAssessment==="Job Completed Successfully").length;
     const flagged=list.length-completed;
     const sites=new Set(list.map(r=>r.clientName).filter(Boolean)).size;
     const byInspector:Record<string,number>={};list.forEach(r=>{const k=r.supervisorName||"Unknown";byInspector[k]=(byInspector[k]||0)+1;});
     return{total:list.length,completed,flagged,sites,byInspector};
   };
-  const reportRow=r=>`<tr><td>${fmtD(r.submittedAt||r.arrivalDate)}</td><td>${r.clientName||"--"}</td><td>${r.supervisorName||"--"}</td><td>${r.jobType||"--"}</td><td>${(r.serviceCategory||[]).join(", ")||"--"}</td><td style="text-align:center">${r.cleanlinessRating||"-"}/5</td><td style="text-align:center">${r.adherenceRating||"-"}/5</td><td>${r.overallAssessment==="Job Completed Successfully"?"Completed":"Issues Noted"}</td></tr>`;
-  const reportTable=list=>`<table><thead><tr><th>Submitted</th><th>Client / Site</th><th>Inspector</th><th>Job Type</th><th>Services</th><th>Cleanliness</th><th>Adherence</th><th>Outcome</th></tr></thead><tbody>${list.map(reportRow).join("")}</tbody></table>`;
-  const kpisOf=s=>[{label:"Total Visits",value:s.total},{label:"Unique Sites",value:s.sites,color:BLUE},{label:"Completed",value:s.completed,color:"#16a34a"},{label:"Findings Flagged",value:s.flagged,color:s.flagged>0?RED:"#6b7280"}];
+  const reportRow=(r:SiteReport):string=>`<tr><td>${fmtD(r.submittedAt||r.arrivalDate)}</td><td>${r.clientName||"--"}</td><td>${r.supervisorName||"--"}</td><td>${r.jobType||"--"}</td><td>${(r.serviceCategory||[]).join(", ")||"--"}</td><td style="text-align:center">${r.cleanlinessRating||"-"}/5</td><td style="text-align:center">${r.adherenceRating||"-"}/5</td><td>${r.overallAssessment==="Job Completed Successfully"?"Completed":"Issues Noted"}</td></tr>`;
+  const reportTable=(list:SiteReport[]):string=>`<table><thead><tr><th>Submitted</th><th>Client / Site</th><th>Inspector</th><th>Job Type</th><th>Services</th><th>Cleanliness</th><th>Adherence</th><th>Outcome</th></tr></thead><tbody>${list.map(reportRow).join("")}</tbody></table>`;
+  const kpisOf=(s:ReportStats)=>[{label:"Total Visits",value:s.total},{label:"Unique Sites",value:s.sites,color:BLUE},{label:"Completed",value:s.completed,color:"#16a34a"},{label:"Findings Flagged",value:s.flagged,color:s.flagged>0?RED:"#6b7280"}];
 
   const printMonth=()=>{
     if(monthReports.length===0){alert(`No reports for ${mkLabel(selMK)}`);return;}
     const s=statsOf(monthReports);
-    const inspectors=Object.entries(s.byInspector).sort((a:any,b:any)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(", ")||"--";
+    const inspectors=Object.entries(s.byInspector).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(", ")||"--";
     openPrintWin(buildReportHtml({moduleName:"Site Reports",periodLabel:mkLabel(selMK),summaryKpis:kpisOf(s),sections:[{label:"Reports for "+mkLabel(selMK),table:reportTable(monthReports),note:"By Inspector: "+inspectors}]}));
   };
   const printAll=()=>{
     if(reports.length===0){alert("No reports yet");return;}
     const s=statsOf(reports);
-    const byMonth={};reports.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(r);});
+    const byMonth:Record<string,SiteReport[]>={};
+    reports.forEach(r=>{const mk=monthOf(r,getMK);if(!mk)return;(byMonth[mk]=byMonth[mk]||[]).push(r);});
     const months=Object.keys(byMonth).sort().reverse();
     openPrintWin(buildReportHtml({moduleName:"Site Reports",periodLabel:"All History",summaryKpis:kpisOf(s),sections:months.map(mk=>{const sub=statsOf(byMonth[mk]);return{label:mkLabel(mk)+` — ${sub.total} report${sub.total!==1?"s":""}`,kpis:kpisOf(sub),table:reportTable(byMonth[mk])};})}));
   };
@@ -125,14 +229,14 @@ function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:
     {view&&<SiteReportViewer report={view} onClose={()=>setView(null)}/>}
   </div>);}
 
-function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:any){
+function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:SiteReportModalProps){
   const[sec,setSec]=useState(0);
   const[gpsLoading,setGpsLoading]=useState(false);
-  const[f,setF]=useState({
+  const[f,setF]=useState<SiteReportForm>({
     supervisorName:user.name, supervisorEmail:user.email||"",
     clientName:"",address:"",
-    arrivalDate:new Date().toISOString().split("T")[0],arrivalTime:"",
-    departureDate:new Date().toISOString().split("T")[0],departureTime:"",
+    arrivalDate:new Date().toISOString().split("T")[0]||"",arrivalTime:"",
+    departureDate:new Date().toISOString().split("T")[0]||"",departureTime:"",
     gpsLat:"",gpsLng:"",gpsAcquired:false,
     jobType:"",contractType:"",serviceCategory:[],
     cleaningTasks:[],pestTasks:[],otherTasks:"",
@@ -146,29 +250,36 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:any)
     overallAssessment:"",signatureName:"",signatureTimestamp:"",
     staffChallenges:"",recurringIssues:"",followUpActions:"",supervisorFeedback:"",equipmentCondition:"",
   });
-  const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  const tog=k=>v=>setF(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
+  const u=<K extends StringKey>(k:K)=>(e:ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>setF(p=>({...p,[k]:e.target.value}));
+  const tog=<K extends StringArrayKey>(k:K)=>(v:string)=>setF(p=>{const arr=p[k] as string[];return{...p,[k]:arr.includes(v)?arr.filter(x=>x!==v):[...arr,v]};});
 
   const acquireGPS=()=>{
     setGpsLoading(true);
     if(navigator.geolocation){
       navigator.geolocation.getCurrentPosition(
-        pos=>{setF(p=>({...p,gpsLat:pos.coords.latitude.toFixed(6),gpsLng:pos.coords.longitude.toFixed(6),gpsAcquired:true}));setGpsLoading(false);},
+        (pos:GeolocationPosition)=>{setF(p=>({...p,gpsLat:pos.coords.latitude.toFixed(6),gpsLng:pos.coords.longitude.toFixed(6),gpsAcquired:true}));setGpsLoading(false);},
         ()=>{setF(p=>({...p,gpsLat:"9.076500",gpsLng:"7.398760",gpsAcquired:true}));setGpsLoading(false);}
       );
     } else {setF(p=>({...p,gpsLat:"9.076500",gpsLng:"7.398760",gpsAcquired:true}));setGpsLoading(false);}
   };
 
-  const addPhotos=e=>{
-    Array.from((e.target.files||[]) as ArrayLike<File>).forEach((file:File)=>{
+  const addPhotos=(e:ChangeEvent<HTMLInputElement>)=>{
+    const fileList=e.target.files;
+    if(!fileList)return;
+    Array.from(fileList).forEach((file:File)=>{
       if(f.photos.length>=10)return;
       const reader=new FileReader();
-      reader.onload=(ev:any)=>setF(p=>({...p,photos:[...p.photos,{data:ev.target.result,name:file.name}]}));
+      reader.onload=(ev:ProgressEvent<FileReader>)=>{
+        const result=ev.target?.result;
+        if(typeof result!=="string")return;
+        setF(p=>({...p,photos:[...p.photos,{data:result,name:file.name}]}));
+      };
+      reader.onerror=()=>{console.warn("[SiteReport] Failed to read photo:",file.name);};
       reader.readAsDataURL(file);
     });
     e.target.value="";
   };
-  const removePhoto=i=>setF(p=>({...p,photos:p.photos.filter((_,idx)=>idx!==i)}));
+  const removePhoto=(i:number)=>setF(p=>({...p,photos:p.photos.filter((_,idx)=>idx!==i)}));
 
   const hasCleaning=f.serviceCategory.includes("Cleaning");
   const hasPest=f.serviceCategory.includes("Pest Control");
@@ -200,7 +311,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:any)
   const activeCanNext=isInspection?canNextInspection:canNext;
 
   const submit=async()=>{
-    const reportData={...f,id:Date.now(),submittedAt:new Date().toISOString(),
+    const reportData:SiteReport={...f,id:String(Date.now()),submittedAt:new Date().toISOString(),
       signatureTimestamp:new Date().toLocaleString("en-GB")};
     onSave(reportData);
     // Fire-and-forget: email full report to admin + supervisors via Edge Function
@@ -209,7 +320,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:any)
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_ANON_KEY}`},
         body:JSON.stringify({report:reportData})
-      }).then(r=>r.ok?console.log("[App] Report emailed "):console.warn("[App] Email error:",r.status));
+      }).then(r=>r.ok?console.log("[App] Report emailed "):console.warn("[App] Email error:",r.status)).catch(err=>console.warn("[App] Email request failed:",err));
     }catch(e){console.warn("[App] Site report email (non-blocking):",e);}
   };
 
@@ -249,7 +360,7 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:any)
             <Fld label="Supervisor Name"><input className={inp} value={f.supervisorName} onChange={u("supervisorName")}/></Fld>
             <Fld label="Supervisor Email"><input className={inp} type="email" value={f.supervisorEmail} onChange={u("supervisorEmail")}/></Fld>
             <Fld label="Client / Site" col required>
-            <ContactSearchSelect value={f.clientName} onSelect={name=>{const c=clients.find(c=>c.name===name);const ct=((window as any).__DW_CONTACTS__||contacts||[]).find(c=>c.name===name);setF(p=>({...p,clientName:name,address:c?c.addr:ct?ct.address:""}));}} clients={clients} contacts={contacts}/>
+            <ContactSearchSelect value={f.clientName} onSelect={name=>{const c=clients.find((c:Client)=>c.name===name);const dbContacts:Contact[]=(window as any).__DW_CONTACTS__||contacts||[];const ct=dbContacts.find((c:Contact)=>c.name===name);setF(p=>({...p,clientName:name,address:c?(c.addr||""):ct?(ct.address||""):""}));}} clients={clients} contacts={contacts}/>
           </Fld>
             <Fld label="Site Address" col><input className={inp} value={f.address} onChange={u("address")} placeholder="Auto-filled from client  edit if different"/></Fld>
             {/* GPS */}
@@ -540,12 +651,12 @@ function SiteReportModal({onSave,onClose,user,clients,contacts=[],staff=[]}:any)
     </div>
   </div>);}
 
-function SiteReportViewer({report:r,onClose}:any){
-  const[photoIdx,setPhotoIdx]=useState(null);
-  const photos=r.photos||[];
+function SiteReportViewer({report:r,onClose}:SiteReportViewerProps){
+  const[photoIdx,setPhotoIdx]=useState<number|null>(null);
+  const photos:Photo[]=(r.photos as Photo[]|undefined)||[];
   const score=r.cleanlinessRating&&r.adherenceRating?((r.cleanlinessRating+r.adherenceRating)/2).toFixed(1):null;
-  const sectionBlock=(title,children)=><div className="mb-5"><h3 className="text-xs font-black uppercase tracking-widest mb-3 pb-2 border-b" style={{color:G}}>{title}</h3>{children}</div>;
-  const row=(l,v)=>v?<div key={l} className="flex gap-3 mb-2"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0 pt-0.5">{l}</span><span className="text-sm text-gray-700">{v}</span></div>:null;
+  const sectionBlock=(title:string,children:React.ReactNode)=><div className="mb-5"><h3 className="text-xs font-black uppercase tracking-widest mb-3 pb-2 border-b" style={{color:G}}>{title}</h3>{children}</div>;
+  const row=(l:string,v:React.ReactNode)=>v?<div key={l} className="flex gap-3 mb-2"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0 pt-0.5">{l}</span><span className="text-sm text-gray-700">{v}</span></div>:null;
   return(<ModalWrap title={`Report -- ${r.clientName||"Unknown"}`} onClose={onClose} xl>
     <div className="text-sm">
       {sectionBlock("Section 1 -- General Information",<>
@@ -601,8 +712,8 @@ function SiteReportViewer({report:r,onClose}:any){
     {photoIdx!==null&&<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200]" onClick={()=>setPhotoIdx(null)}>
       <img src={photos[photoIdx].data} alt="" className="max-w-full max-h-full rounded-xl" onClick={e=>e.stopPropagation()}/>
       <button onClick={()=>setPhotoIdx(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-lg"></button>
-      {photoIdx>0&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i-1);}} className="absolute left-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"></button>}
-      {photoIdx<photos.length-1&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i+1);}} className="absolute right-16 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"></button>}
+      {photoIdx>0&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i===null?i:i-1);}} className="absolute left-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"></button>}
+      {photoIdx<photos.length-1&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i===null?i:i+1);}} className="absolute right-16 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"></button>}
     </div>}
   </ModalWrap>);}
 
