@@ -23,6 +23,9 @@ export const queueOfflineAction = (type: string, data: any): void => {
     const q: QueuedAction[] = JSON.parse(localStorage.getItem(OFFLINE_Q_KEY) || "[]");
     q.push({ type, data, queuedAt: new Date().toISOString() });
     localStorage.setItem(OFFLINE_Q_KEY, JSON.stringify(q));
+    // Notify the App shell so its queue-depth indicator updates immediately.
+    // The native `storage` event only fires cross-tab; this covers same-tab.
+    try { window.dispatchEvent(new CustomEvent("dw-offline-queue-changed")); } catch {}
     if ("serviceWorker" in navigator && "SyncManager" in window) {
       navigator.serviceWorker.ready
         .then(r => (r as any).sync.register("dw-job-sync").catch(() => {}))
@@ -59,9 +62,24 @@ export const drainOfflineQueue = (
       return updated;
     });
     localStorage.removeItem(OFFLINE_Q_KEY);
+    try { window.dispatchEvent(new CustomEvent("dw-offline-queue-changed")); } catch {}
     return q.length;
   } catch (e: any) {
     console.warn("[Offline] Queue drain:", e.message);
+    return 0;
+  }
+};
+
+/**
+ * Read the current depth of the offline queue without draining it.
+ * Used by the App shell to badge "Offline · N pending" so technicians
+ * can see at a glance whether they have work waiting to sync.
+ */
+export const getOfflineQueueDepth = (): number => {
+  try {
+    const q: QueuedAction[] = JSON.parse(localStorage.getItem(OFFLINE_Q_KEY) || "[]");
+    return Array.isArray(q) ? q.length : 0;
+  } catch {
     return 0;
   }
 };

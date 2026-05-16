@@ -18,7 +18,7 @@ import {
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
 import { GD, O, RED, FREQ_DAYS } from "./lib/constants";
-import { drainOfflineQueue } from "./lib/offline";
+import { drainOfflineQueue, getOfflineQueueDepth, OFFLINE_Q_KEY } from "./lib/offline";
 import {
   SUPABASE_URL, SUPABASE_ANON_KEY, T,
   dbLoad, dbSync,
@@ -100,6 +100,9 @@ export default function App(){
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
+  // Depth of the localStorage offline-action queue. Mirrored into state so the
+  // header indicator can show "Offline · N pending" without polling.
+  const[queueDepth,  setQueueDepth]  =useState<number>(()=>getOfflineQueueDepth());
   const[readIds,     setReadIds]     =useState<string[]>(()=>{try{const s=localStorage.getItem("dw_readNotifs");return s?JSON.parse(s):[];}catch{return[];}});
   const[dbStatus,    setDbStatus]    =useState<"ok"|"error"|"loading">("ok");
   const[dbLoading,   setDbLoading]   =useState(true);
@@ -271,28 +274,43 @@ export default function App(){
       const n=drainOfflineQueue(setJobs, dbSync);
       if(n>0)Toaster._add?.(`${n} offline action${n>1?"s":""} synced`,"success");
     }
+    const refreshQueueDepth=()=>setQueueDepth(getOfflineQueueDepth());
     const handleOnline=()=>{
       setIsOnline(true);
       const n=drainOfflineQueue(setJobs, dbSync);
-      if(n>0)Toaster._add?.(`${n} offline action${n>1?"s":""} synced to server`,"success");
+      if(n>0)Toaster._add?.(`Back online — ${n} queued action${n>1?"s":""} synced to server`,"success");
+      refreshQueueDepth();
     };
     const handleOffline=()=>{
       setIsOnline(false);
-      Toaster._add?.("You are offline — actions will sync when reconnected","info");
+      Toaster._add?.("You are offline — actions will queue and sync when reconnected","info");
+      refreshQueueDepth();
     };
     // Service Worker background-sync message handler
     const handleSwMessage=(e:any)=>{
       if(e.data?.type==="DW_DRAIN_OFFLINE_QUEUE"){
         const n=drainOfflineQueue(setJobs, dbSync);
         if(n>0)Toaster._add?.(`${n} queued action${n>1?"s":""} synced via background sync`,"success");
+        refreshQueueDepth();
       }
     };
+    // Same-tab storage write detection — covers the case where the queue grows
+    // inside the current tab (the browser-native `storage` event only fires
+    // cross-tab). We listen for a custom event that queueOfflineAction emits.
+    const handleQueueChange=()=>refreshQueueDepth();
+    // Cross-tab updates
+    const handleStorage=(e:StorageEvent)=>{ if(e.key===OFFLINE_Q_KEY) refreshQueueDepth(); };
+
     window.addEventListener("online",handleOnline);
     window.addEventListener("offline",handleOffline);
+    window.addEventListener("storage",handleStorage);
+    window.addEventListener("dw-offline-queue-changed",handleQueueChange);
     navigator.serviceWorker?.addEventListener("message",handleSwMessage);
     return()=>{
       window.removeEventListener("online",handleOnline);
       window.removeEventListener("offline",handleOffline);
+      window.removeEventListener("storage",handleStorage);
+      window.removeEventListener("dw-offline-queue-changed",handleQueueChange);
       navigator.serviceWorker?.removeEventListener("message",handleSwMessage);
     };
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -408,13 +426,37 @@ export default function App(){
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* Mobile-only offline banner. Stays under the header on desktop where
+            the small pill is enough; on phones the bar is impossible to miss. */}
+        {!isOnline && (
+          <div className="md:hidden flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold" style={{background:"#fef3c7",color:"#92400e",borderBottom:"1px solid #fde68a"}}>
+            <WifiOff size={12}/>
+            <span>Offline mode</span>
+            {queueDepth>0 && <span>· {queueDepth} pending</span>}
+          </div>
+        )}
         <header className="h-16 bg-white border-b border-gray-100 flex items-center px-3 sm:px-6 gap-2 sm:gap-4 flex-shrink-0 shadow-sm">
           <button onClick={()=>setSidebar(o=>!o)} aria-label="Toggle navigation" className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><Menu size={18}/></button>
           <div className="flex-1 min-w-0"><h1 className="font-bold text-gray-700 text-sm">{pageTitle}</h1><p className="text-xs text-gray-400 hidden sm:block">{APP_NAME}  {APP_SUB}</p></div>
           <button onClick={()=>setShowSearch(true)} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors text-xs text-gray-400" title="Search (⌘K)"><Search size={13}/><span>Search</span><kbd className="ml-1 font-mono text-gray-300 text-xs">⌘K</kbd></button>
           <div className="flex items-center gap-2">
-            {/* Offline banner */}
-            {!isOnline&&<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold animate-fade-in" style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a"}}><WifiOff size={12}/>Offline</div>}
+            {/* Offline / queue-depth pill */}
+            {!isOnline && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold animate-fade-in" style={{background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a"}} title={queueDepth>0 ? `${queueDepth} action${queueDepth>1?"s":""} waiting to sync` : "No network — changes will queue"}>
+                <WifiOff size={12}/>
+                <span>Offline</span>
+                {queueDepth>0 && (
+                  <span className="ml-1 px-1.5 rounded-full text-white font-bold" style={{background:"#92400e",fontSize:"10px"}}>{queueDepth}</span>
+                )}
+              </div>
+            )}
+            {/* Online but queue still draining — shows briefly as actions reconcile */}
+            {isOnline && queueDepth > 0 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold animate-fade-in" style={{background:"#dbeafe",color:"#1e40af",border:"1px solid #bfdbfe"}} title="Syncing queued offline actions">
+                <div className="w-3 h-3 rounded-full border-2 border-blue-300 border-t-blue-700 animate-spin"/>
+                Syncing {queueDepth}
+              </div>
+            )}
             {/* DB status dot */}
             <div className="flex items-center gap-1.5 mr-2">
               <div className="w-2 h-2 rounded-full" style={{background:dbStatus==="ok"?"#22c55e":dbStatus==="error"?"#ef4444":"#f59e0b"}}/>
