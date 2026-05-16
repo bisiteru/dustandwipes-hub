@@ -6,6 +6,7 @@
 
 import React, { Component, ReactNode, ErrorInfo } from "react";
 import { G } from "../../lib/constants";
+import { captureException } from "../../lib/sentry";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -30,6 +31,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("[ErrorBoundary]", error, info);
+    // Forward to Sentry with the module name so we can group / filter by page.
+    // No-op when Sentry isn't initialized (dev, or DSN unset).
+    captureException(error, {
+      module: this.props.module || "unknown",
+      componentStack: info.componentStack,
+    });
   }
 
   reset = () => this.setState({ hasError: false, error: null });

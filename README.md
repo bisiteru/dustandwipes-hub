@@ -15,6 +15,12 @@ Requires a `.env.local` with `REACT_APP_SUPABASE_URL` and
 `REACT_APP_SUPABASE_ANON_KEY` (mirror these in Vercel → Settings →
 Environment Variables for Production / Preview / Development).
 
+**Optional — error reporting**: set `REACT_APP_SENTRY_DSN` to enable
+Sentry. Only fires in production builds (`NODE_ENV === "production"`);
+dev errors stay loud in the console. Optional siblings:
+`REACT_APP_SENTRY_ENV` (defaults to `"production"`) and
+`REACT_APP_SENTRY_RELEASE` (commit SHA for release tagging).
+
 ## Architecture
 
 After the Phase 1–5 TypeScript migration, the codebase is organized as:

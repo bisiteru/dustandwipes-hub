@@ -19,6 +19,7 @@ import {
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
 import { GD, O, RED, FREQ_DAYS } from "./lib/constants";
 import { drainOfflineQueue, getOfflineQueueDepth, OFFLINE_Q_KEY } from "./lib/offline";
+import { setSentryUser } from "./lib/sentry";
 import {
   SUPABASE_URL, SUPABASE_ANON_KEY, T,
   dbLoad, dbSync,
@@ -326,7 +327,7 @@ export default function App(){
   // Global ⌘K / Ctrl+K shortcut to open search
   useEffect(()=>{const h=(e:any)=>{if((e.metaKey||e.ctrlKey)&&e.key==="k"){e.preventDefault();setShowSearch(s=>!s);}if(e.key==="Escape")setShowSearch(false);};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
 
-  const handleLogin=(u:any)=>{setUser(u);setPage("dashboard");};
+  const handleLogin=(u:any)=>{setUser(u);setPage("dashboard");setSentryUser(u);};
 
   // Show loading screen FIRST so users[] is fully populated from DB before login renders.
   // This ensures the local-hash fallback has access to pwHash stored in Supabase.
@@ -417,10 +418,10 @@ export default function App(){
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{background:O}}>{user.initial}</div>
               <div className="flex-1 min-w-0 overflow-hidden"><div className="text-white text-xs font-semibold truncate">{user.name}</div><div className="text-xs truncate" style={{color:"#6EAD7E"}}>{user.role}</div></div>
-              <button onClick={()=>setUser(null)} style={{color:"#6EAD7E"}} className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 hover:bg-white/10 hover:!text-white transition-colors"><LogOut size={14}/></button>
+              <button onClick={()=>{setUser(null);setSentryUser(null);}} style={{color:"#6EAD7E"}} className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 hover:bg-white/10 hover:!text-white transition-colors"><LogOut size={14}/></button>
             </div>
           ):(
-            <button onClick={()=>setUser(null)} className="w-full flex justify-center py-1" style={{color:"#6EAD7E"}}><LogOut size={16}/></button>
+            <button onClick={()=>{setUser(null);setSentryUser(null);}} className="w-full flex justify-center py-1" style={{color:"#6EAD7E"}}><LogOut size={16}/></button>
           )}
         </div>
       </aside>
