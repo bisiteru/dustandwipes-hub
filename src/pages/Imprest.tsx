@@ -15,6 +15,8 @@ import { StaffSelect } from "../components/pickers";
 import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
 import type { Imprest, Staff } from "../lib/schemas";
+// Money math lives in lib/imprest-calc.ts so it's unit-tested without React.
+import { sumExpenses, sumTopups, getPrevBal as libGetPrevBal } from "../lib/imprest-calc";
 
 // ── Local types for embedded sub-records ─────────────────────────────────────
 // expenses[] and topups[] are typed as z.array(z.any()) in the Zod schema.
@@ -82,10 +84,6 @@ interface ManagerSummary {
   accounts: number;
 }
 
-const sumExpenses = (xs: Expense[] | undefined): number =>
-  (xs || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-const sumTopups = (xs: Topup[] | undefined): number =>
-  (xs || []).reduce((s, t) => s + (Number(t.amount) || 0), 0);
 
 export function ImprestPage({ imprests, setImprests, staff = [] }: ImprestPageProps) {
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -124,15 +122,8 @@ export function ImprestPage({ imprests, setImprests, staff = [] }: ImprestPagePr
 
   const monthRecs: Imprest[] = imprests.filter(i => mKey(i) === selMK);
 
-  const getPrevBal = (holder: string, beforeMK: string): number => {
-    const prev = imprests
-      .filter(i => mKey(i) < beforeMK && i.holder === holder)
-      .sort((a, b) => mKey(b).localeCompare(mKey(a)));
-    if (!prev.length) return 0;
-    const p = prev[0];
-    const spent = sumExpenses(p.expenses as Expense[] | undefined);
-    return Math.max(0, (Number(p.amount) || 0) - spent);
-  };
+  const getPrevBal = (holder: string, beforeMK: string): number =>
+    libGetPrevBal(imprests, holder, beforeMK, curMK);
 
   const addExpense = (id: string, exp: Expense): void => {
     const u = imprests.map(i => String(i.id) === id ? { ...i, expenses: [...((i.expenses as Expense[]) || []), exp] } : i);
