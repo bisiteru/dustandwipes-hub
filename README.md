@@ -1,70 +1,102 @@
-# Getting Started with Create React App
+# Dust & Wipes — Operations Hub
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Internal operations app for cleaning + pest control fieldwork management.
+React 19 SPA on Create React App, Supabase backend, deployed to Vercel.
 
-## Available Scripts
+## Run locally
 
-In the project directory, you can run:
+```bash
+npm install
+npm start          # dev server on http://localhost:3000
+CI=true npm run build   # production build (matches Vercel's pipeline)
+```
 
-### `npm start`
+Requires a `.env.local` with `REACT_APP_SUPABASE_URL` and
+`REACT_APP_SUPABASE_ANON_KEY` (mirror these in Vercel → Settings →
+Environment Variables for Production / Preview / Development).
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Architecture
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+After the Phase 1–5 TypeScript migration, the codebase is organized as:
 
-### `npm test`
+```
+src/
+  App.tsx                     ← root shell: state, routing, Supabase lifecycle
+  index.tsx                   ← React entry
+  index.css                   ← Tailwind imports
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+  lib/                        ← Pure utilities (no React unless suffixed .tsx)
+    schemas.ts                ← Zod schemas for all 15 dw_* tables
+    supabase.ts               ← dbLoad/dbSync/dbDelete + storage upload
+    constants.ts              ← Colors, MONTHS, FREQ_DAYS, JOB_STATUSES, inp
+    format.ts                 ← fmt/fmtD/fmtT/fmtDT/cStatus/dLeft
+    auth.ts                   ← hashPw (Web Crypto SHA-256)
+    offline.ts                ← localStorage queue + Background Sync
+    monthly.tsx               ← MonthTabs/PrintReportButtons + helpers
+    logo.ts                   ← Inline base64 LOGO + APP_NAME/APP_SUB
+    seeds.ts                  ← INITIAL_USERS / SEED_STAFF / INITIAL_SUPPLY_MASTER
 
-### `npm run build`
+  components/
+    ui/
+      primitives.tsx          ← Card, Fld, SBadge, KPI, RadioG, StarRating, SaveBtn
+      ModalWrap.tsx           ← Modal shell
+      Toaster.tsx             ← <Toaster/> + useToast hook
+      useConfirm.tsx          ← ConfirmModal + useConfirm hook
+      ErrorBoundary.tsx       ← Per-page crash isolation
+    pickers.tsx               ← StaffSelect, StaffMultiPicker, ContactSearchSelect
+    GlobalSearch.tsx          ← ⌘K palette
+    NotifPanel.tsx            ← Bell-icon dropdown + buildNotifs()
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+  pages/                      ← One file per top-level module (16 pages)
+    Login.tsx          Dashboard.tsx     Clients.tsx
+    Contracts.tsx      Requests.tsx      Jobs.tsx
+    Schedule.tsx       SiteReports.tsx   Inventory.tsx
+    Requisitions.tsx   AbsenceCover.tsx  Birthdays.tsx
+    Imprest.tsx        Assessments.tsx   Analytics.tsx
+    Staff.tsx          Settings.tsx
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Data validation
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Every record read from / written to Supabase passes through a Zod schema
+(see `src/lib/schemas.ts`). Mode is **coerce-and-warn**:
 
-### `npm run eject`
+- Numeric strings are auto-coerced (`"100"` → `100`)
+- Missing fields fall back to safe defaults via `.catch()`
+- Bad rows log a single warning but never break the UI
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+This kills the entire class of bugs that previously caused things like the
+₦228-quadrillion portfolio total (string concatenation in a sum reducer).
+Phase 4 of the migration also surfaced and fixed ~12 latent type bugs.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Modules
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+| Module | What it does |
+|---|---|
+| Dashboard | Today's jobs, contract alerts, low-stock, KPIs |
+| Clients | Roster + contact directory + ContactSearchSelect autocomplete |
+| Contracts | Status filter + Renew modal |
+| Requests | Inbound service requests → convert to jobs |
+| Jobs | Monthly-tabbed, with GPS check-in/out for technicians |
+| Schedule | Recurring pest-control visits with auto-next-due |
+| Site Reports | Multi-section inspection form + photo upload + PDF reports |
+| Inventory | Stock + low-stock alerts |
+| Requisitions | Monthly supply requisitions + approval workflow |
+| Absence & Cover | Staff absences + cover assignments + CSV export |
+| Birthdays | DOB tracking per staff |
+| Imprest Fund | Monthly imprest accounts + carry-forward + expenses |
+| Site Assessments | Pre-job assessment wizard + convert to Service Request |
+| Analytics | KPI grid + Recharts visualizations |
+| Staff | Field employee directory + payroll CSV export |
+| Settings | App-user CRUD + activity log |
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Deploy
 
-## Learn More
+Pushed commits on `main` auto-deploy to Vercel. Before pushing:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```bash
+rm -rf node_modules build && npm ci && CI=true npm run build
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+This matches Vercel's pipeline exactly (clean install + warnings-as-errors).
+Never push without it.

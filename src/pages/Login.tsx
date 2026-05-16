@@ -10,10 +10,8 @@ import { G, O, inp } from "../lib/constants";
 import { cStatus } from "../lib/format";
 import { hashPw } from "../lib/auth";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
+import { LOGO } from "../lib/logo";
 import { Fld } from "../components/ui/primitives";
-
-// LOGO data is still in App.js — passed in via props until Phase 5 cleanup.
-declare const LOGO: string;
 
 export
 function LoginScreen({onLogin,users,clients}){
