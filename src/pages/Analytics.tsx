@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Analytics page
 //  Phase 4b extraction. KPI grid + Recharts visualizations + full revenue
@@ -13,7 +17,7 @@ import { Card, SBadge } from "../components/ui/primitives";
 
 
 export
-function AnalyticsPage({clients,siteReports,jobs,staff,absences=[],requests=[]}){
+function AnalyticsPage({clients,siteReports,jobs,staff,absences=[],requests=[]}:any){
   // Coerce numeric fields once so all downstream sums / sorts are safe against legacy strings
   const ws=useMemo(()=>clients.map(c=>({...c,tot:Number(c.tot)||0,sal:Number(c.sal)||0,con:Number(c.con)||0,sc:Number(c.sc)||0,vat:Number(c.vat)||0,status:cStatus(c.ce)})),[clients]);
   const top=[...ws].sort((a,b)=>b.tot-a.tot).slice(0,7);

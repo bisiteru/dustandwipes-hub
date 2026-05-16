@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Settings page
 //  Phase 4c extraction. App-user CRUD (Admin/Supervisor/Technician) with
@@ -14,7 +18,7 @@ import { ModalWrap } from "../components/ui/ModalWrap";
 import { useConfirm } from "../components/ui/useConfirm";
 
 export
-function SettingsPage({users,setUsers,activityLog=[]}){
+function SettingsPage({users,setUsers,activityLog=[]}:any){
   const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();
   const rc={"Admin":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Supervisor":{bg:"#fff7ed",color:"#9a3412",border:"#fed7aa"},"Technician":{bg:"#eff6ff",color:"#1e40af",border:"#bfdbfe"}};
   const save=async data=>{

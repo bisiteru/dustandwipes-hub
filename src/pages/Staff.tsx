@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Staff page
 //  Phase 4b extraction. Field employee directory with full CRUD + sensitive
@@ -17,7 +21,7 @@ import { useConfirm } from "../components/ui/useConfirm";
 
 
 export
-function StaffPage({staff,setStaff}){
+function StaffPage({staff,setStaff}:any){
   const[tab,setTab]=useState("cleaning");const[modal,setModal]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();const[payrollMonth,setPayrollMonth]=useState(()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;})
   const[search,setSearch]=useState("");
   const CATEGORIES=["Office Staff","Cleaning Staff","Gardening Staff"];

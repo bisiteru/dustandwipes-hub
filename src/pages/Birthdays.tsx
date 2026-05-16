@@ -18,9 +18,9 @@ type Row = Record<string, any>;
 
 interface BirthdaysPageProps {
   users: Row[];
-  setUsers: (u: Row[]) => void;       // currently unused; kept for prop-shape compat
+  setUsers: React.Dispatch<React.SetStateAction<any[]>>;       // currently unused; kept for prop-shape compat
   staff: Row[];
-  setStaff: (s: Row[]) => void;
+  setStaff: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 export function BirthdaysPage({ staff, setStaff }: BirthdaysPageProps) {

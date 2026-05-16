@@ -47,7 +47,7 @@ export function StaffSelect({
   value,
   onChange,
   placeholder = "-- Select staff --",
-  filter = null as ((s: StaffLike) => boolean) | null,
+  filter,
 }: StaffSelectProps) {
   const list = filter ? staff.filter(filter) : staff;
   return (

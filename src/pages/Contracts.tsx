@@ -14,7 +14,8 @@ type Client = Record<string, any>;
 
 interface ContractsPageProps {
   clients: Client[];
-  setClients: (clients: Client[]) => void;
+  // Accept React.Dispatch<SetStateAction<...>> from parent (supports both value and updater forms)
+  setClients: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 export function ContractsPage({ clients, setClients }: ContractsPageProps) {

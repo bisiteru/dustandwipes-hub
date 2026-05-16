@@ -19,11 +19,16 @@ import { z } from "zod";
 // ── Reusable field primitives ────────────────────────────────────────────────
 // num: coerces "100" → 100, null/undefined/garbage → 0
 const num = z.coerce.number().catch(0);
-const numOpt = z.coerce.number().catch(0).optional();
+// numOpt → field always present after parse (0 default). Kept the name for
+// migration ergonomics; the `Opt` historically meant "optional in DB", not
+// "may be undefined at runtime". Phase 5b made the runtime type non-optional
+// so strict-null TypeScript stays tractable across 16 pages of code.
+const numOpt = z.coerce.number().catch(0);
 
 // str: coerces 123 → "123", null/undefined → ""
 const str = z.coerce.string().catch("");
-const strOpt = z.coerce.string().catch("").optional();
+// strOpt: same convention as numOpt — always returns a string (empty default).
+const strOpt = z.coerce.string().catch("");
 
 // ID can come in as string (most rows) or number (legacy site reports)
 const idField = z.union([z.string(), z.number()]).transform(String).catch("");
@@ -32,7 +37,7 @@ const idField = z.union([z.string(), z.number()]).transform(String).catch("");
 const bool = z.coerce.boolean().catch(false);
 
 // String array — defaults to [] if anything weird shows up
-const strArr = z.array(z.string()).catch([]).optional();
+const strArr = z.array(z.string()).catch([]).default([]);
 
 // ── 1. Clients ───────────────────────────────────────────────────────────────
 export const ClientSchema = z.object({
@@ -311,6 +316,43 @@ export const SCHEMAS = {
 } as const;
 
 export type TableName = keyof typeof SCHEMAS;
+
+// ── Typed record aliases derived from each schema ────────────────────────────
+// These are the runtime-validated shapes that flow through the React tree.
+// Use these in component props and useState() generics instead of `any[]`.
+export type Client       = z.infer<typeof ClientSchema>;
+export type Job          = z.infer<typeof JobSchema>;
+export type AppUser      = z.infer<typeof UserSchema>;
+export type Staff        = z.infer<typeof StaffSchema>;
+export type Request_     = z.infer<typeof RequestSchema>;  // `Request` clashes with the DOM global
+export type SiteReport   = z.infer<typeof SiteReportSchema>;
+export type Imprest      = z.infer<typeof ImprestSchema>;
+export type Inventory    = z.infer<typeof InventorySchema>;
+export type Requisition  = z.infer<typeof RequisitionSchema>;
+export type SupplyItem   = z.infer<typeof SupplyItemSchema>;
+export type Schedule     = z.infer<typeof ScheduleSchema>;
+export type Absence      = z.infer<typeof AbsenceSchema>;
+export type Cover        = z.infer<typeof CoverSchema>;
+export type Assessment   = z.infer<typeof AssessmentSchema>;
+export type Contact      = z.infer<typeof ContactSchema>;
+
+/**
+ * Currently logged-in user.
+ * After `LoginScreen.onLogin(...)` fires, App.tsx stores this shape.
+ * Pages that only read it (Jobs, Settings, SiteReports) destructure
+ * `user.role`, `user.name`, `user.email`.
+ */
+export interface CurrentUser {
+  id: string;
+  name: string;
+  role: "Admin" | "Supervisor" | "Technician" | string;
+  email?: string;
+  username?: string;
+  initial?: string;
+  pwHash?: string;
+  accessToken?: string;
+  [key: string]: any; // Forward-compat: extra fields from Supabase Auth response
+}
 
 // ── Validation helper used at the Supabase boundary ──────────────────────────
 // Returns a CLEANED array — bad rows are coerced to safe defaults, never

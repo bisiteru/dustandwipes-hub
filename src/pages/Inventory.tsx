@@ -17,7 +17,7 @@ type Row = Record<string, any>;
 
 interface InventoryPageProps {
   inventory: Row[];
-  setInventory: (i: Row[]) => void;
+  setInventory: React.Dispatch<React.SetStateAction<any[]>>;
   userRole: string;
 }
 

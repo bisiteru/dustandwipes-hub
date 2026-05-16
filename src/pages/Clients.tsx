@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Clients page + ClientModal
 //  Phase 4c extraction. Client roster table + Add/Edit modal with full
@@ -15,7 +19,7 @@ import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
 
 export
-function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
+function ClientsPage({clients,setClients,userRole,staff,contacts=[]}:any){
   const[tab,setTab]=useState("clients");const[contactSearch,setContactSearch]=useState("");const[search,setSearch]=useState("");const[ft,setFt]=useState("All");const[fs,setFs]=useState("All");const[modal,setModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const ws=useMemo(()=>clients.map(c=>({...c,status:cStatus(c.ce)})),[clients]);
@@ -77,7 +81,7 @@ function ClientsPage({clients,setClients,userRole,staff,contacts=[]}){
       {modal!==null&&<ClientModal data={modal.id?modal:null} onSave={save} onClose={()=>setModal(null)} staff={staff}/>}
     </div>}
   </div>);}
-function ClientModal({data,onSave,onClose,staff}){
+function ClientModal({data,onSave,onClose,staff}:any){
   const blank={name:"",cat:"Corporate",svc:"Cleaning",addr:"",cp:"",phone:"",email:"",cleaners:[],duty:"Mon-Fri",serviceFreq:"Weekly",cs:"",ce:"",sal:0,con:0,sc:0,vat:0,tot:0};
   const[f,setF]=useState(data?{...data,cleaners:Array.isArray(data.cleaners)?data.cleaners:data.cleaners?[data.cleaners]:[]}:blank);
   const[cleanerSearch,setCleanerSearch]=useState("");

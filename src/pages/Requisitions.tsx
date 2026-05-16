@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Requisitions page
 //  Phase 4d extraction. Monthly supply requisitions with approval workflow,
@@ -18,7 +22,7 @@ import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
 
 export
-function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyItems,clients,users,user,inventory,setInventory}){
+function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyItems,clients,users,user,inventory,setInventory}:any){
   const[tab,setTab]=useState("reqs");const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[itemModal,setItemModal]=useState(null);
   const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const canManage=user.role==="Admin"||user.role==="Supervisor";
@@ -129,7 +133,7 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
     {itemModal&&<ModalWrap title={itemModal.id?"Edit Item":"Add to Catalogue"} onClose={()=>setItemModal(null)}><div className="space-y-4"><Fld label="Item Name"><input className={inp} value={itemModal.name||""} onChange={e=>setItemModal(p=>({...p,name:e.target.value}))}/></Fld><div className="grid grid-cols-2 gap-4"><Fld label="Category"><select className={inp} value={itemModal.cat||"Cleaning"} onChange={e=>setItemModal(p=>({...p,cat:e.target.value}))}>{["Cleaning","Air Care","Consumables","Hygiene","PPE","Equipment","Pest Control"].map(c=><option key={c}>{c}</option>)}</select></Fld><Fld label="Unit"><select className={inp} value={itemModal.unit||"bottle"} onChange={e=>setItemModal(p=>({...p,unit:e.target.value}))}>{["bottle","can","pack","bag","box","tin","piece","roll","sachet","litre","kg"].map(u=><option key={u}>{u}</option>)}</select></Fld><Fld label="Unit Cost ()"><input className={inp} type="number" min="0" value={itemModal.cost||""} onChange={e=>setItemModal(p=>({...p,cost:Number(e.target.value)}))}/></Fld><Fld label="Status"><select className={inp} value={itemModal.active?"Active":"Inactive"} onChange={e=>setItemModal(p=>({...p,active:e.target.value==="Active"}))}><option>Active</option><option>Inactive</option></select></Fld></div></div><div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={()=>setItemModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>saveItem(itemModal)} className="px-6 py-2 rounded-xl text-white text-sm font-bold" style={{background:G}}>{itemModal.id?"Save Changes":"Add Item"}</button></div></ModalWrap>}
   </div>);}
 
-function ReqFormModal({supplyItems,clients,user,canSeeCosts,onSave,onClose}){
+function ReqFormModal({supplyItems,clients,user,canSeeCosts,onSave,onClose}:any){
   const[submitted,setSubmitted]=useState(false);
   const activeItems=supplyItems.filter(i=>i.active);
   const[f,setF]=useState({site:"",month:TODAY.getMonth(),year:TODAY.getFullYear(),budgetCap:0,items:activeItems.map(i=>({id:i.id,name:i.name,unit:i.unit,cat:i.cat,cost:i.cost,qty:0,notes:""})),submittedBy:user.name,status:"Pending"});
@@ -154,7 +158,7 @@ function ReqFormModal({supplyItems,clients,user,canSeeCosts,onSave,onClose}){
     <div className="flex justify-end gap-3 mt-5 pt-4 border-t"><button onClick={onClose} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">Cancel</button><button onClick={()=>{const data={...f,id:"req"+Date.now(),items:activeRequested.map(i=>({...i,rate:i.cost,approvedRate:0}))};onSave(data);setSubmitted(true);}} disabled={!f.site||activeRequested.length===0} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Submit Requisition</button></div>
   </ModalWrap>);}
 
-function ReqViewer({req:r,canSeeCosts,onClose}){
+function ReqViewer({req:r,canSeeCosts,onClose}:any){
   const[rates,setRates]=useState(Object.fromEntries((r.items||[]).map(i=>[i.id||i.name,i.approvedRate||i.rate||i.cost||0])));
   const total=r.items?.reduce((s,i)=>s+(i.qty*(rates[i.id||i.name]||0)),0)||0;
   const budget=r.budgetCap||0,pct=budget>0?(total/budget*100).toFixed(1):null;

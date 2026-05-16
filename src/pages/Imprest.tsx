@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Imprest Fund page
 //  Phase 4d extraction. Monthly imprest accounts with carry-forward logic,
@@ -16,7 +20,7 @@ import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
 
 export
-function ImprestPage({imprests,setImprests,staff=[]}){
+function ImprestPage({imprests,setImprests,staff=[]}:any){
   const[modal,setModal]=useState(null);const[view,setView]=useState(null);const[confirm,confirmEl]=useConfirm();const toast=useToast();
   const today=new Date();
   const curMK=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}`;

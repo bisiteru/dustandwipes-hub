@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Login screen
 //  Phase 4c extraction. Email/password login via Supabase Auth + 3-tier
@@ -14,7 +18,7 @@ import { LOGO } from "../lib/logo";
 import { Fld } from "../components/ui/primitives";
 
 export
-function LoginScreen({onLogin,users,clients}){
+function LoginScreen({onLogin,users,clients}:any){
   const[em,setEm]=useState("");const[pw,setPw]=useState("");const[sp,setSp]=useState(false);const[err,setErr]=useState("");const[busy,setBusy]=useState(false);const[forgot,setForgot]=useState(false);const[fpEmail,setFpEmail]=useState("");const[fpSent,setFpSent]=useState(false);const[fpBusy,setFpBusy]=useState(false);const[fpErr,setFpErr]=useState("");
   const go=async()=>{
     if(busy||!em.trim()||!pw)return;

@@ -1,3 +1,7 @@
+// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
+// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
+// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
+// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Site Assessments page
 //  Phase 4d extraction. Pre-job site assessment wizard with photos + GPS,
@@ -37,14 +41,14 @@ const SA_SECTIONS=["Client Info","Service Type","Scope","Site & Risk","Photos","
 
 // ── Local checkbox-group helper (also used by SiteReports) ──────────────────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CheckGroup({options,value=[],onChange}){
+function CheckGroup({options,value=[],onChange}:any){
   const tog=o=>onChange(value.includes(o)?value.filter(v=>v!==o):[...value,o]);
   return <div className="grid grid-cols-2 gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${value.includes(o)?"border-green-500 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="checkbox" checked={value.includes(o)} onChange={()=>tog(o)} className="accent-green-600 flex-shrink-0"/>{o}</label>)}</div>;
 }
 
 
 export
-function AssessmentsPage({assessments,setAssessments,user,clients,contacts,requests,setRequests}){
+function AssessmentsPage({assessments,setAssessments,user,clients,contacts,requests,setRequests}:any){
   const[view,setView]=useState(null);
   const[showForm,setShowForm]=useState(false);
   const[editData,setEditData]=useState(null);
@@ -173,7 +177,7 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
     {view&&<AssessmentViewer assessment={view} onClose={()=>setView(null)} userRole={user.role}/>}
   </div>);}
 
-function AssessmentForm({data,onSave,onClose,user,clients,contacts}){
+function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
   const isEdit=!!data?.id;
   const genId=()=>`SA-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
   const[sec,setSec]=useState(0);
@@ -534,7 +538,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}){
     </div>
   </div>);}
 
-function AssessmentViewer({assessment:a,onClose,userRole}){
+function AssessmentViewer({assessment:a,onClose,userRole}:any){
   const isPrivileged=userRole==="Admin"||userRole==="Supervisor";
   const s=(l,v)=>v?<div className="flex gap-3 mb-1.5"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>:null;
   const section=(title,children)=><div className="mb-6"><h3 className="text-xs font-black uppercase tracking-widest pb-2 mb-3 border-b" style={{color:G}}>{title}</h3>{children}</div>;

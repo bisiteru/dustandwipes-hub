@@ -18,7 +18,7 @@ type Row = Record<string, any>;
 
 interface SchedulePageProps {
   schedules: Row[];
-  setSchedules: (s: Row[]) => void;
+  setSchedules: React.Dispatch<React.SetStateAction<any[]>>;
   clients: Row[];
   userRole: string;
 }

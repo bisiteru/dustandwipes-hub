@@ -26,6 +26,11 @@ import {
 } from "./lib/supabase";
 import { APP_NAME, APP_SUB, LOGO } from "./lib/logo";
 import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
+import type {
+  Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
+  Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
+  CurrentUser,
+} from "./lib/schemas";
 
 // ── UI primitives + composite components (Phase 3) ───────────────────────────
 import { Toaster } from "./components/ui/Toaster";
@@ -53,34 +58,37 @@ import { ImprestPage }     from "./pages/Imprest";
 import { AssessmentsPage } from "./pages/Assessments";
 
 export default function App(){
-  const[user,        setUser]        =useState(null);
   const[page,        setPage]        =useState("dashboard");
   const[sidebar,     setSidebar]     =useState(true);
-  const[users,       setUsers]       =useState<any[]>(INITIAL_USERS);
-  const[staff,       setStaff]       =useState([]); // loaded from dw_staff
-  const[clients,     setClients]     =useState([]);
-  const[schedules,   setSchedules]   =useState([]);
-  const[requests,    setRequests]    =useState([]);
-  const[jobs,        setJobs]        =useState([]);
-  const[inventory,   setInventory]   =useState([]);
-  const[siteReports, setSiteReports] =useState([]);
-  const[contacts,    setContacts]    =useState([]); // loaded from dw_contacts
-  const[activityLog, setActivityLog] =useState([]);
-  const[supplyItems, setSupplyItems] =useState([]);
-  const[requisitions,setRequisitions]=useState([]);
-  const[absences,    setAbsences]    =useState([]);
-  const[covers,      setCovers]      =useState([]);
-  const[imprests,    setImprests]    =useState([]);
-  const[assessments, setAssessments] =useState([]);
+  // State — typed via Zod-derived aliases from src/lib/schemas.ts.
+  // Strict mode requires explicit generics on useState([]) — `never[]` is the
+  // default inference otherwise.
+  const[user,        setUser]        =useState<CurrentUser | null>(null);
+  const[users,       setUsers]       =useState<AppUser[]>(INITIAL_USERS as unknown as AppUser[]);
+  const[staff,       setStaff]       =useState<Staff[]>([]);
+  const[clients,     setClients]     =useState<Client[]>([]);
+  const[schedules,   setSchedules]   =useState<Schedule[]>([]);
+  const[requests,    setRequests]    =useState<Request_[]>([]);
+  const[jobs,        setJobs]        =useState<Job[]>([]);
+  const[inventory,   setInventory]   =useState<Inventory[]>([]);
+  const[siteReports, setSiteReports] =useState<SiteReport[]>([]);
+  const[contacts,    setContacts]    =useState<Contact[]>([]);
+  const[activityLog, setActivityLog] =useState<any[]>([]);  // raw dw_activity_log rows
+  const[supplyItems, setSupplyItems] =useState<SupplyItem[]>([]);
+  const[requisitions,setRequisitions]=useState<Requisition[]>([]);
+  const[absences,    setAbsences]    =useState<Absence[]>([]);
+  const[covers,      setCovers]      =useState<Cover[]>([]);
+  const[imprests,    setImprests]    =useState<Imprest[]>([]);
+  const[assessments, setAssessments] =useState<Assessment[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
-  const[isOnline,    setIsOnline]    =useState(()=>navigator.onLine);
-  const[readIds,     setReadIds]     =useState(()=>{try{const s=localStorage.getItem("dw_readNotifs");return s?JSON.parse(s):[];}catch{return[];}});
-  const[dbStatus,    setDbStatus]    =useState("ok"); // DB loads in background
+  const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
+  const[readIds,     setReadIds]     =useState<string[]>(()=>{try{const s=localStorage.getItem("dw_readNotifs");return s?JSON.parse(s):[];}catch{return[];}});
+  const[dbStatus,    setDbStatus]    =useState<"ok"|"error"|"loading">("ok");
   const[dbLoading,   setDbLoading]   =useState(true);
-  const notifRef   = useRef(null);
-  const dbLoaded   = useRef(false);   // true after first load from Supabase
-  const syncTimers = useRef({});      // debounce timers per table
+  const notifRef   = useRef<HTMLDivElement|null>(null);
+  const dbLoaded   = useRef(false);
+  const syncTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // -- Supabase: load all data on mount ---------------------------------------
   useEffect(() => {
@@ -103,7 +111,7 @@ export default function App(){
               const records=Array.isArray(data)?data.map(d=>d.record).filter(Boolean):[];
               if(records.length===0){setSupplyItems(INITIAL_SUPPLY_MASTER);dbSync("supplyitems",INITIAL_SUPPLY_MASTER);}
               else setSupplyItems(records);
-            }catch(e){console.warn("[DB] load supplyitems:",e.message);setSupplyItems(INITIAL_SUPPLY_MASTER);}
+            }catch(e:any){console.warn("[DB] load supplyitems:",e?.message);setSupplyItems(INITIAL_SUPPLY_MASTER);}
           })(),
           dbLoad("requisitions",setRequisitions),
           dbLoad("absences",    setAbsences),
@@ -125,7 +133,7 @@ export default function App(){
                 // DB is fully authoritative — show exactly what is in the database
                 setStaff(records);
               }
-            }catch(e){console.warn("[DB] load staff:",e.message);setStaff(SEED_STAFF);}
+            }catch(e:any){console.warn("[DB] load staff:",e?.message);setStaff(SEED_STAFF);}
           })(),
           dbLoad("users",       u => {
             if(u && u.length > 0) setUsers(u);
@@ -144,7 +152,7 @@ export default function App(){
   }, []);
 
   // -- Supabase: debounced sync whenever state changes -----------------------
-  const debouncedSync = useCallback((table, data) => {
+  const debouncedSync = useCallback((table: string, data: any[]) => {
     if (!dbLoaded.current) return;
     clearTimeout(syncTimers.current[table]);
     syncTimers.current[table] = setTimeout(() => dbSync(table, data), 300);
@@ -176,18 +184,19 @@ export default function App(){
     const todayStr=new Date().toISOString().split("T")[0];
     const today=new Date(todayStr);
     const LOOKAHEAD=14;
-    const toAdd=[];
+    // Partial<Job>[] — incremental record construction; fields like createdAt/sourceRequestId accrete later
+    const toAdd: Partial<Job>[]=[];
     clients.forEach(client=>{
       const freq=client.serviceFreq;
       if(!freq||!FREQ_DAYS[freq])return; // no freq or One-Time
       const expiry=client.ce?new Date(client.ce):null;
       if(expiry&&expiry<today)return; // contract expired
-      const freqDays=FREQ_DAYS[freq];
+      const freqDays=FREQ_DAYS[freq]!;
       // Last job for this client sorted most-recent first
-      const clientJobs=jobs.filter(j=>j.clientName===client.name&&j.date).sort((a,b)=>b.date.localeCompare(a.date));
+      const clientJobs=jobs.filter(j=>j.clientName===client.name&&j.date).sort((a,b)=>b.date!.localeCompare(a.date!));
       let nextDue=new Date(today);
       if(clientJobs.length>0){
-        const lastDate=new Date(clientJobs[0].date);
+        const lastDate=new Date(clientJobs[0].date!);
         nextDue=new Date(lastDate);
         nextDue.setDate(nextDue.getDate()+freqDays);
       }
@@ -210,9 +219,9 @@ export default function App(){
     if(toAdd.length===0)return;
     setJobs(js=>{
       const existingIds=new Set(js.map(j=>j.id));
-      const truly=toAdd.filter(j=>!existingIds.has(j.id));
+      const truly=toAdd.filter(j=>!existingIds.has(j.id as string));
       if(truly.length===0)return js;
-      const updated=[...js,...truly];
+      const updated=[...js,...(truly as Job[])];
       dbSync("jobs",updated);
       Toaster._add?.(`${truly.length} recurring job${truly.length>1?"s":""} auto-scheduled`,"info");
       return updated;
@@ -255,7 +264,7 @@ export default function App(){
       Toaster._add?.("You are offline — actions will sync when reconnected","info");
     };
     // Service Worker background-sync message handler
-    const handleSwMessage=e=>{
+    const handleSwMessage=(e:any)=>{
       if(e.data?.type==="DW_DRAIN_OFFLINE_QUEUE"){
         const n=drainOfflineQueue(setJobs, dbSync);
         if(n>0)Toaster._add?.(`${n} queued action${n>1?"s":""} synced via background sync`,"success");
@@ -275,14 +284,14 @@ export default function App(){
   const allNotifs=useMemo(()=>buildNotifs(clients,jobs,inventory),[clients,jobs,inventory]);
   const liveNotifs=useMemo(()=>allNotifs.map(n=>({...n,read:readIds.includes(n.id)})),[allNotifs,readIds]);
   const unread=useMemo(()=>liveNotifs.filter(n=>!n.read).length,[liveNotifs]);
-  const markRead=id=>setReadIds(r=>[...r,id]);
+  const markRead=(id:string)=>setReadIds(r=>[...r,id]);
   // Persist read notification IDs across page refreshes
   useEffect(()=>{try{localStorage.setItem("dw_readNotifs",JSON.stringify(readIds));}catch{};},[readIds]);
-  useEffect(()=>{const h=e=>{if(notifRef.current&&!notifRef.current.contains(e.target))setShowNotif(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
+  useEffect(()=>{const h=(e:any)=>{if(notifRef.current&&!notifRef.current.contains(e.target))setShowNotif(false);};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h);},[]);
   // Global ⌘K / Ctrl+K shortcut to open search
-  useEffect(()=>{const h=e=>{if((e.metaKey||e.ctrlKey)&&e.key==="k"){e.preventDefault();setShowSearch(s=>!s);}if(e.key==="Escape")setShowSearch(false);};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
+  useEffect(()=>{const h=(e:any)=>{if((e.metaKey||e.ctrlKey)&&e.key==="k"){e.preventDefault();setShowSearch(s=>!s);}if(e.key==="Escape")setShowSearch(false);};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
 
-  const handleLogin=u=>{setUser(u);setPage("dashboard");};
+  const handleLogin=(u:any)=>{setUser(u);setPage("dashboard");};
 
   // Show loading screen FIRST so users[] is fully populated from DB before login renders.
   // This ensures the local-hash fallback has access to pwHash stored in Supabase.
