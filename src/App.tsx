@@ -71,7 +71,12 @@ const PageFallback = () => (
 
 export default function App(){
   const[page,        setPage]        =useState("dashboard");
-  const[sidebar,     setSidebar]     =useState(true);
+  // Sidebar state: on desktop = expanded/collapsed (rail); on mobile = open/closed (drawer).
+  // Default collapsed on phones so the page gets full width on first paint.
+  const[sidebar,     setSidebar]     =useState<boolean>(()=>{
+    if(typeof window==="undefined")return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   // State — typed via Zod-derived aliases from src/lib/schemas.ts.
   // Strict mode requires explicit generics on useState([]) — `never[]` is the
   // default inference otherwise.
@@ -365,15 +370,24 @@ export default function App(){
       <Toaster/>
       {/* Global ⌘K search palette */}
       {showSearch&&<GlobalSearch clients={clients} jobs={jobs} staff={staff} inventory={inventory} requests={requests} onNav={p=>{setPage(p);}} onClose={()=>setShowSearch(false)}/>}
-      <aside className={`${sidebar?"w-60":"w-14"} transition-all duration-200 flex flex-col flex-shrink-0`} style={{background:GD}}>
+      {/* Mobile backdrop — tap to close drawer */}
+      {sidebar && <div onClick={()=>setSidebar(false)} className="md:hidden fixed inset-0 bg-black/40 z-30 transition-opacity"/>}
+      <aside className={`
+        ${sidebar?"w-60 translate-x-0":"w-14 -translate-x-full md:translate-x-0"}
+        fixed md:relative inset-y-0 left-0 z-40
+        transition-all duration-200 flex flex-col flex-shrink-0
+      `} style={{background:GD}}>
         <div className="h-16 flex items-center px-3 border-b gap-2 flex-shrink-0" style={{borderColor:"rgba(255,255,255,0.06)"}}>
           <img src={LOGO} alt="D&W" className="w-8 h-8 object-contain flex-shrink-0 rounded-lg bg-white p-0.5 border border-gray-100"/>
           {sidebar&&<div className="overflow-hidden"><div className="text-white text-sm font-black leading-tight whitespace-nowrap">{APP_NAME}</div><div className="text-xs whitespace-nowrap" style={{color:"#6EAD7E"}}>{APP_SUB}</div></div>}
         </div>
         <nav className="flex-1 py-2 overflow-y-auto overflow-x-hidden">
           {NAV.map(item=>{const Icon=item.icon;const active=page===item.id;return(
-            <button key={item.id} title={item.label} onClick={()=>setPage(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all ${sidebar?"":"justify-center"} ${active?"":"hover:bg-white/5 hover:!text-white"}`}
+            <button key={item.id} title={item.label} onClick={()=>{setPage(item.id);
+              // Auto-close drawer after navigation on mobile
+              if(window.matchMedia("(max-width: 767px)").matches)setSidebar(false);
+            }}
+              className={`w-full flex items-center gap-3 px-4 min-h-[44px] py-2.5 transition-all ${sidebar?"":"justify-center"} ${active?"":"hover:bg-white/5 hover:!text-white"}`}
               style={active?{background:"rgba(255,255,255,0.10)",color:"#fff",borderRight:`3px solid ${O}`}:{color:"#6EAD7E"}}>
               <Icon size={15} className="flex-shrink-0"/>
               {sidebar&&<span className="text-sm font-medium whitespace-nowrap">{item.label}</span>}
@@ -394,8 +408,8 @@ export default function App(){
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center px-6 gap-4 flex-shrink-0 shadow-sm">
-          <button onClick={()=>setSidebar(o=>!o)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><Menu size={18}/></button>
+        <header className="h-16 bg-white border-b border-gray-100 flex items-center px-3 sm:px-6 gap-2 sm:gap-4 flex-shrink-0 shadow-sm">
+          <button onClick={()=>setSidebar(o=>!o)} aria-label="Toggle navigation" className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><Menu size={18}/></button>
           <div className="flex-1 min-w-0"><h1 className="font-bold text-gray-700 text-sm">{pageTitle}</h1><p className="text-xs text-gray-400 hidden sm:block">{APP_NAME}  {APP_SUB}</p></div>
           <button onClick={()=>setShowSearch(true)} className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors text-xs text-gray-400" title="Search (⌘K)"><Search size={13}/><span>Search</span><kbd className="ml-1 font-mono text-gray-300 text-xs">⌘K</kbd></button>
           <div className="flex items-center gap-2">
@@ -407,7 +421,7 @@ export default function App(){
               <span className="hidden sm:inline text-xs font-medium" style={{color:dbStatus==="ok"?"#16a34a":dbStatus==="error"?"#dc2626":"#d97706"}}>{dbStatus==="ok"?"Synced":dbStatus==="error"?"DB Error":"Syncing..."}</span>
             </div>
             <div className="relative" ref={notifRef}>
-              <button onClick={()=>setShowNotif(p=>!p)} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
+              <button onClick={()=>setShowNotif(p=>!p)} aria-label="Notifications" className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
                 <Bell size={16} className="text-gray-400"/>
                 {unread>0&&<span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full text-white flex items-center justify-center font-bold" style={{background:RED,fontSize:"9px"}}>{unread>9?"9+":unread}</span>}
               </button>
@@ -419,7 +433,7 @@ export default function App(){
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6">
          <Suspense fallback={<PageFallback/>}>
           {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} inventory={inventory} users={users} staff={staff} onNav={setPage}/></ErrorBoundary>}
           {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
