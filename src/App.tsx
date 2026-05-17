@@ -13,7 +13,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspens
 import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
-  Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff,
+  Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks,
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
@@ -31,7 +31,7 @@ import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
 import type {
   Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
   Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
-  CurrentUser,
+  Task, CurrentUser,
 } from "./lib/schemas";
 
 // ── UI primitives + composite components (Phase 3) ───────────────────────────
@@ -61,6 +61,7 @@ const AssessmentsPage  = lazy(() => import("./pages/Assessments").then(m => ({ d
 const AnalyticsPage    = lazy(() => import("./pages/Analytics").then(m => ({ default: m.AnalyticsPage })));
 const StaffPage        = lazy(() => import("./pages/Staff").then(m => ({ default: m.StaffPage })));
 const SettingsPage     = lazy(() => import("./pages/Settings").then(m => ({ default: m.SettingsPage })));
+const TasksPage        = lazy(() => import("./pages/Tasks").then(m => ({ default: m.TasksPage })));
 
 // Lightweight fallback for in-flight chunk loads — matches the boot skeleton
 // so the visual stays calm when the user crosses a page boundary.
@@ -99,6 +100,7 @@ export default function App(){
   const[covers,      setCovers]      =useState<Cover[]>([]);
   const[imprests,    setImprests]    =useState<Imprest[]>([]);
   const[assessments, setAssessments] =useState<Assessment[]>([]);
+  const[tasks,       setTasks]       =useState<Task[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
@@ -139,6 +141,7 @@ export default function App(){
           dbLoad("absences",    setAbsences),
           dbLoad("covers",      setCovers),
           dbLoad("assessments", setAssessments),
+          dbLoad("tasks",       setTasks),
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
@@ -193,6 +196,7 @@ export default function App(){
   // imprests intentionally excluded: ImprestPage uses targeted single-record syncs (saveOne/dbSync)
   // to prevent stale-session overwrites. A broad debounce here would re-upload stale full arrays.
   useEffect(() => { debouncedSync("assessments", assessments); }, [assessments, debouncedSync]);
+  useEffect(() => { debouncedSync("tasks",        tasks);       }, [tasks,       debouncedSync]);
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
 
@@ -217,7 +221,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
@@ -330,21 +334,22 @@ export default function App(){
   if(!user) return <LoginScreen onLogin={handleLogin} users={users} clients={clients}/>;
 
   const NAV=[
-    {id:"dashboard",   label:"Dashboard",       icon:Home,          roles:["Admin","Supervisor"]},
+    {id:"dashboard",   label:"Dashboard",       icon:Home,          roles:["Admin","Supervisor","Finance","Technician"]},
+    {id:"tasks",       label:"My Tasks",         icon:ListChecks,    roles:["Admin","Supervisor","Finance","Technician"]},
     {id:"clients",     label:"Clients",          icon:Users,         roles:["Admin","Supervisor"]},
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor"]},
-    {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
+    {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor","Technician"]},
     {id:"schedule",    label:"Pest Schedule",    icon:Bug,           roles:["Admin","Supervisor"]},
     {id:"site_reports",label:"Site Reports",     icon:ClipboardList, roles:["Admin","Supervisor"]},
     {id:"inventory",   label:"Inventory",        icon:Package,       roles:["Admin","Supervisor"]},
     {id:"requisitions",label:"Requisitions",     icon:ClipboardCheck,roles:["Admin","Supervisor","Technician"]},
-    {id:"absencecover",label:"Absence & Cover",  icon:UserCheck,     roles:["Admin","Supervisor"]},
+    {id:"absencecover",label:"Absence & Cover",  icon:UserCheck,     roles:["Admin","Supervisor","Finance"]},
     {id:"birthdays",   label:"Birthdays",        icon:Gift,          roles:["Admin","Supervisor"]},
-    {id:"imprest",     label:"Imprest Fund",     icon:Wallet,        roles:["Admin","Supervisor"]},
+    {id:"imprest",     label:"Imprest Fund",     icon:Wallet,        roles:["Admin","Supervisor","Finance"]},
     {id:"assessments", label:"Site Assessments",  icon:MapPin,        roles:["Admin","Supervisor"]},
-    {id:"analytics",   label:"Analytics",        icon:BarChart2,     roles:["Admin"]},
-    {id:"staff",       label:"Staff",            icon:Users,         roles:["Admin","Supervisor"]},
+    {id:"analytics",   label:"Analytics",        icon:BarChart2,     roles:["Admin","Finance"]},
+    {id:"staff",       label:"Staff",            icon:Users,         roles:["Admin","Supervisor","Finance"]},
     {id:"settings",    label:"Settings",         icon:Settings,      roles:["Admin"]},
   ].filter(n=>n.roles.includes(user.role));
   const pageTitle=NAV.find(n=>n.id===page)?.label||"Dashboard";
@@ -460,6 +465,7 @@ export default function App(){
           {page==="analytics"   &&<ErrorBoundary module="Analytics"><AnalyticsPage clients={clients} siteReports={siteReports} jobs={jobs} staff={staff} absences={absences} requests={requests}/></ErrorBoundary>}
           {page==="staff"       &&<ErrorBoundary module="Staff"><StaffPage staff={staff} setStaff={setStaff}/></ErrorBoundary>}
           {page==="settings"    &&<ErrorBoundary module="Settings"><SettingsPage users={users} setUsers={setUsers} activityLog={activityLog}/></ErrorBoundary>}
+          {page==="tasks"       &&<ErrorBoundary module="Tasks"><TasksPage tasks={tasks} setTasks={setTasks} user={user} users={users} staff={staff}/></ErrorBoundary>}
          </Suspense>
         </main>
       </div>
