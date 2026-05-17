@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Settings page
-//  Phase 4c extraction. App-user CRUD (Admin/Supervisor/Technician) with
+//  Phase 4c extraction. App-user CRUD (Admin/Supervisor/Finance/Technician) with
 //  local-pwHash password handling and recent-activity log viewer.
 //
 //  Phase 5 typing: `@ts-nocheck` removed. App users use the AppUser schema
@@ -38,6 +38,7 @@ export function SettingsPage({ users, setUsers, activityLog = [] }: SettingsPage
   const rc: Record<string, RoleStyle> = {
     Admin:      { bg: "#dcfce7", color: "#166534", border: "#bbf7d0" },
     Supervisor: { bg: "#fff7ed", color: "#9a3412", border: "#fed7aa" },
+    Finance:    { bg: "#fdf4ff", color: "#6b21a8", border: "#e9d5ff" },
     Technician: { bg: "#eff6ff", color: "#1e40af", border: "#bfdbfe" },
   };
 
@@ -221,7 +222,10 @@ export function SettingsPage({ users, setUsers, activityLog = [] }: SettingsPage
             </Fld>
             <Fld label="Role">
               <select className={inp} value={modal.role || "Technician"} onChange={e => setModal(p => p ? { ...p, role: e.target.value } : p)}>
-                <option>Admin</option><option>Supervisor</option><option>Technician</option>
+                <option>Admin</option>
+                <option>Supervisor</option>
+                <option>Finance</option>
+                <option>Technician</option>
               </select>
             </Fld>
             <Fld label="Email (leave blank for technicians)">
