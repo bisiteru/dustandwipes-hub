@@ -10,22 +10,27 @@
 //  against invalid Date parses by checking isNaN before use.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useMemo } from "react";
+import React, { useMemo, type Dispatch, type SetStateAction } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ChevronRight, AlertTriangle, Briefcase, Clock, Package, Gift } from "lucide-react";
-import { G, O, RED, BLUE, TODAY, STATUS_COLORS, JOB_STATUSES } from "../lib/constants";
+import { ChevronRight, AlertTriangle, Briefcase, Clock, Package, Gift, Inbox, UserCheck } from "lucide-react";
+import { G, O, RED, BLUE, TODAY, STATUS_COLORS, JOB_STATUSES, inp } from "../lib/constants";
 import { monthName, cStatus, dLeft, fmtD } from "../lib/format";
+import { dbSync } from "../lib/supabase";
 import { Card, SBadge, KPI } from "../components/ui/primitives";
-import type { Client, Job, Request_, Inventory, AppUser, Staff } from "../lib/schemas";
+import type { Client, Job, Request_, Inventory, AppUser, Staff, CurrentUser } from "../lib/schemas";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 export interface DashboardProps {
   clients: Client[];
   jobs: Job[];
   requests: Request_[];
+  /** Phase 6: Admin assigns service requests to supervisors inline. */
+  setRequests: Dispatch<SetStateAction<Request_[]>>;
   inventory: Inventory[];
   users: AppUser[];
   staff: Staff[];
+  /** Logged-in user — drives which role-specific surfaces render. */
+  user: CurrentUser;
   onNav: (page: string) => void;
 }
 
@@ -52,11 +57,44 @@ export function Dashboard({
   clients,
   jobs,
   requests,
+  setRequests,
   inventory,
   users,
   staff,
+  user,
   onNav,
 }: DashboardProps) {
+  const isAdmin = user.role === "Admin";
+
+  // Supervisors available for assignment — pulled from app users.
+  // Includes anyone with role "Supervisor" or "Admin" (Admins can self-assign
+  // when triaging). Filtered to users with a name set.
+  const supervisorPool = useMemo<AppUser[]>(
+    () => users.filter(u => (u.role === "Supervisor" || u.role === "Admin") && u.name),
+    [users],
+  );
+
+  // Unassigned service requests — anything Pending without an assignedTo.
+  const unassignedRequests = useMemo<Request_[]>(
+    () => requests.filter(r =>
+      (r.status || "Pending") === "Pending" && !((r as any).assignedTo)),
+    [requests],
+  );
+
+  // Inline-assign handler. Stamps assignedTo + assignedAt + assignedBy and
+  // persists. Pure state update otherwise — the existing Requests page reads
+  // the same fields, so the row shows up there with the right column too.
+  const assignRequest = (id: string, supervisorName: string): void => {
+    if (!supervisorName) return;
+    const now = new Date().toISOString();
+    const next = requests.map(r =>
+      String(r.id) === id
+        ? ({ ...r, assignedTo: supervisorName, assignedAt: now, assignedBy: user.name } as Request_)
+        : r,
+    );
+    setRequests(next);
+    dbSync("requests", next).catch(() => {});
+  };
   // ── Derived collections ────────────────────────────────────────────────────
   const ws = useMemo<ClientWithStatus[]>(
     () => clients.map((c) => ({ ...c, status: cStatus(c.ce) })),
@@ -218,6 +256,71 @@ export function Dashboard({
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Inbox: Unassigned Service Requests (Admin only) ───────────────
+          One-click triage. Each pending request gets a supervisor dropdown;
+          selecting stamps assignedTo + assignedAt + assignedBy and the row
+          disappears from this list (still visible on the Requests page with
+          its "Assigned to" column). The Dashboard is the workflow tool —
+          you assign here, you don't navigate to the Requests page first. */}
+      {isAdmin && unassignedRequests.length > 0 && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+              <Inbox size={12} style={{ color: O }} />
+              Unassigned Service Requests
+              <span className="ml-1 px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{ background: O }}>
+                {unassignedRequests.length}
+              </span>
+            </h3>
+            <button onClick={() => onNav("requests")} className="text-xs font-semibold flex items-center gap-1" style={{ color: G }}>
+              View all <ChevronRight size={12} />
+            </button>
+          </div>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {unassignedRequests.slice(0, 8).map((r) => (
+              <div
+                key={String(r.id)}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">
+                    {r.clientName || "Unknown client"}
+                    <span className="ml-2 text-xs text-gray-400 font-normal">{r.svc || "—"}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {r.loc ? `📍 ${r.loc} · ` : ""}
+                    {r.prefDate ? `Preferred: ${fmtD(r.prefDate)} · ` : ""}
+                    {r.src ? `via ${r.src}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <UserCheck size={14} style={{ color: G }} />
+                  <select
+                    className={`${inp} text-xs py-1.5 w-40`}
+                    defaultValue=""
+                    onChange={(e) => assignRequest(String(r.id), e.target.value)}
+                  >
+                    <option value="" disabled>
+                      — Assign to —
+                    </option>
+                    {supervisorPool.map((s) => (
+                      <option key={String(s.id)} value={String(s.name || "")}>
+                        {s.name} ({s.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+            {unassignedRequests.length > 8 && (
+              <p className="text-xs text-gray-400 text-center pt-1">
+                +{unassignedRequests.length - 8} more on the Requests page
+              </p>
+            )}
+          </div>
+        </Card>
       )}
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

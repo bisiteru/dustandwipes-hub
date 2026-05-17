@@ -137,6 +137,12 @@ export function RequestsPage({ requests, setRequests, setJobs, clients }: Reques
             <div>
               <p className="font-semibold text-gray-800 text-sm">{r.clientName}</p>
               <p className="text-xs text-gray-500">{r.svc}  {fmtD(r.prefDate)}  via {r.src}{r.clientPhone ? <>  <span className="font-medium">{r.clientPhone}</span></> : ""}</p>
+              {(r as any).assignedTo && (
+                <p className="text-xs font-semibold mt-0.5" style={{ color: G }}>
+                  ✓ Assigned to {(r as any).assignedTo}
+                  {(r as any).assignedAt ? ` · ${fmtD((r as any).assignedAt)}` : ""}
+                </p>
+              )}
               {r.notes && <p className="text-xs text-gray-400 italic mt-0.5">"{r.notes}"</p>}
             </div>
           </div>
