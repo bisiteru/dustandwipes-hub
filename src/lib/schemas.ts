@@ -129,6 +129,12 @@ export const RequestSchema = z.object({
   status: strOpt,         // Pending / Converted / Declined
   notes: strOpt,
   created: strOpt,        // YYYY-MM-DD when request was logged
+  // Phase 6 (workflow tooling): when a Service Request is assigned to a
+  // supervisor inline on the Dashboard, these fields are stamped. Empty
+  // string means unassigned.
+  assignedTo: strOpt,     // Supervisor name (or staff id for stricter wiring)
+  assignedAt: strOpt,     // ISO timestamp of assignment
+  assignedBy: strOpt,     // Admin who performed the assignment
 }).passthrough();
 
 // ── 6. Site Reports ──────────────────────────────────────────────────────────
@@ -293,6 +299,51 @@ export const ContactSchema = z.object({
   source: strOpt,
 }).passthrough();
 
+// ── 16. Tasks (Phase 6 — workflow tooling) ──────────────────────────────────
+// Manually-assigned work items that surface on the assignee's Dashboard.
+// Distinct from Jobs (which are client-facing service appointments) and
+// ServiceRequests (which are inbound). Tasks are internal work: "Inspect
+// Site X", "Audit petty cash", "Follow up with Beta Office contact".
+export const TaskSchema = z.object({
+  id: idField,
+  title: str,
+  description: strOpt,
+  assignee: strOpt,         // staff/user name. Empty = unassigned (Admin pool).
+  assigneeRole: strOpt,     // "Supervisor" | "Technician" | "Finance" | "Admin"
+  priority: strOpt,         // "Low" | "Normal" | "High" | "Urgent"
+  status: strOpt,           // "Pending" | "In Progress" | "Done" | "Cancelled"
+  dueDate: strOpt,          // YYYY-MM-DD
+  weekOf: strOpt,           // YYYY-MM-DD of the Monday of the assigned week
+  createdBy: strOpt,
+  createdAt: strOpt,
+  completedAt: strOpt,
+  // Provenance — if this task was materialized from a recurring template, the
+  // template id lives here so we can avoid double-creating on re-runs.
+  templateId: strOpt,
+}).passthrough();
+
+// ── 17. Task Templates (Phase 6 — recurring task definitions) ───────────────
+// Reusable definitions that the Monday-morning materializer expands into
+// concrete Task rows. The relationship is template → many tasks (one per week
+// the template was active).
+export const TaskTemplateSchema = z.object({
+  id: idField,
+  title: str,
+  description: strOpt,
+  assignee: strOpt,
+  assigneeRole: strOpt,
+  priority: strOpt,
+  // Day-of-week the task is due. "Mon"|"Tue"|...|"Sat"; default Mon.
+  dueDayOfWeek: strOpt,
+  // ISO date the template starts being active. Empty = active from creation.
+  startDate: strOpt,
+  // ISO date the template stops. Empty = no end.
+  endDate: strOpt,
+  active: bool.optional(),
+  createdBy: strOpt,
+  createdAt: strOpt,
+}).passthrough();
+
 // ── Schema registry (table-name → schema) ────────────────────────────────────
 // Used by dbLoad/dbSync to look up the right validator. Keys must match the
 // `table` arguments passed to those functions (i.e. the part after the `dw_`
@@ -313,6 +364,8 @@ export const SCHEMAS = {
   covers: CoverSchema,
   assessments: AssessmentSchema,
   contacts: ContactSchema,
+  tasks: TaskSchema,
+  tasktemplates: TaskTemplateSchema,
 } as const;
 
 export type TableName = keyof typeof SCHEMAS;
@@ -335,6 +388,15 @@ export type Absence      = z.infer<typeof AbsenceSchema>;
 export type Cover        = z.infer<typeof CoverSchema>;
 export type Assessment   = z.infer<typeof AssessmentSchema>;
 export type Contact      = z.infer<typeof ContactSchema>;
+export type Task         = z.infer<typeof TaskSchema>;
+export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
+
+/**
+ * Role union. Phase 6 added Finance as a first-class role distinct from
+ * Admin — Finance users see imprest/payroll/deduction-focused dashboards
+ * but don't have org-wide config powers.
+ */
+export type UserRole = "Admin" | "Supervisor" | "Finance" | "Technician";
 
 /**
  * Currently logged-in user.
@@ -345,7 +407,10 @@ export type Contact      = z.infer<typeof ContactSchema>;
 export interface CurrentUser {
   id: string;
   name: string;
-  role: "Admin" | "Supervisor" | "Technician" | string;
+  // `string` retained in the union so legacy rows with unrecognized roles
+  // don't fail Zod parsing. Code that branches on role should narrow to the
+  // four canonical UserRole values.
+  role: UserRole | string;
   email?: string;
   username?: string;
   initial?: string;
