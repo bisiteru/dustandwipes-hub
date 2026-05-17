@@ -316,7 +316,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts:_contacts}:As
   };
 
   interface CheckListProps { opts: string[]; val?: string[]; onChange: (next:string[])=>void; cols?: number }
-  const CheckList=({opts,val=[],onChange,cols=2}:CheckListProps):JSX.Element=>(
+  const CheckList=({opts,val=[],onChange,cols=2}:CheckListProps):React.JSX.Element=>(
     <div className={`grid grid-cols-${cols} gap-1.5 mt-1`}>
       {opts.map(o=><label key={o} className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${val.includes(o)?"border-green-400 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}>
         <input type="checkbox" checked={val.includes(o)} onChange={()=>onChange(val.includes(o)?val.filter(v=>v!==o):[...val,o])} className="accent-green-600 flex-shrink-0"/>{o}
@@ -324,7 +324,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts:_contacts}:As
     </div>
   );
 
-  const ynField=(label:string,key:string):JSX.Element=>(
+  const ynField=(label:string,key:string):React.JSX.Element=>(
     <Fld label={label}><select className={inp} value={(f[key] as string|undefined)||""} onChange={u(key)}><option>Yes</option><option>No</option><option>N/A</option></select></Fld>
   );
 
@@ -597,7 +597,7 @@ interface AssessmentViewerProps {
 function AssessmentViewer({assessment:a,onClose,userRole}:AssessmentViewerProps){
   const isPrivileged=userRole==="Admin"||userRole==="Supervisor";
   const s=(l:string,v:unknown):ReactNode=>v?<div className="flex gap-3 mb-1.5"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{String(v)}</span></div>:null;
-  const section=(title:string,children:ReactNode):JSX.Element=><div className="mb-6"><h3 className="text-xs font-black uppercase tracking-widest pb-2 mb-3 border-b" style={{color:G}}>{title}</h3>{children}</div>;
+  const section=(title:string,children:ReactNode):React.JSX.Element=><div className="mb-6"><h3 className="text-xs font-black uppercase tracking-widest pb-2 mb-3 border-b" style={{color:G}}>{title}</h3>{children}</div>;
   const riskColor=a.riskLevel==="High"?RED:a.riskLevel==="Medium"?AMBER:G;
   const photos:AssessmentPhoto[]=(a.photos as AssessmentPhoto[]|undefined)||[];
   const services:string[]=(a.services as string[]|undefined)||[];
