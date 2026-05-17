@@ -1,25 +1,41 @@
-// @ts-nocheck — legacy page extracted from .js to .tsx prior to strict-mode enablement.
-// Hundreds of arrow-fn params and dynamic record indexing make per-line typing infeasible;
-// pages are scheduled for incremental typing in a follow-up. Strict checks remain enforced for
-// App.tsx, schemas.ts, and lib/.
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dust & Wipes Operations Hub — Site Assessments page
 //  Phase 4d extraction. Pre-job site assessment wizard with photos + GPS,
 //  separate from Site Reports (post-job inspections).
 //
 //  Includes AssessmentsPage + AssessmentViewer + SA_* form options.
+//
+//  Typing notes:
+//   - `AssessmentSchema` in lib/schemas.ts is intentionally permissive
+//     (`z.object({ id }).passthrough()`), so this page works with a wide,
+//     dynamic record shape (~80 form fields, many conditional). The form's
+//     internal draft is therefore typed as `AssessmentDraft` — a record-like
+//     alias — and cast to `Assessment` at save time on the dbSync boundary.
+//   - All event handlers and option arrays are explicitly typed; no per-field
+//     interface is enforced because the schema itself doesn't enforce one.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState } from "react";
+import React, { useState, type ChangeEvent, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { Plus, Edit2, Trash2, Eye, Search, ClipboardList, X, ChevronRight } from "lucide-react";
 import { G, GL, O, OL, AMBER, RED, BLUE, inp } from "../lib/constants";
-// fmt/fmtD not used in this file
-// from "../lib/format";
 import { dbSync, dbDelete, uploadAssessmentPhoto } from "../lib/supabase";
 import { Card, Fld, SBadge, KPI } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
 import { ContactSearchSelect } from "../components/pickers";
 import { useConfirm } from "../components/ui/useConfirm";
+import type { Assessment, Client, Contact, Request_, CurrentUser } from "../lib/schemas";
+
+// Internal draft shape for the wizard. The persisted schema is permissive
+// (`passthrough()`), so we model the draft as an open record. Compatible with
+// `Assessment` at save time via an explicit cast.
+type AssessmentDraft = { id: string } & Record<string, any>;
+
+interface AssessmentPhoto { url: string; caption?: string; name?: string }
+
+interface StatusStyle { bg: string; color: string }
+
+// Narrow an unknown passthrough field to string ("" fallback).
+const asStr = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
 
 // ── Site Assessment form options ─────────────────────────────────────────────
 const SA_SERVICES=[
@@ -39,64 +55,71 @@ const SA_PEST_TYPES=["Cockroaches","Ants","Mosquitoes","Flies","Rodents","Termit
 const SA_TREATMENT=["Spraying","Gel baiting","Fogging","Rodent baiting","Termite drilling/injection","Dusting","Fumigation","Trapping","Exclusion/sealing"];
 const SA_SECTIONS=["Client Info","Service Type","Scope","Site & Risk","Photos","Costing","Recommendation"];
 
-// ── Local checkbox-group helper (also used by SiteReports) ──────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function CheckGroup({options,value=[],onChange}:any){
-  const tog=o=>onChange(value.includes(o)?value.filter(v=>v!==o):[...value,o]);
-  return <div className="grid grid-cols-2 gap-2 mt-1">{options.map(o=><label key={o} className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${value.includes(o)?"border-green-500 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}><input type="checkbox" checked={value.includes(o)} onChange={()=>tog(o)} className="accent-green-600 flex-shrink-0"/>{o}</label>)}</div>;
+interface AssessmentsPageProps {
+  assessments: Assessment[];
+  setAssessments: Dispatch<SetStateAction<Assessment[]>>;
+  user: CurrentUser;
+  clients: Client[];
+  contacts: Contact[];
+  requests: Request_[];
+  setRequests: Dispatch<SetStateAction<Request_[]>>;
 }
 
-
 export
-function AssessmentsPage({assessments,setAssessments,user,clients,contacts,requests,setRequests}:any){
-  const[view,setView]=useState(null);
-  const[showForm,setShowForm]=useState(false);
-  const[editData,setEditData]=useState(null);
-  const[search,setSearch]=useState("");
-  const[filterStatus,setFilterStatus]=useState("All");
-  const[filterSvc,setFilterSvc]=useState("All");
+function AssessmentsPage({assessments,setAssessments,user,clients,contacts,requests:_requests,setRequests}:AssessmentsPageProps){
+  void contacts; // ContactSearchSelect currently reads contacts from window.__DW_CONTACTS__
+  void _requests; // present for parity with App.tsx call signature; not read here
+  const[view,setView]=useState<Assessment|null>(null);
+  const[showForm,setShowForm]=useState<boolean>(false);
+  const[editData,setEditData]=useState<Assessment|null>(null);
+  const[search,setSearch]=useState<string>("");
+  const[filterStatus,setFilterStatus]=useState<string>("All");
+  const[filterSvc,setFilterSvc]=useState<string>("All");
   const[confirm,confirmEl]=useConfirm();
 
-  const del=id=>confirm("Delete this assessment?",()=>{setAssessments(as=>as.filter(a=>a.id!==id));dbDelete("assessments",id);});
+  const del=(id:string):void=>confirm("Delete this assessment?",()=>{setAssessments(as=>as.filter(a=>a.id!==id));void dbDelete("assessments",id);});
 
-  const convertToRequest=(a)=>{
-    const newReq={
+  const convertToRequest=(a:Assessment):void=>{
+    // Assessment fields are `unknown` per its passthrough schema, so we narrow
+    // each pulled value with `String(...)`/optional-chained casts.
+    const newReq:Request_={
       id:"req"+Date.now(),
-      clientName:a.clientName,
-      clientPhone:a.clientPhone||"",
-      svc:a.services[0]||"Other",
-      loc:a.siteAddress||"",
-      prefDate:a.proposedDate||"",
+      clientName:(a.clientName as string|undefined)||"",
+      clientPhone:(a.clientPhone as string|undefined)||"",
+      svc:(a.services as string[]|undefined)?.[0]||"Other",
+      loc:(a.siteAddress as string|undefined)||"",
+      prefDate:(a.proposedDate as string|undefined)||"",
       src:"Assessment",
       status:"Pending",
-      notes:`Converted from Site Assessment ${a.assessmentId}. ${a.recommendedPlan||""}`.trim(),
+      notes:`Converted from Site Assessment ${String(a.assessmentId??"")}. ${(a.recommendedPlan as string|undefined)||""}`.trim(),
       created:new Date().toISOString(),
     };
     setRequests(rs=>[newReq,...rs]);
-    setAssessments(as=>as.map(a2=>a2.id===a.id?{...a2,status:"Converted to Job",convertedReqId:newReq.id}:a2));
-    alert(`✅ Converted to Service Request #${newReq.id}`);
+    setAssessments(as=>as.map(a2=>a2.id===a.id?({...a2,status:"Converted to Job",convertedReqId:newReq.id} as Assessment):a2));
+    alert(`Converted to Service Request #${newReq.id}`);
   };
 
-  const filtered=assessments.filter(a=>{
+  const filtered: AssessmentDraft[]=(assessments as AssessmentDraft[]).filter((a: AssessmentDraft)=>{
     const q=search.toLowerCase();
-    const matchQ=!q||[a.clientName,a.assessmentOfficer,a.siteAddress,a.assessmentId].join(" ").toLowerCase().includes(q);
-    const matchS=filterStatus==="All"||a.status===filterStatus;
-    const matchV=filterSvc==="All"||(a.services||[]).some(s=>s===filterSvc);
+    const matchQ=!q||[asStr(a.clientName),asStr(a.assessmentOfficer),asStr(a.siteAddress),asStr(a.assessmentId)].join(" ").toLowerCase().includes(q);
+    const matchS=filterStatus==="All"||asStr(a.status)===filterStatus;
+    const matchV=filterSvc==="All"||((a.services as string[]|undefined)||[]).some((s:string)=>s===filterSvc);
     return matchQ&&matchS&&matchV;
   });
 
-  const statusBadge=(s)=>{
-    const m={"Draft":{bg:"#f3f4f6",color:"#6b7280"},"Submitted":{bg:"#dbeafe",color:"#1e40af"},"Reviewed":{bg:"#fef3c7",color:"#92400e"},"Quoted":{bg:"#ede9fe",color:"#5b21b6"},"Converted to Job":{bg:"#dcfce7",color:"#166534"},"Closed":{bg:"#f1f5f9",color:"#475569"},"Lost":{bg:"#fee2e2",color:"#991b1b"}};
-    return m[s]||{bg:"#f3f4f6",color:"#6b7280"};
+  const statusBadge=(s:unknown):StatusStyle=>{
+    const m:Record<string,StatusStyle>={"Draft":{bg:"#f3f4f6",color:"#6b7280"},"Submitted":{bg:"#dbeafe",color:"#1e40af"},"Reviewed":{bg:"#fef3c7",color:"#92400e"},"Quoted":{bg:"#ede9fe",color:"#5b21b6"},"Converted to Job":{bg:"#dcfce7",color:"#166534"},"Closed":{bg:"#f1f5f9",color:"#475569"},"Lost":{bg:"#fee2e2",color:"#991b1b"}};
+    const key=asStr(s);
+    return m[key]||{bg:"#f3f4f6",color:"#6b7280"};
   };
 
   return(<div className="space-y-5">{confirmEl}
     {/* Stats */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <KPI icon="📋" label="Total" value={assessments.length} sub="All assessments" bg={GL}/>
-      <KPI icon="📝" label="Draft" value={assessments.filter(a=>a.status==="Draft").length} sub="In progress" bg="#eff6ff"/>
-      <KPI icon="✅" label="Submitted" value={assessments.filter(a=>a.status==="Submitted").length} sub="Awaiting review" bg={OL}/>
-      <KPI icon="🔄" label="Converted" value={assessments.filter(a=>a.status==="Converted to Job").length} sub="To service request" bg="#f0fdf4"/>
+      <KPI icon="📝" label="Draft" value={assessments.filter((a: AssessmentDraft)=>a.status==="Draft").length} sub="In progress" bg="#eff6ff"/>
+      <KPI icon="✅" label="Submitted" value={assessments.filter((a: AssessmentDraft)=>a.status==="Submitted").length} sub="Awaiting review" bg={OL}/>
+      <KPI icon="🔄" label="Converted" value={assessments.filter((a: AssessmentDraft)=>a.status==="Converted to Job").length} sub="To service request" bg="#f0fdf4"/>
     </div>
 
     {/* Filters + New button */}
@@ -125,9 +148,11 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
           <p className="text-xs mt-1">Create a site assessment before preparing quotations or assigning teams</p>
         </div>
         :<div className="divide-y divide-gray-50">
-          {filtered.map(a=>{
+          {filtered.map((a: AssessmentDraft)=>{
             const sc=statusBadge(a.status);
             const isHigh=a.riskLevel==="High";
+            const services=(a.services as string[]|undefined)||[];
+            const photos=(a.photos as AssessmentPhoto[]|undefined)||[];
             return(<div key={a.id} className="px-5 py-4 hover:bg-gray-50">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
@@ -140,12 +165,12 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
                       <span className="text-xs text-gray-400 font-mono">{a.assessmentId}</span>
                       {isHigh&&<span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background:"#fee2e2",color:RED}}>High Risk</span>}
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{(a.services||[]).slice(0,3).join(", ")}{(a.services||[]).length>3?` +${a.services.length-3} more`:""}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{services.slice(0,3).join(", ")}{services.length>3?` +${services.length-3} more`:""}</p>
                     <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
                       {a.siteAddress&&<span>📍 {a.siteAddress}</span>}
                       <span>👤 {a.assessmentOfficer}</span>
                       <span>📅 {a.assessmentDate}</span>
-                      {(a.photos||[]).length>0&&<span>📷 {a.photos.length} photo{a.photos.length!==1?"s":""}</span>}
+                      {photos.length>0&&<span>📷 {photos.length} photo{photos.length!==1?"s":""}</span>}
                     </div>
                   </div>
                 </div>
@@ -165,10 +190,13 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
 
     {showForm&&<AssessmentForm
       data={editData}
-      onSave={data=>{
-        const exists=assessments.some(a=>a.id===data.id);
-        const na=exists?assessments.map(a=>a.id===data.id?data:a):[data,...assessments];
-        setAssessments(na);dbSync("assessments",na);
+      onSave={(data:AssessmentDraft)=>{
+        // `Assessment` is intentionally permissive (passthrough). The wizard
+        // builds an open record; cast here at the persistence boundary.
+        const saved=data as Assessment;
+        const exists=assessments.some(a=>a.id===saved.id);
+        const na: AssessmentDraft[]=exists?assessments.map(a=>a.id===saved.id?saved:a):[saved,...assessments];
+        setAssessments(na);void dbSync("assessments",na);
         setShowForm(false);setEditData(null);
       }}
       onClose={()=>{setShowForm(false);setEditData(null);}}
@@ -177,13 +205,23 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
     {view&&<AssessmentViewer assessment={view} onClose={()=>setView(null)} userRole={user.role}/>}
   </div>);}
 
-function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
-  const isEdit=!!data?.id;
-  const genId=()=>`SA-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
-  const[sec,setSec]=useState(0);
-  const[uploading,setUploading]=useState(false);
+interface AssessmentFormProps {
+  data: Assessment | null;
+  onSave: (draft: AssessmentDraft) => void;
+  onClose: () => void;
+  user: CurrentUser;
+  clients: Client[];
+  contacts: Contact[];
+}
 
-  const blank={
+function AssessmentForm({data,onSave,onClose,user,clients,contacts:_contacts}:AssessmentFormProps){
+  void _contacts; // ContactSearchSelect reads contacts off window.__DW_CONTACTS__
+  const isEdit=!!data?.id;
+  const genId=():string=>`SA-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+  const[sec,setSec]=useState<number>(0);
+  const[uploading,setUploading]=useState<boolean>(false);
+
+  const blank:AssessmentDraft={
     id:"",assessmentId:genId(),status:"Draft",
     // S1 - Client
     clientName:"",contactPerson:"",clientPhone:"",clientEmail:"",
@@ -228,45 +266,57 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
     followUpDate:"",followUpOfficer:"",
   };
 
-  const[f,setF]=useState(data?{...blank,...data}:blank);
-  const u=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+  const[f,setF]=useState<AssessmentDraft>(data?({...blank,...data} as AssessmentDraft):blank);
+  type FormChange = ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>;
+  const u=(k:string)=>(e:FormChange):void=>setF(p=>({...p,[k]:e.target.value}));
 
-  const hasCleaning=f.services.some(s=>SA_CLEAN_SVCS.includes(s));
-  const hasPest    =f.services.some(s=>SA_PEST_SVCS.includes(s));
-  const hasJanitor =f.services.some(s=>SA_JANITORIAL.includes(s));
-  const hasOutdoor =f.services.some(s=>SA_OUTDOOR_SVCS.includes(s));
+  const services:string[]=(f.services as string[]|undefined)||[];
+  const hasCleaning=services.some(s=>SA_CLEAN_SVCS.includes(s));
+  const hasPest    =services.some(s=>SA_PEST_SVCS.includes(s));
+  const hasJanitor =services.some(s=>SA_JANITORIAL.includes(s));
+  const hasOutdoor =services.some(s=>SA_OUTDOOR_SVCS.includes(s));
 
-  const addPhotos=async(e)=>{
+  const addPhotos=async(e:ChangeEvent<HTMLInputElement>):Promise<void>=>{
     const files=Array.from(e.target.files||[]);
     if(!files.length)return;
     setUploading(true);
-    const results=[];
-    for(const file of (files.slice(0,10-f.photos.length) as File[])){
-      const url=await uploadAssessmentPhoto(file,f.assessmentId);
+    const results:AssessmentPhoto[]=[];
+    const existing=(f.photos as AssessmentPhoto[]|undefined)||[];
+    for(const file of files.slice(0,10-existing.length)){
+      const url=await uploadAssessmentPhoto(file,f.assessmentId as string);
       if(url)results.push({url,caption:"",name:file.name});
       else{
         // fallback: store as base64 preview
-        await new Promise<void>(res=>{const r=new FileReader();r.onload=(ev:any)=>{results.push({url:ev.target.result,caption:"",name:file.name});res();};r.readAsDataURL(file);});
+        await new Promise<void>(res=>{
+          const r=new FileReader();
+          r.onload=(ev:ProgressEvent<FileReader>):void=>{
+            const result=ev.target?.result;
+            if(typeof result==="string")results.push({url:result,caption:"",name:file.name});
+            res();
+          };
+          r.readAsDataURL(file);
+        });
       }
     }
-    setF(p=>({...p,photos:[...p.photos,...results]}));
+    setF(p=>({...p,photos:[...(((p.photos as AssessmentPhoto[]|undefined)||[])),...results]}));
     setUploading(false);
     e.target.value="";
   };
 
-  const canNext=[
-    f.clientName&&f.assessmentDate&&f.assessmentOfficer,
-    f.services.length>0,
+  const canNext:Array<boolean|string>=[
+    !!(f.clientName&&f.assessmentDate&&f.assessmentOfficer),
+    services.length>0,
     true,true,true,true,
-    f.status,
+    f.status as string,
   ];
 
-  const submit=(status)=>{
-    const final={...f,id:f.id||"sa"+Date.now(),status,updatedAt:new Date().toISOString()};
+  const submit=(status:string):void=>{
+    const final:AssessmentDraft={...f,id:(f.id as string)||"sa"+Date.now(),status,updatedAt:new Date().toISOString()};
     onSave(final);
   };
 
-  const CheckList=({opts,val=[],onChange,cols=2})=>(
+  interface CheckListProps { opts: string[]; val?: string[]; onChange: (next:string[])=>void; cols?: number }
+  const CheckList=({opts,val=[],onChange,cols=2}:CheckListProps):JSX.Element=>(
     <div className={`grid grid-cols-${cols} gap-1.5 mt-1`}>
       {opts.map(o=><label key={o} className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${val.includes(o)?"border-green-400 bg-green-50 font-semibold text-green-800":"border-gray-200 text-gray-600 hover:border-gray-300"}`}>
         <input type="checkbox" checked={val.includes(o)} onChange={()=>onChange(val.includes(o)?val.filter(v=>v!==o):[...val,o])} className="accent-green-600 flex-shrink-0"/>{o}
@@ -274,8 +324,8 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
     </div>
   );
 
-  const ynField=(label,key)=>(
-    <Fld label={label}><select className={inp} value={f[key]} onChange={u(key)}><option>Yes</option><option>No</option><option>N/A</option></select></Fld>
+  const ynField=(label:string,key:string):JSX.Element=>(
+    <Fld label={label}><select className={inp} value={(f[key] as string|undefined)||""} onChange={u(key)}><option>Yes</option><option>No</option><option>N/A</option></select></Fld>
   );
 
   return(<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3">
@@ -308,7 +358,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}>📋 Section 1 — Basic Client Information</div>
           <div className="grid grid-cols-2 gap-4">
             <Fld label="Client Name / Organisation" col required>
-              <ContactSearchSelect value={f.clientName} onSelect={n=>{const c=[...clients,...((window as any).__DW_CONTACTS__||[])].find(x=>x.name===n);setF(p=>({...p,clientName:n,siteAddress:c?.addr||c?.address||p.siteAddress,clientPhone:c?.phone||p.clientPhone,clientEmail:c?.email||p.clientEmail}));}} clients={clients} contacts={(window as any).__DW_CONTACTS__||[]}/>
+              <ContactSearchSelect value={(f.clientName as string|undefined)||""} onSelect={(n:string):void=>{const winContacts=(((window as unknown) as {__DW_CONTACTS__?:Array<Record<string,any>>}).__DW_CONTACTS__)||[];const c=[...clients as Array<Record<string,any>>,...winContacts].find((x:Record<string,any>)=>x.name===n);setF(p=>({...p,clientName:n,siteAddress:c?.addr||c?.address||p.siteAddress,clientPhone:c?.phone||p.clientPhone,clientEmail:c?.email||p.clientEmail}));}} clients={clients as any} contacts={(((window as unknown) as {__DW_CONTACTS__?:Array<Record<string,any>>}).__DW_CONTACTS__)||[] as any}/>
             </Fld>
             <Fld label="Contact Person"><input className={inp} value={f.contactPerson} onChange={u("contactPerson")}/></Fld>
             <Fld label="Phone"><input className={inp} type="tel" value={f.clientPhone} onChange={u("clientPhone")}/></Fld>
@@ -357,7 +407,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
             <Fld label="Floor Type (select all)" col><CheckList opts={["Tiles","Marble","Terrazzo","Wood","Vinyl","Concrete","Carpet","Mixed"]} val={f.floorType} onChange={v=>setF(p=>({...p,floorType:v}))} cols={4}/></Fld>
             <Fld label="Stains Present" col>
               <div className="flex flex-wrap gap-3 mt-1">
-                {[["paintStains","Paint stains"],["cementStains","Cement stains"],["glueStains","Glue/silicone stains"],["heavyDust","Heavy dust/debris"]].map(([k,l])=><label key={k} className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={f[k]} onChange={()=>setF(p=>({...p,[k]:!p[k]}))} className="accent-green-600"/> {l}</label>)}
+                {(([["paintStains","Paint stains"],["cementStains","Cement stains"],["glueStains","Glue/silicone stains"],["heavyDust","Heavy dust/debris"]]) as Array<[string,string]>).map(([k,l])=><label key={k} className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={!!f[k]} onChange={()=>setF(p=>({...p,[k]:!p[k]}))} className="accent-green-600"/> {l}</label>)}
               </div>
             </Fld>
             <Fld label="External Areas to Clean" col><CheckList opts={["Balconies","Compound","Parking area","Drainage","Walkways","Generator house","Security post"]} val={f.externalAreas} onChange={v=>setF(p=>({...p,externalAreas:v}))} cols={3}/></Fld>
@@ -462,17 +512,17 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
                 <input type="file" accept="image/*" multiple onChange={addPhotos} className="hidden" disabled={uploading}/>
               </label>
             </div>
-            {f.photos.length>0&&<div className="grid grid-cols-3 gap-3">
-              {f.photos.map((p,i)=><div key={i} className="space-y-1">
+            {((f.photos as AssessmentPhoto[]|undefined)||[]).length>0&&<div className="grid grid-cols-3 gap-3">
+              {((f.photos as AssessmentPhoto[]|undefined)||[]).map((p:AssessmentPhoto,i:number)=><div key={i} className="space-y-1">
                 <div className="relative group">
                   <img src={p.url} alt={p.name} className="w-full h-28 object-cover rounded-xl border border-gray-200"/>
-                  <button type="button" onClick={()=>setF(prev=>({...prev,photos:prev.photos.filter((_,j)=>j!==i)}))} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                  <button type="button" onClick={()=>setF(prev=>({...prev,photos:(((prev.photos as AssessmentPhoto[]|undefined)||[])).filter((_:AssessmentPhoto,j:number)=>j!==i)}))} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                 </div>
-                <input className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs" placeholder="Caption (optional)" value={p.caption||""} onChange={e=>setF(prev=>({...prev,photos:prev.photos.map((ph,j)=>j===i?{...ph,caption:e.target.value}:ph)}))}/>
+                <input className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs" placeholder="Caption (optional)" value={p.caption||""} onChange={(e:ChangeEvent<HTMLInputElement>)=>setF(prev=>({...prev,photos:(((prev.photos as AssessmentPhoto[]|undefined)||[])).map((ph:AssessmentPhoto,j:number)=>j===i?{...ph,caption:e.target.value}:ph)}))}/>
               </div>)}
             </div>}
-            {f.photos.length===0&&<p className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">No photos added — capture site entrance, work areas, problem areas, and any evidence</p>}
-            <p className="text-xs text-gray-400">{f.photos.length}/10 photos added</p>
+            {((f.photos as AssessmentPhoto[]|undefined)||[]).length===0&&<p className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">No photos added — capture site entrance, work areas, problem areas, and any evidence</p>}
+            <p className="text-xs text-gray-400">{((f.photos as AssessmentPhoto[]|undefined)||[]).length}/10 photos added</p>
           </div>
         </div>}
 
@@ -495,8 +545,8 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
           {/* Auto-total */}
           {(f.estTransport||f.estMaterials||f.estEquipment||f.estWasteEvac||f.estSupervision)&&<div className="p-4 rounded-xl" style={{background:GL}}>
             <p className="text-xs font-bold text-green-700 mb-1">Estimated Total Cost</p>
-            <p className="text-2xl font-black" style={{color:G}}>₦{([f.estTransport,f.estMaterials,f.estEquipment,f.estWasteEvac,f.estSupervision].reduce((s,v)=>s+(Number(v)||0),0)).toLocaleString()}</p>
-            {f.profitMargin&&<p className="text-xs text-gray-500 mt-1">With {f.profitMargin}% margin: ₦{Math.round([f.estTransport,f.estMaterials,f.estEquipment,f.estWasteEvac,f.estSupervision].reduce((s,v)=>s+(Number(v)||0),0)*(1+Number(f.profitMargin)/100)).toLocaleString()}</p>}
+            <p className="text-2xl font-black" style={{color:G}}>₦{([f.estTransport,f.estMaterials,f.estEquipment,f.estWasteEvac,f.estSupervision].reduce((s:number,v:unknown):number=>s+(Number(v)||0),0)).toLocaleString()}</p>
+            {f.profitMargin&&<p className="text-xs text-gray-500 mt-1">With {String(f.profitMargin)}% margin: ₦{Math.round([f.estTransport,f.estMaterials,f.estEquipment,f.estWasteEvac,f.estSupervision].reduce((s:number,v:unknown):number=>s+(Number(v)||0),0)*(1+Number(f.profitMargin)/100)).toLocaleString()}</p>}
           </div>}
         </div>}
 
@@ -516,7 +566,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
           {/* Summary */}
           <div className="p-4 rounded-xl space-y-2 text-sm" style={{background:"#f9fafb",border:"1px solid #f3f4f6"}}>
             <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Assessment Summary</p>
-            {[["ID",f.assessmentId],["Client",f.clientName],["Services",(f.services||[]).join(", ")],["Site",f.siteAddress],["Officer",f.assessmentOfficer],["Date",f.assessmentDate],["Risk Level",f.riskLevel],["Quotation",f.recommendedQuote?`₦${Number(f.recommendedQuote).toLocaleString()}`:"Not set"],["Photos",`${(f.photos||[]).length} attached`]].map(([l,v])=>v?<div key={l} className="flex gap-2"><span className="text-xs font-bold text-gray-400 w-28 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>:null)}
+            {(([["ID",f.assessmentId],["Client",f.clientName],["Services",services.join(", ")],["Site",f.siteAddress],["Officer",f.assessmentOfficer],["Date",f.assessmentDate],["Risk Level",f.riskLevel],["Quotation",f.recommendedQuote?`₦${Number(f.recommendedQuote).toLocaleString()}`:"Not set"],["Photos",`${((f.photos as AssessmentPhoto[]|undefined)||[]).length} attached`]]) as Array<[string,unknown]>).map(([l,v])=>v?<div key={l} className="flex gap-2"><span className="text-xs font-bold text-gray-400 w-28 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{String(v)}</span></div>:null)}
           </div>
         </div>}
 
@@ -530,7 +580,7 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
         <div className="flex items-center gap-2">
           <button onClick={()=>submit("Draft")} className="px-4 py-2.5 rounded-xl text-sm font-semibold border" style={{borderColor:AMBER,color:AMBER}}>Save Draft</button>
           {sec<6
-            ?<button onClick={()=>setSec(s=>s+1)} disabled={!canNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>Next →</button>
+            ?<button onClick={()=>setSec(s=>s+1)} disabled={!canNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{background:G}}>{"Next →"}</button>
             :<button onClick={()=>submit("Submitted")} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold" style={{background:O}}>Submit Assessment ✓</button>
           }
         </div>
@@ -538,14 +588,23 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts}:any){
     </div>
   </div>);}
 
-function AssessmentViewer({assessment:a,onClose,userRole}:any){
-  const isPrivileged=userRole==="Admin"||userRole==="Supervisor";
-  const s=(l,v)=>v?<div className="flex gap-3 mb-1.5"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{v}</span></div>:null;
-  const section=(title,children)=><div className="mb-6"><h3 className="text-xs font-black uppercase tracking-widest pb-2 mb-3 border-b" style={{color:G}}>{title}</h3>{children}</div>;
-  const riskColor=a.riskLevel==="High"?RED:a.riskLevel==="Medium"?AMBER:G;
+interface AssessmentViewerProps {
+  assessment: Assessment;
+  onClose: () => void;
+  userRole: string | undefined;
+}
 
-  const print=()=>{
+function AssessmentViewer({assessment:a,onClose,userRole}:AssessmentViewerProps){
+  const isPrivileged=userRole==="Admin"||userRole==="Supervisor";
+  const s=(l:string,v:unknown):ReactNode=>v?<div className="flex gap-3 mb-1.5"><span className="text-xs font-bold text-gray-400 w-40 flex-shrink-0">{l}</span><span className="text-xs text-gray-700">{String(v)}</span></div>:null;
+  const section=(title:string,children:ReactNode):JSX.Element=><div className="mb-6"><h3 className="text-xs font-black uppercase tracking-widest pb-2 mb-3 border-b" style={{color:G}}>{title}</h3>{children}</div>;
+  const riskColor=a.riskLevel==="High"?RED:a.riskLevel==="Medium"?AMBER:G;
+  const photos:AssessmentPhoto[]=(a.photos as AssessmentPhoto[]|undefined)||[];
+  const services:string[]=(a.services as string[]|undefined)||[];
+
+  const print=():void=>{
     const w=window.open("","_blank");
+    if(!w)return;
     w.document.write(`<!DOCTYPE html><html><head><title>Assessment ${a.assessmentId}</title>
     <style>body{font-family:Arial,sans-serif;font-size:12px;color:#1f2937;padding:24px}
     h1{color:#0B3518;font-size:18px}h2{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#1B6B2F;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin:16px 0 8px}
@@ -571,7 +630,7 @@ function AssessmentViewer({assessment:a,onClose,userRole}:any){
     <div class="row"><span class="lbl">Risk Level</span><span class="val" style="font-weight:bold;color:${riskColor}">${a.riskLevel||"—"}</span></div>
     <div class="row"><span class="lbl">Challenges</span><span class="val">${a.challenges||"—"}</span></div>
     <div class="row"><span class="lbl">PPE Required</span><span class="val">${a.ppeRequired||"—"}</span></div>
-    ${(a.photos||[]).length>0?`<h2>Photos</h2><div class="grid">${(a.photos||[]).map(p=>`<div><img src="${p.url}" alt=""/><p style="font-size:10px;color:#6b7280">${p.caption||""}</p></div>`).join("")}</div>`:""}
+    ${photos.length>0?`<h2>Photos</h2><div class="grid">${photos.map((p:AssessmentPhoto)=>`<div><img src="${p.url}" alt=""/><p style="font-size:10px;color:#6b7280">${p.caption||""}</p></div>`).join("")}</div>`:""}
     <h2>Recommendation</h2>
     <div class="row"><span class="lbl">Recommended Plan</span><span class="val">${a.recommendedPlan||"—"}</span></div>
     <div class="row"><span class="lbl">Priority</span><span class="val">${a.priorityLevel||"—"}</span></div>
@@ -597,13 +656,13 @@ function AssessmentViewer({assessment:a,onClose,userRole}:any){
         {s("Site Address",a.siteAddress)}{s("City/State",a.cityState)}{s("Assessment Date",a.assessmentDate)}
         {s("Officer",a.assessmentOfficer)}{s("Source",a.sourceOfRequest)}{s("Client Type",a.clientType)}
       </>)}
-      {section("Section 2 — Services",(a.services||[]).length>0?<div className="flex flex-wrap gap-2">{(a.services||[]).map(sv=><span key={sv} className="text-xs px-3 py-1 rounded-full font-semibold" style={{background:GL,color:G}}>{sv}</span>)}</div>:<p className="text-xs text-gray-400">None selected</p>)}
+      {section("Section 2 — Services",services.length>0?<div className="flex flex-wrap gap-2">{services.map((sv:string)=><span key={sv} className="text-xs px-3 py-1 rounded-full font-semibold" style={{background:GL,color:G}}>{sv}</span>)}</div>:<p className="text-xs text-gray-400">None selected</p>)}
       {section("Section 3 — Scope",<>
         {a.numFloors&&s("Floors",a.numFloors)}{a.numRooms&&s("Rooms/Offices",a.numRooms)}{a.numToilets&&s("Toilets/Bathrooms",a.numToilets)}
-        {(a.floorType||[]).length>0&&s("Floor Type",a.floorType.join(", "))}{a.wallCondition&&s("Wall Condition",a.wallCondition)}
-        {(a.pestTypes||[]).length>0&&s("Pest Types",a.pestTypes.join(", "))}{a.severityLevel&&s("Severity",a.severityLevel)}
-        {(a.treatmentMethod||[]).length>0&&s("Treatment",a.treatmentMethod.join(", "))}
-        {(a.equipment||[]).length>0&&s("Equipment",a.equipment.join(", "))}{(a.chemicals||[]).length>0&&s("Chemicals",a.chemicals.join(", "))}
+        {((a.floorType as string[]|undefined)||[]).length>0&&s("Floor Type",((a.floorType as string[])||[]).join(", "))}{a.wallCondition&&s("Wall Condition",a.wallCondition)}
+        {((a.pestTypes as string[]|undefined)||[]).length>0&&s("Pest Types",((a.pestTypes as string[])||[]).join(", "))}{a.severityLevel&&s("Severity",a.severityLevel)}
+        {((a.treatmentMethod as string[]|undefined)||[]).length>0&&s("Treatment",((a.treatmentMethod as string[])||[]).join(", "))}
+        {((a.equipment as string[]|undefined)||[]).length>0&&s("Equipment",((a.equipment as string[])||[]).join(", "))}{((a.chemicals as string[]|undefined)||[]).length>0&&s("Chemicals",((a.chemicals as string[])||[]).join(", "))}
         {a.estimatedWorkers&&s("Est. Workers",a.estimatedWorkers)}{a.estimatedDuration&&s("Est. Duration",a.estimatedDuration)}
       </>)}
       {section("Section 4 — Site Condition & Risk",<>
@@ -611,7 +670,7 @@ function AssessmentViewer({assessment:a,onClose,userRole}:any){
         <div className="flex items-center gap-2 mb-1.5"><span className="text-xs font-bold text-gray-400 w-40">Risk Level</span><span className="text-xs font-black px-3 py-0.5 rounded-full text-white" style={{background:riskColor}}>{a.riskLevel||"—"}</span></div>
         {s("PPE Required",a.ppeRequired)}{s("Team Size",a.recommendedTeam)}{s("Client Expectations",a.clientExpectations)}
       </>)}
-      {(a.photos||[]).length>0&&section(`Section 5 — Photos (${a.photos.length})`,<div className="grid grid-cols-3 gap-2">{(a.photos||[]).map((p,i)=><div key={i}><img src={p.url} alt={p.caption||"Photo"} className="w-full h-24 object-cover rounded-xl border border-gray-200"/>{p.caption&&<p className="text-xs text-gray-400 mt-0.5 text-center">{p.caption}</p>}</div>)}</div>)}
+      {photos.length>0&&section(`Section 5 — Photos (${photos.length})`,<div className="grid grid-cols-3 gap-2">{photos.map((p:AssessmentPhoto,i:number)=><div key={i}><img src={p.url} alt={p.caption||"Photo"} className="w-full h-24 object-cover rounded-xl border border-gray-200"/>{p.caption&&<p className="text-xs text-gray-400 mt-0.5 text-center">{p.caption}</p>}</div>)}</div>)}
       {isPrivileged&&section("Section 6 — Costing (Confidential)",<>
         {s("Est. Workers",a.estWorkers)}{s("Est. Workdays",a.estWorkdays)}
         {a.estTransport&&s("Est. Transport",`₦${Number(a.estTransport).toLocaleString()}`)}{a.estMaterials&&s("Est. Materials",`₦${Number(a.estMaterials).toLocaleString()}`)}
