@@ -121,6 +121,16 @@ describe("monthKeyOf", () => {
     expect(monthKeyOf(i, "2026-01")).toBe("2026-03");
   });
 
+  it("falls back to the provided default when month is malformed (e.g. just \"2026\")", () => {
+    // Regression for the production crash where a record with `month: "2026"`
+    // (missing the -MM segment) crashed Imprest's month-button row via
+    // `MONTHS[NaN].slice(0,3)`. monthKeyOf must reject the malformed value
+    // and fall through to the fallback so downstream consumers can trust
+    // every key matches /^\d{4}-\d{2}$/.
+    const i = imp({ month: "2026" as any, releaseDate: "" });
+    expect(monthKeyOf(i, "2026-05")).toBe("2026-05");
+  });
+
   it("falls back to the provided default when both are missing", () => {
     const i = imp({ month: "", releaseDate: "" });
     expect(monthKeyOf(i, "2026-01")).toBe("2026-01");

@@ -35,9 +35,21 @@ export const balanceOf = (imp: Imprest | undefined | null): number => {
  * Get the month-key for an imprest record. Prefers the explicit `month`
  * field (YYYY-MM); falls back to the YYYY-MM prefix of `releaseDate`, or
  * the provided default if neither is present.
+ *
+ * Validates the output format — a malformed `month` (e.g. just "2026")
+ * would otherwise leak into downstream sort/split logic and crash the UI
+ * on `MONTHS[NaN]`. If both fields are present-but-malformed we still
+ * fall through to the provided fallback rather than return garbage.
  */
-export const monthKeyOf = (imp: Imprest, fallback: string): string =>
-  imp.month || (imp.releaseDate ? imp.releaseDate.slice(0, 7) : fallback);
+const YYYY_MM = /^\d{4}-\d{2}$/;
+export const monthKeyOf = (imp: Imprest, fallback: string): string => {
+  if (imp.month && YYYY_MM.test(imp.month)) return imp.month;
+  if (imp.releaseDate && imp.releaseDate.length >= 7) {
+    const candidate = imp.releaseDate.slice(0, 7);
+    if (YYYY_MM.test(candidate)) return candidate;
+  }
+  return fallback;
+};
 
 /**
  * Given the full imprest list, return the closing balance of `holder`'s

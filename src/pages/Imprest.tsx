@@ -17,6 +17,9 @@ import { useConfirm } from "../components/ui/useConfirm";
 import type { Imprest, Staff } from "../lib/schemas";
 // Money math lives in lib/imprest-calc.ts so it's unit-tested without React.
 import { sumExpenses, sumTopups, getPrevBal as libGetPrevBal } from "../lib/imprest-calc";
+// Defensive YYYY-MM label formatter — already validates input format and
+// returns "Unknown" for malformed keys instead of crashing on MONTHS[NaN].
+import { mkLabel as safeMkLabel } from "../lib/monthly";
 
 // ── Local types for embedded sub-records ─────────────────────────────────────
 // expenses[] and topups[] are typed as z.array(z.any()) in the Zod schema.
@@ -100,11 +103,19 @@ export function ImprestPage({ imprests, setImprests, staff = [] }: ImprestPagePr
     const rec = updated.find(i => String(i.id) === id);
     if (rec) dbSync("imprests", [rec]);
   };
-  const mKey = (i: Imprest): string => i.month || (i.releaseDate ? i.releaseDate.slice(0, 7) : curMK);
-  const mkLabel = (mk: string): string => {
-    const [y, m] = mk.split("-").map(Number);
-    return `${MONTHS[m - 1]} ${y}`;
+  // mKey: returns a YYYY-MM string. Validates the format defensively — a
+  // malformed `month` field (e.g. "2026" only, or "" with a likewise malformed
+  // releaseDate) used to fall through to .slice() and crash the page.
+  const YYYY_MM = /^\d{4}-\d{2}$/;
+  const mKey = (i: Imprest): string => {
+    if (i.month && YYYY_MM.test(i.month)) return i.month;
+    if (i.releaseDate && i.releaseDate.length >= 7) {
+      const candidate = i.releaseDate.slice(0, 7);
+      if (YYYY_MM.test(candidate)) return candidate;
+    }
+    return curMK;
   };
+  const mkLabel = safeMkLabel; // already defensive — returns "Unknown" on bad input
 
   // Auto-switch to most recent month with records when current month is empty
   useEffect(() => {
@@ -115,10 +126,12 @@ export function ImprestPage({ imprests, setImprests, staff = [] }: ImprestPagePr
   }, [imprests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allMonths = useMemo<string[]>(() => {
-    const s = new Set<string>(imprests.map(i => i.month || (i.releaseDate ? i.releaseDate.slice(0, 7) : curMK)));
+    // Use the same defensive mKey so malformed records can't inject a bad
+    // YYYY-MM into the tabs/buttons. curMK is always valid.
+    const s = new Set<string>(imprests.map(mKey));
     s.add(curMK);
     return [...s].sort().reverse();
-  }, [imprests, curMK]);
+  }, [imprests, curMK]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const monthRecs: Imprest[] = imprests.filter(i => mKey(i) === selMK);
 
@@ -253,8 +266,13 @@ export function ImprestPage({ imprests, setImprests, staff = [] }: ImprestPagePr
     {/* Month Navigator */}
     <div className="flex items-center gap-2 flex-wrap">
       {allMonths.map(mk => {
+        // Belt-and-suspenders: mKey already guarantees valid YYYY-MM, but the
+        // button label still computes its short form independently. If
+        // anything ever bypasses mKey (e.g. a future migration writes a raw
+        // mk), the `?.slice(0,3) ?? "?"` fallback prevents a page crash.
         const [y2, m2] = mk.split("-").map(Number);
-        const lbl = `${MONTHS[m2 - 1].slice(0, 3)} ${y2}`;
+        const monthName = MONTHS[(m2 || 0) - 1];
+        const lbl = `${monthName ? monthName.slice(0, 3) : "?"} ${y2 || ""}`;
         const active = mk === selMK;
         return (<button key={mk} onClick={() => setSelMK(mk)} className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${active ? "text-white" : "text-gray-500 hover:text-gray-700"}`} style={active ? { background: G } : { background: "#f3f4f6" }}>{lbl}{mk === curMK ? " ●" : ""}</button>);
       })}
