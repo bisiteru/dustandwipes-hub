@@ -624,7 +624,7 @@ function AssessmentViewer({assessment:a,onClose,userRole}:AssessmentViewerProps)
     <div class="row"><span class="lbl">Site Address</span><span class="val">${a.siteAddress||"—"}</span></div>
     <div class="row"><span class="lbl">Assessment Date</span><span class="val">${a.assessmentDate||"—"}</span></div>
     <div class="row"><span class="lbl">Officer</span><span class="val">${a.assessmentOfficer||"—"}</span></div>
-    <h2>Service Type</h2><p>${(a.services||[]).join(", ")||"—"}</p>
+    <h2>Service Type</h2><p>${services.join(", ")||"—"}</p>
     <h2>Site Condition</h2>
     <div class="row"><span class="lbl">Condition Summary</span><span class="val">${a.conditionSummary||"—"}</span></div>
     <div class="row"><span class="lbl">Risk Level</span><span class="val" style="font-weight:bold;color:${riskColor}">${a.riskLevel||"—"}</span></div>
