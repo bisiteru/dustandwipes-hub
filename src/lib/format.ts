@@ -61,3 +61,46 @@ export const cStatus = (end: string | Date | null | undefined): string => {
 /** Days remaining until a date (negative = overdue). Returns null if no date. */
 export const dLeft = (end: string | Date | null | undefined): number | null =>
   end ? Math.ceil((new Date(end).getTime() - TODAY.getTime()) / 86400000) : null;
+
+// ── Name matching ───────────────────────────────────────────────────────────
+// AppUser names (used for login) and Staff names (used in pickers) live in
+// separate tables and don't always agree on whitespace/case. The Dashboard's
+// "my assignments" filters need to be forgiving — otherwise an assignee
+// stamped as "Bola" never lights up the row for "Bola " (trailing space) or
+// "bola adebayo" (full name they log in as).
+//
+// Returns true if both arguments are non-empty and either:
+//   - normalized strings are exactly equal, OR
+//   - one normalized string contains the other (handles "Bola" ↔ "Bola Adebayo")
+
+const normalizeName = (s: unknown): string =>
+  String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+export const sameName = (a: unknown, b: unknown): boolean => {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+};
+
+/**
+ * Stricter variant — exact match after normalization. Use when the
+ * "contains" leniency of `sameName` would cause false positives (e.g.
+ * "Bola" matching "Bolanle" via includes).
+ */
+export const sameNameStrict = (a: unknown, b: unknown): boolean => {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  return !!na && na === nb;
+};
+
+/**
+ * True if a comma-separated list `csv` contains `target` as one of its
+ * names (each comparison done via sameName). Used to test `j.techs`
+ * (crew list as a string) for membership.
+ */
+export const csvHasName = (csv: unknown, target: unknown): boolean => {
+  const s = String(csv ?? "");
+  if (!s) return false;
+  return s.split(",").some(part => sameName(part, target));
+};

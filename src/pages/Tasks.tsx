@@ -18,7 +18,6 @@ import { fmtD } from "../lib/format";
 import { dbSync, dbDelete } from "../lib/supabase";
 import { Card, Fld, SBadge } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
-import { StaffSelect } from "../components/pickers";
 import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
 import type { Task, TaskTemplate, AppUser, Staff, CurrentUser } from "../lib/schemas";
@@ -132,14 +131,33 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
     return out;
   }, [visible]);
 
-  // Pool of people who can be assigned. Pulls names from users + staff,
-  // deduplicated by name. Admin can assign across the org; supervisor sees
-  // the same pool (we trust the people; this isn't an access boundary).
-  const assigneePool = useMemo<string[]>(() => {
-    const names = new Set<string>();
-    for (const u of users) if (u.name) names.add(String(u.name));
-    for (const s of staff) if (s.name) names.add(String(s.name));
-    return [...names].sort();
+  // Pool of people who can be assigned. AppUsers (the people who log in)
+  // come FIRST and are tagged with their role — that way the admin sees
+  // "Adebayo Smith — Supervisor" in the dropdown and picks the same name
+  // the user actually logs in with. Field-only Staff (no login) come after.
+  //
+  // Storing the name exactly as the AppUser logs in is the load-bearing
+  // detail: the Dashboard filters by `sameName(t.assignee, user.name)`, so
+  // an exact-name picker eliminates the whole class of "I assigned it but
+  // they don't see it" bugs reported in Phase 6 feedback.
+  interface AssigneeOption { name: string; label: string; }
+  const assigneePool = useMemo<AssigneeOption[]>(() => {
+    const seen = new Set<string>();
+    const out: AssigneeOption[] = [];
+    const norm = (s: string) => s.trim().toLowerCase();
+    for (const u of users) {
+      const n = String(u.name || "").trim();
+      if (!n || seen.has(norm(n))) continue;
+      seen.add(norm(n));
+      out.push({ name: n, label: `${n} — ${u.role || "User"}` });
+    }
+    for (const s of staff) {
+      const n = String(s.name || "").trim();
+      if (!n || seen.has(norm(n))) continue;
+      seen.add(norm(n));
+      out.push({ name: n, label: `${n} — Staff` });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
   }, [users, staff]);
 
   // ── Mutations ────────────────────────────────────────────────────────────
@@ -268,9 +286,9 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
         <div className="flex gap-3 flex-wrap text-xs">
           <select className={`${inp} py-1.5`} value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
             <option value="All">All assignees</option>
-            {assigneePool.map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {assigneePool.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.label}
               </option>
             ))}
           </select>
@@ -496,12 +514,18 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
             </Fld>
             <div className="grid grid-cols-2 gap-4">
               <Fld label="Assignee">
-                <StaffSelect
-                  staff={staff}
+                <select
+                  className={inp}
                   value={tmplModal.assignee || ""}
-                  onChange={(v) => setTmplModal((p) => (p ? { ...p, assignee: v } : p))}
-                  placeholder="— Select staff —"
-                />
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, assignee: e.target.value } : p))}
+                >
+                  <option value="">— Select assignee —</option>
+                  {assigneePool.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
               </Fld>
               <Fld label="Assignee Role">
                 <select
@@ -623,12 +647,18 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
             </Fld>
             <div className="grid grid-cols-2 gap-4">
               <Fld label="Assignee">
-                <StaffSelect
-                  staff={staff}
+                <select
+                  className={inp}
                   value={modal.assignee || ""}
-                  onChange={(v) => setModal((p) => (p ? { ...p, assignee: v } : p))}
-                  placeholder="— Select staff —"
-                />
+                  onChange={(e) => setModal((p) => (p ? { ...p, assignee: e.target.value } : p))}
+                >
+                  <option value="">— Select assignee —</option>
+                  {assigneePool.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
               </Fld>
               <Fld label="Assignee Role">
                 <select

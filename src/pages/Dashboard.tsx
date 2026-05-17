@@ -14,7 +14,7 @@ import React, { useMemo, useEffect, type Dispatch, type SetStateAction } from "r
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ChevronRight, AlertTriangle, Briefcase, Clock, Package, Gift, Inbox, UserCheck, CheckCircle2 } from "lucide-react";
 import { G, O, RED, BLUE, TODAY, STATUS_COLORS, JOB_STATUSES, inp } from "../lib/constants";
-import { monthName, cStatus, dLeft, fmtD } from "../lib/format";
+import { monthName, cStatus, dLeft, fmtD, sameName, csvHasName } from "../lib/format";
 import { dbSync } from "../lib/supabase";
 import { Card, SBadge, KPI } from "../components/ui/primitives";
 import type { Client, Job, Request_, Inventory, AppUser, Staff, Task, Imprest, Requisition, Absence, CurrentUser } from "../lib/schemas";
@@ -585,13 +585,17 @@ function SupervisorDashboard({ requests, jobs, tasks, staff, users, setUsers, us
   const todayStr = TODAY.toISOString().split("T")[0];
   useStampLastSeen(user, users, setUsers);
 
+  // Filters use sameName() so the user's login name (`me`) matches the
+  // assignedTo/assignee/sup strings even when the picker stored a slightly
+  // different rendering of the same person ("Bola" ↔ "Bola Adebayo",
+  // trailing whitespace, mixed case, etc.). See lib/format.ts.
   const myRequests = useMemo<Request_[]>(
-    () => requests.filter(r => ((r as any).assignedTo) === me && r.status !== "Converted"),
+    () => requests.filter(r => sameName((r as any).assignedTo, me) && r.status !== "Converted"),
     [requests, me],
   );
 
   const myOpenTasks = useMemo<Task[]>(
-    () => tasks.filter(t => t.assignee === me && t.status !== "Done" && t.status !== "Cancelled")
+    () => tasks.filter(t => sameName(t.assignee, me) && t.status !== "Done" && t.status !== "Cancelled")
                 .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || "")),
     [tasks, me],
   );
@@ -600,7 +604,7 @@ function SupervisorDashboard({ requests, jobs, tasks, staff, users, setUsers, us
     const today = new Date(todayStr);
     const sunday = new Date(today); sunday.setDate(sunday.getDate() + (7 - today.getDay()) % 7);
     const sundayStr = sunday.toISOString().slice(0, 10);
-    return jobs.filter(j => j.sup === me && j.date && j.date >= todayStr && j.date <= sundayStr);
+    return jobs.filter(j => sameName(j.sup, me) && j.date && j.date >= todayStr && j.date <= sundayStr);
   }, [jobs, me, todayStr]);
 
   const overdueTasks = myOpenTasks.filter(t => t.dueDate && t.dueDate < todayStr);
@@ -825,8 +829,11 @@ function TechnicianDashboard({ jobs, tasks, users, setUsers, user, onNav }: Dash
   const todayStr = TODAY.toISOString().split("T")[0];
   useStampLastSeen(user, users, setUsers);
 
+  // Same name-match leniency as the Supervisor dashboard. j.techs is a
+  // comma-separated string of crew names, so we match each comma-part
+  // independently via csvHasName.
   const myJobsToday = useMemo<Job[]>(
-    () => jobs.filter(j => j.date === todayStr && (j.techs || "").includes(me)),
+    () => jobs.filter(j => j.date === todayStr && (csvHasName(j.techs, me) || sameName(j.sup, me))),
     [jobs, me, todayStr],
   );
 
@@ -834,11 +841,11 @@ function TechnicianDashboard({ jobs, tasks, users, setUsers, user, onNav }: Dash
     const today = new Date(todayStr);
     const sunday = new Date(today); sunday.setDate(sunday.getDate() + (7 - today.getDay()) % 7);
     const sundayStr = sunday.toISOString().slice(0, 10);
-    return jobs.filter(j => (j.techs || "").includes(me) && j.date && j.date > todayStr && j.date <= sundayStr);
+    return jobs.filter(j => (csvHasName(j.techs, me) || sameName(j.sup, me)) && j.date && j.date > todayStr && j.date <= sundayStr);
   }, [jobs, me, todayStr]);
 
   const myOpenTasks = useMemo<Task[]>(
-    () => tasks.filter(t => t.assignee === me && t.status !== "Done" && t.status !== "Cancelled"),
+    () => tasks.filter(t => sameName(t.assignee, me) && t.status !== "Done" && t.status !== "Cancelled"),
     [tasks, me],
   );
 
@@ -950,7 +957,7 @@ interface EOWSummaryProps {
 function EOWSummary({ tasks, jobs, requests, me }: EOWSummaryProps) {
   const monday = mondayLocal(new Date());
 
-  const myWeekTasks = tasks.filter((t) => t.assignee === me && t.weekOf === monday);
+  const myWeekTasks = tasks.filter((t) => sameName(t.assignee, me) && t.weekOf === monday);
   const tasksDone = myWeekTasks.filter((t) => t.status === "Done").length;
   const tasksOpen = myWeekTasks.filter((t) => t.status !== "Done" && t.status !== "Cancelled");
 
@@ -962,13 +969,13 @@ function EOWSummary({ tasks, jobs, requests, me }: EOWSummaryProps) {
   })();
   const myWeekJobs = jobs.filter(
     (j) =>
-      (j.sup === me || (j.techs || "").includes(me)) &&
+      (sameName(j.sup, me) || csvHasName(j.techs, me)) &&
       j.date && j.date >= monday && j.date <= sunday,
   );
   const jobsCompleted = myWeekJobs.filter((j) => j.status === "Closed" || j.status === "Completed").length;
 
   const requestsCompleted = requests.filter(
-    (r) => ((r as any).assignedTo) === me && r.status === "Converted",
+    (r) => sameName((r as any).assignedTo, me) && r.status === "Converted",
   ).length;
 
   return (
