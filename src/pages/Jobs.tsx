@@ -20,7 +20,7 @@ import { StaffSelect, ContactSearchSelect } from "../components/pickers";
 import { useToast, Toaster } from "../components/ui/Toaster";
 import { queueOfflineAction } from "../lib/offline";
 import { useConfirm } from "../components/ui/useConfirm";
-import type { Job, Client, Contact, Staff, CurrentUser } from "../lib/schemas";
+import type { Job, Client, Contact, Staff, AppUser, CurrentUser } from "../lib/schemas";
 
 // ── Local types ─────────────────────────────────────────────────────────────
 // signOff is `z.any().optional()` in the Zod schema (flexible nested blob);
@@ -44,6 +44,10 @@ interface JobsPageProps {
   clients: Client[];
   contacts?: Contact[];
   staff?: Staff[];
+  /** AppUsers — Phase 6: needed so the inline supervisor picker pulls from
+   *  the people who actually log in, ensuring the assigned name matches
+   *  exactly what the Dashboard filter expects. */
+  users?: AppUser[];
   user: CurrentUser;
 }
 
@@ -57,7 +61,38 @@ interface JobStats {
 
 interface KpiEntry { label: string; value: number; color?: string; }
 
-export function JobsPage({ jobs, setJobs, clients, contacts = [], staff = [], user }: JobsPageProps) {
+export function JobsPage({ jobs, setJobs, clients, contacts = [], staff = [], users = [], user }: JobsPageProps) {
+  // Combined supervisor pool — AppUsers (people who actually log in) with
+  // their role, plus office/team-lead staff as a fallback. Used by the inline
+  // supervisor reassign control on each Job row.
+  interface SupOption { name: string; label: string; }
+  const supervisorOptions = React.useMemo<SupOption[]>(() => {
+    const seen = new Set<string>();
+    const out: SupOption[] = [];
+    const norm = (s: string) => s.trim().toLowerCase();
+    for (const u of users) {
+      const n = String(u.name || "").trim();
+      if (!n || seen.has(norm(n))) continue;
+      // Only people who could plausibly supervise jobs.
+      if (u.role !== "Admin" && u.role !== "Supervisor") continue;
+      seen.add(norm(n));
+      out.push({ name: n, label: `${n} — ${u.role}` });
+    }
+    for (const s of staff) {
+      const n = String(s.name || "").trim();
+      if (!n || seen.has(norm(n))) continue;
+      if (s.category !== "Office Staff" && s.role !== "Team Lead" && s.role !== "Supervisor") continue;
+      seen.add(norm(n));
+      out.push({ name: n, label: `${n} — Staff` });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, [users, staff]);
+
+  // Inline reassign — Phase 6 workflow shortcut so admin/supervisor can
+  // change a job's supervisor from the list without opening the edit modal.
+  const reassignSup = (id: string, newSup: string): void => {
+    setJobs(js => js.map(j => j.id === id ? ({ ...j, sup: newSup } as Job) : j));
+  };
   const [modal, setModal] = useState<Partial<Job> | null>(null);
   const [filter, setFilter] = useState<string>("All");
   const [gpsModal, setGpsModal] = useState<GpsModalState | null>(null);
@@ -255,6 +290,28 @@ export function JobsPage({ jobs, setJobs, clients, contacts = [], staff = [], us
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <SBadge s={j.status} />
+                    {/* Inline supervisor picker — Phase 6 workflow tooling.
+                        Admin/Supervisor can reassign a job from the list
+                        directly, without opening the full edit modal. The
+                        options pool is AppUsers first (so the chosen name
+                        matches what the supervisor logs in as), then
+                        eligible office/team-lead staff. */}
+                    {canEdit && (
+                      <select
+                        title="Assign supervisor"
+                        value={j.sup || ""}
+                        onChange={(e) => reassignSup(j.id, e.target.value)}
+                        className={`${inp} text-xs py-1 px-2 w-40`}
+                        style={!j.sup ? { borderColor: O, color: O } : {}}
+                      >
+                        <option value="">{j.sup ? "Unassign" : "— Assign supervisor —"}</option>
+                        {supervisorOptions.map((opt) => (
+                          <option key={opt.name} value={opt.name}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <div className="flex gap-1">
                       {canCI && <button onClick={() => setGpsModal({ job: j, type: "in" })} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{ background: G }}>Check In</button>}
                       {canCO && <button onClick={() => setGpsModal({ job: j, type: "out" })} className="text-xs px-2 py-1 rounded-lg font-semibold text-white" style={{ background: O }}>Check Out</button>}

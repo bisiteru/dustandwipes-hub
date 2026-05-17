@@ -48,16 +48,23 @@ export function RequestsPage({ requests, setRequests, setJobs, clients }: Reques
     setModal(null);
   };
   const convert = (req: Row) => {
+    // Phase 6: if the request was already triaged on the Dashboard's
+    // Unassigned-Requests inbox, carry that supervisor forward into the
+    // job's `sup` field so it shows up on their dashboard immediately —
+    // no need to re-assign on the Jobs page.
+    const carriedSup = (req as any).assignedTo || "";
     setJobs((js: Row[]) => [...js, {
       id: "j" + Date.now(),
       createdAt: new Date().toISOString(),
       clientName: req.clientName, clientPhone: req.clientPhone || "",
       loc: req.loc || "", svc: req.svc, date: req.prefDate,
-      sup: "", techs: "", status: "New", notes: req.notes,
+      sup: carriedSup, techs: "", status: "New", notes: req.notes,
       sourceRequestId: req.id, checkIn: null, checkOut: null
     }]);
     setRequests((rs: Row[]) => rs.map(r => r.id === req.id ? { ...r, status: "Converted" } : r));
-    toast.success("Request converted to job");
+    toast.success(carriedSup
+      ? `Request converted to job — assigned to ${carriedSup}`
+      : "Request converted to job");
   };
   const del = (id: any) => confirm("Delete this request?", () => {
     setRequests((rs: Row[]) => rs.filter(r => r.id !== id));
