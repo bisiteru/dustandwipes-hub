@@ -419,10 +419,30 @@ interface ClientModalProps {
 // and `cleaners` is guaranteed string[] (Client schema already enforces this,
 // but we coerce defensively because legacy DB rows occasionally had a single
 // string instead of an array).
-type ClientForm = Omit<Client, "id" | "cleaners"> & {
+// Explicit shape rather than Omit<Client,...> — the Zod passthrough index
+// signature ({ [k:string]: unknown }) would otherwise widen every f.X access
+// to `unknown` in JSX value bindings.
+interface ClientForm {
   id?: string;
+  name: string;
+  cat: string;
+  svc: string;
+  addr: string;
+  cp: string;
+  phone: string;
+  email: string;
   cleaners: string[];
-};
+  duty: string;
+  serviceFreq: string;
+  cs: string;
+  ce: string;
+  sal: number;
+  con: number;
+  sc: number;
+  vat: number;
+  tot: number;
+  status: string;
+}
 
 function ClientModal({ data, onSave, onClose, staff }: ClientModalProps) {
   const blank: ClientForm = {
