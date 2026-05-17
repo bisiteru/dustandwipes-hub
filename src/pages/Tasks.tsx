@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Plus, Edit2, Trash2, Check, ArrowRight, ListChecks, AlertCircle } from "lucide-react";
+import { Plus, Edit2, Trash2, Check, ArrowRight, ListChecks, AlertCircle, Repeat } from "lucide-react";
 import { G, O, RED, BLUE, AMBER, inp } from "../lib/constants";
 import { fmtD } from "../lib/format";
 import { dbSync, dbDelete } from "../lib/supabase";
@@ -21,7 +21,7 @@ import { ModalWrap } from "../components/ui/ModalWrap";
 import { StaffSelect } from "../components/pickers";
 import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
-import type { Task, AppUser, Staff, CurrentUser } from "../lib/schemas";
+import type { Task, TaskTemplate, AppUser, Staff, CurrentUser } from "../lib/schemas";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,13 +34,21 @@ void n; // kept for forward use when priority weights or completion counts land
  * Return the YYYY-MM-DD of the Monday of the week containing `d`.
  * Used to bucket tasks into weeks. ISO weeks (Mon-Sun) so Sat/Sun work
  * counts toward the just-ending week, not the upcoming one.
+ *
+ * Timezone-safe: operates on local date components throughout and emits
+ * the result by formatting local Y/M/D rather than via `toISOString()`,
+ * which would round-trip through UTC and silently shift the day by one
+ * for users in any UTC+ offset (e.g. Nigeria, UTC+1).
  */
 export function mondayOf(d: Date): string {
   const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const day = dt.getDay(); // 0=Sun ... 6=Sat
   const diff = day === 0 ? -6 : 1 - day;
   dt.setDate(dt.getDate() + diff);
-  return dt.toISOString().slice(0, 10);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
 }
 
 /** Pretty label for a Monday-YYYY-MM-DD: "Week of Mon 12 May". */
@@ -77,15 +85,23 @@ const nextStatus = (cur: TaskStatus): TaskStatus =>
 export interface TasksPageProps {
   tasks: Task[];
   setTasks: Dispatch<SetStateAction<Task[]>>;
+  /** Recurring-task templates — Phase 6/5. Admin/Supervisor manage these
+   *  via the "Templates" tab; the auto-materializer in App.tsx expands
+   *  them into concrete Task rows on Monday. */
+  taskTemplates: TaskTemplate[];
+  setTaskTemplates: Dispatch<SetStateAction<TaskTemplate[]>>;
   user: CurrentUser;
   users: AppUser[];
   staff: Staff[];
 }
 
 type TaskDraft = Partial<Task> & { type?: "new" | "edit" };
+type TemplateDraft = Partial<TaskTemplate> & { type?: "new" | "edit" };
 
-export function TasksPage({ tasks, setTasks, user, users, staff }: TasksPageProps) {
+export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, user, users, staff }: TasksPageProps) {
   const [modal, setModal] = useState<TaskDraft | null>(null);
+  const [tmplModal, setTmplModal] = useState<TemplateDraft | null>(null);
+  const [tab, setTab] = useState<"tasks" | "templates">("tasks");
   const [filterAssignee, setFilterAssignee] = useState<string>("All");
   const [filterWeek, setFilterWeek] = useState<string>("This Week");
   const [filterStatus, setFilterStatus] = useState<string>("Open");
@@ -206,7 +222,7 @@ export function TasksPage({ tasks, setTasks, user, users, staff }: TasksPageProp
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">{weekLabel(thisMonday)} — system of record for "what's on people's plates"</p>
         </div>
-        {canManage && (
+        {canManage && tab === "tasks" && (
           <button
             onClick={() => setModal({ type: "new", weekOf: thisMonday, dueDate: thisMonday })}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
@@ -215,9 +231,39 @@ export function TasksPage({ tasks, setTasks, user, users, staff }: TasksPageProp
             <Plus size={14} /> New Task
           </button>
         )}
+        {canManage && tab === "templates" && (
+          <button
+            onClick={() => setTmplModal({ type: "new", active: true, dueDayOfWeek: "Mon" })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
+            style={{ background: G }}
+          >
+            <Plus size={14} /> New Template
+          </button>
+        )}
       </div>
 
-      {/* Filters */}
+      {/* Tabs — Tasks list vs. recurring Templates */}
+      {canManage && (
+        <div className="flex gap-2 border-b border-gray-100">
+          <button
+            onClick={() => setTab("tasks")}
+            className={`pb-2 px-1 text-sm font-semibold transition-all border-b-2 flex items-center gap-2 ${tab === "tasks" ? "" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+            style={tab === "tasks" ? { borderColor: G, color: G } : {}}
+          >
+            <ListChecks size={13} /> Tasks
+          </button>
+          <button
+            onClick={() => setTab("templates")}
+            className={`pb-2 px-1 text-sm font-semibold transition-all border-b-2 flex items-center gap-2 ${tab === "templates" ? "" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+            style={tab === "templates" ? { borderColor: G, color: G } : {}}
+          >
+            <Repeat size={13} /> Templates ({taskTemplates.length})
+          </button>
+        </div>
+      )}
+
+      {/* Filters (Tasks tab only) */}
+      {tab === "tasks" && (<>
       <Card className="p-3">
         <div className="flex gap-3 flex-wrap text-xs">
           <select className={`${inp} py-1.5`} value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
@@ -356,6 +402,202 @@ export function TasksPage({ tasks, setTasks, user, users, staff }: TasksPageProp
             </Card>
           );
         })
+      )}
+
+      </>)}
+
+      {/* Templates tab — Admin/Supervisor recurring task definitions */}
+      {tab === "templates" && (
+        <Card className="p-5">
+          {taskTemplates.length === 0 ? (
+            <div className="text-center py-10">
+              <Repeat size={32} className="mx-auto mb-3 opacity-20" />
+              <p className="text-sm text-gray-500">No recurring templates yet.</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Each template materializes into a Task every Monday it's active.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {taskTemplates.map((tpl) => {
+                const active = tpl.active !== false;
+                return (
+                  <div key={String(tpl.id)} className="flex items-start justify-between gap-3 py-3 hover:bg-gray-50/60">
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-semibold ${active ? "text-gray-800" : "text-gray-400 line-through"}`}>
+                        {tpl.title}
+                      </p>
+                      {tpl.description && (
+                        <p className="text-xs text-gray-500 mt-0.5">{tpl.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs text-gray-500">→ {tpl.assignee || "Unassigned"}</span>
+                        <span className="text-xs text-gray-400">· every {tpl.dueDayOfWeek || "Mon"}</span>
+                        {tpl.priority && tpl.priority !== "Normal" && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "#fee2e2", color: RED }}>
+                            {tpl.priority}
+                          </span>
+                        )}
+                        {!active && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-500">
+                            Paused
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setTmplModal({ type: "edit", ...tpl })}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-500 hover:bg-blue-50 border border-blue-100"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          confirm("Delete this template? Existing tasks already created from it will remain.", () => {
+                            setTaskTemplates((prev) => prev.filter((x) => x.id !== tpl.id));
+                            dbDelete("tasktemplates", String(tpl.id)).catch(() => {});
+                            toast.success("Template deleted");
+                          });
+                        }}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 border border-red-100"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Template New/Edit modal */}
+      {tmplModal && (
+        <ModalWrap title={tmplModal.type === "edit" ? "Edit Template" : "New Recurring Template"} onClose={() => setTmplModal(null)}>
+          <div className="space-y-4">
+            <Fld label="Title" required>
+              <input
+                className={inp}
+                value={tmplModal.title || ""}
+                onChange={(e) => setTmplModal((p) => (p ? { ...p, title: e.target.value } : p))}
+                placeholder="e.g. Weekly site walk — Acme HQ"
+              />
+            </Fld>
+            <Fld label="Description">
+              <textarea
+                className={inp}
+                rows={2}
+                value={tmplModal.description || ""}
+                onChange={(e) => setTmplModal((p) => (p ? { ...p, description: e.target.value } : p))}
+                placeholder="What should the assignee do?"
+              />
+            </Fld>
+            <div className="grid grid-cols-2 gap-4">
+              <Fld label="Assignee">
+                <StaffSelect
+                  staff={staff}
+                  value={tmplModal.assignee || ""}
+                  onChange={(v) => setTmplModal((p) => (p ? { ...p, assignee: v } : p))}
+                  placeholder="— Select staff —"
+                />
+              </Fld>
+              <Fld label="Assignee Role">
+                <select
+                  className={inp}
+                  value={tmplModal.assigneeRole || ""}
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, assigneeRole: e.target.value } : p))}
+                >
+                  <option value="">— Any —</option>
+                  <option>Supervisor</option>
+                  <option>Technician</option>
+                  <option>Finance</option>
+                  <option>Admin</option>
+                </select>
+              </Fld>
+              <Fld label="Priority">
+                <select
+                  className={inp}
+                  value={tmplModal.priority || "Normal"}
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, priority: e.target.value } : p))}
+                >
+                  <option>Low</option>
+                  <option>Normal</option>
+                  <option>High</option>
+                  <option>Urgent</option>
+                </select>
+              </Fld>
+              <Fld label="Due Day of Week">
+                <select
+                  className={inp}
+                  value={tmplModal.dueDayOfWeek || "Mon"}
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, dueDayOfWeek: e.target.value } : p))}
+                >
+                  <option>Mon</option><option>Tue</option><option>Wed</option>
+                  <option>Thu</option><option>Fri</option><option>Sat</option>
+                </select>
+              </Fld>
+              <Fld label="Start Date">
+                <input
+                  className={inp}
+                  type="date"
+                  value={tmplModal.startDate || ""}
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, startDate: e.target.value } : p))}
+                />
+              </Fld>
+              <Fld label="End Date (optional)">
+                <input
+                  className={inp}
+                  type="date"
+                  value={tmplModal.endDate || ""}
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, endDate: e.target.value } : p))}
+                />
+              </Fld>
+              <Fld label="Active?">
+                <select
+                  className={inp}
+                  value={tmplModal.active === false ? "Paused" : "Active"}
+                  onChange={(e) => setTmplModal((p) => (p ? { ...p, active: e.target.value === "Active" } : p))}
+                >
+                  <option>Active</option>
+                  <option>Paused</option>
+                </select>
+              </Fld>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-5 pt-4 border-t">
+            <button onClick={() => setTmplModal(null)} className="px-5 py-2 rounded-xl border text-gray-600 text-sm">
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (!tmplModal.title) { toast.info("Title is required"); return; }
+                const now = new Date().toISOString();
+                const id = tmplModal.id || `tpl${Date.now()}`;
+                const next: TaskTemplate = {
+                  ...(tmplModal as TaskTemplate),
+                  id,
+                  active: tmplModal.active !== false,
+                  createdBy: tmplModal.createdBy || user.name,
+                  createdAt: tmplModal.createdAt || now,
+                } as TaskTemplate;
+                const updated = tmplModal.id
+                  ? taskTemplates.map((t) => (t.id === id ? next : t))
+                  : [next, ...taskTemplates];
+                setTaskTemplates(updated);
+                dbSync("tasktemplates", updated).catch(() => {});
+                toast.success(tmplModal.id ? "Template updated" : "Template created — will materialize next Monday");
+                setTmplModal(null);
+              }}
+              disabled={!tmplModal.title}
+              className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40"
+              style={{ background: G }}
+            >
+              {tmplModal.type === "edit" ? "Save Changes" : "Create Template"}
+            </button>
+          </div>
+        </ModalWrap>
       )}
 
       {/* New / Edit modal */}

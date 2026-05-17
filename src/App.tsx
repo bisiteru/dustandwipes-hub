@@ -31,8 +31,9 @@ import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
 import type {
   Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
   Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
-  Task, CurrentUser,
+  Task, TaskTemplate, CurrentUser,
 } from "./lib/schemas";
+import { computeRecurringTasks } from "./lib/task-scheduler";
 
 // ── UI primitives + composite components (Phase 3) ───────────────────────────
 import { Toaster } from "./components/ui/Toaster";
@@ -101,6 +102,7 @@ export default function App(){
   const[imprests,    setImprests]    =useState<Imprest[]>([]);
   const[assessments, setAssessments] =useState<Assessment[]>([]);
   const[tasks,       setTasks]       =useState<Task[]>([]);
+  const[taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
@@ -142,6 +144,7 @@ export default function App(){
           dbLoad("covers",      setCovers),
           dbLoad("assessments", setAssessments),
           dbLoad("tasks",       setTasks),
+          dbLoad("tasktemplates", setTaskTemplates),
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
@@ -197,8 +200,29 @@ export default function App(){
   // to prevent stale-session overwrites. A broad debounce here would re-upload stale full arrays.
   useEffect(() => { debouncedSync("assessments", assessments); }, [assessments, debouncedSync]);
   useEffect(() => { debouncedSync("tasks",        tasks);       }, [tasks,       debouncedSync]);
+  useEffect(() => { debouncedSync("tasktemplates", taskTemplates); }, [taskTemplates, debouncedSync]);
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
+
+  // -- Auto-materialize recurring tasks from templates ---------------------------
+  // Runs once per Dashboard mount per browser session — the idempotent
+  // deterministic IDs in lib/task-scheduler.ts mean re-running never produces
+  // duplicates. Templates active in the current ISO week each emit one
+  // concrete Task row for the current Monday.
+  useEffect(() => {
+    if (!dbLoaded.current || taskTemplates.length === 0) return;
+    const toAdd = computeRecurringTasks({ templates: taskTemplates, tasks });
+    if (toAdd.length === 0) return;
+    setTasks(ts => {
+      const existing = new Set(ts.map(t => String(t.id)));
+      const truly = toAdd.filter(t => !existing.has(String(t.id)));
+      if (truly.length === 0) return ts;
+      const updated = [...ts, ...truly];
+      dbSync("tasks", updated);
+      Toaster._add?.(`${truly.length} recurring task${truly.length > 1 ? "s" : ""} materialized for this week`, "info");
+      return updated;
+    });
+  }, [taskTemplates, tasks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -- Auto-schedule recurring jobs from contract service frequency -------------
   // Pure logic lives in `lib/scheduler.ts` so it's unit-tested in isolation.
@@ -221,7 +245,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
@@ -465,7 +489,7 @@ export default function App(){
           {page==="analytics"   &&<ErrorBoundary module="Analytics"><AnalyticsPage clients={clients} siteReports={siteReports} jobs={jobs} staff={staff} absences={absences} requests={requests}/></ErrorBoundary>}
           {page==="staff"       &&<ErrorBoundary module="Staff"><StaffPage staff={staff} setStaff={setStaff}/></ErrorBoundary>}
           {page==="settings"    &&<ErrorBoundary module="Settings"><SettingsPage users={users} setUsers={setUsers} activityLog={activityLog}/></ErrorBoundary>}
-          {page==="tasks"       &&<ErrorBoundary module="Tasks"><TasksPage tasks={tasks} setTasks={setTasks} user={user} users={users} staff={staff}/></ErrorBoundary>}
+          {page==="tasks"       &&<ErrorBoundary module="Tasks"><TasksPage tasks={tasks} setTasks={setTasks} taskTemplates={taskTemplates} setTaskTemplates={setTaskTemplates} user={user} users={users} staff={staff}/></ErrorBoundary>}
          </Suspense>
         </main>
       </div>
