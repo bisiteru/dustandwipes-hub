@@ -294,11 +294,11 @@ export function JobsPage({ jobs, setJobs, clients, contacts = [], staff = [], us
             </Fld>
             <Fld label="Supervisor">
               <StaffSelect staff={staff} value={modal.sup || ""} onChange={v => setModal(p => ({ ...(p || {}), sup: v }))} placeholder="-- Select supervisor --"
-                filter={(s: Staff) => s.category === "Office Staff" || s.role === "Team Lead" || s.role === "Supervisor"} />
+                filter={(s) => s.category === "Office Staff" || s.role === "Team Lead" || s.role === "Supervisor"} />
             </Fld>
             <Fld label="Lead Technician">
               <StaffSelect staff={staff} value={modal.techs || ""} onChange={v => setModal(p => ({ ...(p || {}), techs: v }))} placeholder="-- Select technician --"
-                filter={(s: Staff) => s.category === "Cleaning Staff" || s.category === "Gardening Staff"} />
+                filter={(s) => s.category === "Cleaning Staff" || s.category === "Gardening Staff"} />
             </Fld>
             <Fld label="Location">
               <input className={inp} value={modal.loc || ""} onChange={e => setModal(p => ({ ...(p || {}), loc: e.target.value }))} placeholder="Site address or description" />
