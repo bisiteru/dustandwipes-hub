@@ -10,9 +10,9 @@
 //  against invalid Date parses by checking isNaN before use.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useMemo, type Dispatch, type SetStateAction } from "react";
+import React, { useMemo, useEffect, type Dispatch, type SetStateAction } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ChevronRight, AlertTriangle, Briefcase, Clock, Package, Gift, Inbox, UserCheck } from "lucide-react";
+import { ChevronRight, AlertTriangle, Briefcase, Clock, Package, Gift, Inbox, UserCheck, CheckCircle2 } from "lucide-react";
 import { G, O, RED, BLUE, TODAY, STATUS_COLORS, JOB_STATUSES, inp } from "../lib/constants";
 import { monthName, cStatus, dLeft, fmtD } from "../lib/format";
 import { dbSync } from "../lib/supabase";
@@ -28,6 +28,8 @@ export interface DashboardProps {
   setRequests: Dispatch<SetStateAction<Request_[]>>;
   inventory: Inventory[];
   users: AppUser[];
+  /** Phase 6: non-Admin Dashboards stamp lastSeenDashboard on mount. */
+  setUsers: Dispatch<SetStateAction<AppUser[]>>;
   staff: Staff[];
   /** Phase 6: personal workspace data for non-Admin views. */
   tasks: Task[];
@@ -57,6 +59,45 @@ type PersonForBdays = {
 interface StatusCount { s: string; count: number; }
 
 const CHART_COLORS = [G, BLUE, O, "#7c3aed", "#ea580c", "#16a34a"];
+
+/**
+ * Stamp `lastSeenDashboard` on the current user's row in `users[]`.
+ * Idempotent within a render — only writes if more than 60s have elapsed
+ * since the last stamp (prevents flooding dbSync on every re-render).
+ */
+function useStampLastSeen(
+  user: CurrentUser,
+  users: AppUser[],
+  setUsers: Dispatch<SetStateAction<AppUser[]>>,
+): void {
+  useEffect(() => {
+    if (!user.id) return;
+    const me = users.find((u) => String(u.id) === String(user.id));
+    if (!me) return;
+    const last = String((me as any).lastSeenDashboard || "");
+    if (last && Date.now() - new Date(last).getTime() < 60_000) return;
+    const now = new Date().toISOString();
+    setUsers((prev) =>
+      prev.map((u) => (String(u.id) === String(user.id) ? ({ ...u, lastSeenDashboard: now } as AppUser) : u)),
+    );
+  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Saturday/Sunday locally — used to gate the end-of-week summary card. */
+function isWeekEnd(now: Date = new Date()): boolean {
+  const d = now.getDay();
+  return d === 0 || d === 6; // Sun or Sat
+}
+
+/** Monday YYYY-MM-DD of the week containing `d`. TZ-safe — mirrors mondayOf
+ *  in pages/Tasks.tsx (kept inline to avoid a cross-page import cycle). */
+function mondayLocal(d: Date): string {
+  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = dt.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  dt.setDate(dt.getDate() + diff);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
 
 export function Dashboard(props: DashboardProps) {
   // Phase 6: role-based router. Each branch renders its own "My Day" surface
@@ -344,6 +385,10 @@ function AdminDashboard({
         </Card>
       )}
 
+      {/* Team acknowledgement — has each non-Admin user opened the Dashboard
+          this week? "Not yet seen" lights up a row so Admin can nudge. */}
+      {isAdmin && <TeamAcknowledgement users={users} />}
+
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPI
           icon=""
@@ -535,9 +580,10 @@ function AdminDashboard({
 // "My Day" view: service requests assigned to me + my open tasks + jobs I'm
 // supervising this week. Acknowledgement timestamp commit (6/6) will add
 // viewedAt stamping so Admin can tell at a glance who's seen their plate.
-function SupervisorDashboard({ requests, jobs, tasks, staff, users, user, onNav }: DashboardProps) {
+function SupervisorDashboard({ requests, jobs, tasks, staff, users, setUsers, user, onNav }: DashboardProps) {
   const me = user.name;
   const todayStr = TODAY.toISOString().split("T")[0];
+  useStampLastSeen(user, users, setUsers);
 
   const myRequests = useMemo<Request_[]>(
     () => requests.filter(r => ((r as any).assignedTo) === me && r.status !== "Converted"),
@@ -592,6 +638,9 @@ function SupervisorDashboard({ requests, jobs, tasks, staff, users, user, onNav 
           </p>
         </div>
       )}
+
+      {/* End-of-week summary — visible Sat/Sun. Shows what landed this week. */}
+      {isWeekEnd() && <EOWSummary tasks={tasks} jobs={jobs} requests={requests} me={me} />}
 
       {/* My assigned service requests */}
       <Card className="p-5">
@@ -704,8 +753,9 @@ function SupervisorDashboard({ requests, jobs, tasks, staff, users, user, onNav 
 // Money-focused: imprest balances, requisitions awaiting approval, absence
 // deductions accumulating, inventory value at risk. This is intentionally a
 // thin first draft per the user's note ("details can be refined later").
-function FinanceDashboard({ imprests, requisitions, absences, inventory, user, onNav }: DashboardProps) {
+function FinanceDashboard({ imprests, requisitions, absences, inventory, users, setUsers, user, onNav }: DashboardProps) {
   const me = user.name;
+  useStampLastSeen(user, users, setUsers);
 
   const n = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
@@ -770,9 +820,10 @@ function FinanceDashboard({ imprests, requisitions, absences, inventory, user, o
 // Field-facing: today's jobs assigned to me (with the actual action — Open Job —
 // to start check-in) and my open tasks. Designed to be readable on a phone
 // after the mobile drawer sweep in Phase 5c.
-function TechnicianDashboard({ jobs, tasks, user, onNav }: DashboardProps) {
+function TechnicianDashboard({ jobs, tasks, users, setUsers, user, onNav }: DashboardProps) {
   const me = user.name;
   const todayStr = TODAY.toISOString().split("T")[0];
+  useStampLastSeen(user, users, setUsers);
 
   const myJobsToday = useMemo<Job[]>(
     () => jobs.filter(j => j.date === todayStr && (j.techs || "").includes(me)),
@@ -799,6 +850,8 @@ function TechnicianDashboard({ jobs, tasks, user, onNav }: DashboardProps) {
           {myJobsToday.length} job{myJobsToday.length === 1 ? "" : "s"} today, {myJobsThisWeek.length} upcoming this week, {myOpenTasks.length} task{myOpenTasks.length === 1 ? "" : "s"}.
         </p>
       </div>
+
+      {isWeekEnd() && <EOWSummary tasks={tasks} jobs={jobs} requests={[]} me={me} />}
 
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
@@ -879,5 +932,103 @@ function TechnicianDashboard({ jobs, tasks, user, onNav }: DashboardProps) {
         )}
       </Card>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── End-of-week summary card ─────────────────────────────────────────────────
+// Rendered on Sat/Sun on the Supervisor and Technician dashboards. Tallies
+// what landed this week so the assignee gets a clean weekly cadence and any
+// drift gets surfaced before it compounds.
+interface EOWSummaryProps {
+  tasks: Task[];
+  jobs: Job[];
+  requests: Request_[];
+  me: string;
+}
+
+function EOWSummary({ tasks, jobs, requests, me }: EOWSummaryProps) {
+  const monday = mondayLocal(new Date());
+
+  const myWeekTasks = tasks.filter((t) => t.assignee === me && t.weekOf === monday);
+  const tasksDone = myWeekTasks.filter((t) => t.status === "Done").length;
+  const tasksOpen = myWeekTasks.filter((t) => t.status !== "Done" && t.status !== "Cancelled");
+
+  // Jobs supervised OR worked on this week — Mon..Sun.
+  const sunday = (() => {
+    const [y, m, d] = monday.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + 6);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  })();
+  const myWeekJobs = jobs.filter(
+    (j) =>
+      (j.sup === me || (j.techs || "").includes(me)) &&
+      j.date && j.date >= monday && j.date <= sunday,
+  );
+  const jobsCompleted = myWeekJobs.filter((j) => j.status === "Closed" || j.status === "Completed").length;
+
+  const requestsCompleted = requests.filter(
+    (r) => ((r as any).assignedTo) === me && r.status === "Converted",
+  ).length;
+
+  return (
+    <div className="p-5 rounded-2xl" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle2 size={16} style={{ color: G }} />
+        <h3 className="text-sm font-bold" style={{ color: "#166534" }}>End-of-Week Summary</h3>
+      </div>
+      <p className="text-sm text-green-900">
+        This week you completed <strong>{tasksDone}</strong> of <strong>{myWeekTasks.length}</strong> task{myWeekTasks.length === 1 ? "" : "s"}
+        {myWeekJobs.length > 0 && <>, finished <strong>{jobsCompleted}</strong> of <strong>{myWeekJobs.length}</strong> job{myWeekJobs.length === 1 ? "" : "s"}</>}
+        {requestsCompleted > 0 && <>, converted <strong>{requestsCompleted}</strong> request{requestsCompleted === 1 ? "" : "s"}</>}.
+      </p>
+      {tasksOpen.length > 0 && (
+        <p className="text-xs text-amber-700 mt-2">
+          ⚠ <strong>Outstanding ({tasksOpen.length}):</strong> {tasksOpen.slice(0, 3).map((t) => t.title).join(", ")}
+          {tasksOpen.length > 3 ? `, +${tasksOpen.length - 3} more` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Team Acknowledgement card (Admin) ────────────────────────────────────────
+// Lists non-Admin users with a "seen this week" / "not yet seen" indicator,
+// using each user's lastSeenDashboard timestamp. Admin uses this to spot a
+// supervisor who hasn't acknowledged this week's plate yet.
+interface TeamAcknowledgementProps {
+  users: AppUser[];
+}
+
+function TeamAcknowledgement({ users }: TeamAcknowledgementProps) {
+  const monday = mondayLocal(new Date());
+  const team = users.filter((u) => u.role !== "Admin" && u.name);
+  if (team.length === 0) return null;
+
+  return (
+    <Card className="p-5">
+      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+        <UserCheck size={12} style={{ color: G }} /> Team Acknowledgement — Week of {monday}
+      </h3>
+      <div className="space-y-1.5">
+        {team.map((u) => {
+          const last = String((u as any).lastSeenDashboard || "");
+          const seenThisWeek = last && last.slice(0, 10) >= monday;
+          return (
+            <div key={String(u.id)} className="flex items-center justify-between text-sm py-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: seenThisWeek ? G : O }} />
+                <span className="text-gray-700 truncate">{u.name}</span>
+                <span className="text-xs text-gray-400">({u.role})</span>
+              </div>
+              <span className="text-xs font-medium" style={{ color: seenThisWeek ? G : O }}>
+                {seenThisWeek ? `Seen ${last.slice(11, 16)} ${last.slice(0, 10) === new Date().toISOString().slice(0, 10) ? "today" : "this week"}` : "Not yet seen this week"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

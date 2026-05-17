@@ -93,6 +93,9 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
       status:"Pending",
       notes:`Converted from Site Assessment ${String(a.assessmentId??"")}. ${(a.recommendedPlan as string|undefined)||""}`.trim(),
       created:new Date().toISOString(),
+      // Phase 6: assignment fields default to empty so Admin can triage from
+      // the Dashboard's Unassigned Requests inbox.
+      assignedTo:"", assignedAt:"", assignedBy:"",
     };
     setRequests(rs=>[newReq,...rs]);
     setAssessments(as=>as.map(a2=>a2.id===a.id?({...a2,status:"Converted to Job",convertedReqId:newReq.id} as Assessment):a2));

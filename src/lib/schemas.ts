@@ -93,6 +93,10 @@ export const UserSchema = z.object({
   dob: strOpt,
   pwHash: strOpt,         // SHA-256 hashed password
   password: strOpt,       // legacy — should be moved to pwHash on save
+  // Phase 6: ISO timestamp of the last Dashboard view. Stamped by
+  // non-Admin Dashboards on mount so Admin can spot "X hasn't seen
+  // their plate this week" without asking.
+  lastSeenDashboard: strOpt,
 }).passthrough();
 
 // ── 4. Staff (field employees, separate from app users) ──────────────────────

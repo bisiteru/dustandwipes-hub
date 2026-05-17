@@ -473,7 +473,7 @@ export default function App(){
         </header>
         <main className="flex-1 overflow-y-auto p-3 sm:p-6">
          <Suspense fallback={<PageFallback/>}>
-          {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} setRequests={setRequests} inventory={inventory} users={users} staff={staff} tasks={tasks} imprests={imprests} requisitions={requisitions} absences={absences} user={user} onNav={setPage}/></ErrorBoundary>}
+          {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} setRequests={setRequests} inventory={inventory} users={users} setUsers={setUsers} staff={staff} tasks={tasks} imprests={imprests} requisitions={requisitions} absences={absences} user={user} onNav={setPage}/></ErrorBoundary>}
           {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients}/></ErrorBoundary>}
