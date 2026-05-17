@@ -11,7 +11,7 @@
 import React, { useState } from "react";
 import { Edit2, Trash2, UserPlus, AlertTriangle } from "lucide-react";
 import { G, O, AMBER, inp } from "../lib/constants";
-import { hashPw } from "../lib/auth";
+import { hashPwV2 } from "../lib/auth";
 import { dbSync, dbDelete } from "../lib/supabase";
 import { Card, Fld, SBadge } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
@@ -47,7 +47,9 @@ export function SettingsPage({ users, setUsers, activityLog = [] }: SettingsPage
     delete clean.password; // never persist plain text
     const id = clean.id || ("u" + Date.now());
     if (pw) {
-      const hash = await hashPw(pw, String(id));
+      // Phase 5d: new writes use PBKDF2-SHA256 with a per-user random salt.
+      // The userId is no longer needed as the salt — hashPwV2 generates one.
+      const hash = await hashPwV2(pw);
       if (hash) clean.pwHash = hash;
     }
     const name = clean.name || "?";

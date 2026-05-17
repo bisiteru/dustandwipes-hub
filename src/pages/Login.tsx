@@ -8,7 +8,8 @@ import React, { useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { G, O, inp } from "../lib/constants";
 import { cStatus } from "../lib/format";
-import { hashPw } from "../lib/auth";
+import { verifyPw, hashPwV2 } from "../lib/auth";
+import { dbSync } from "../lib/supabase";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
 import { LOGO } from "../lib/logo";
 import { Fld } from "../components/ui/primitives";
@@ -87,8 +88,26 @@ export function LoginScreen({ onLogin, users, clients }: LoginScreenProps) {
       );
       if (localUser) {
         if (localUser.pwHash) {
-          const h = await hashPw(pw, localUser.id);
-          if (h === localUser.pwHash) {
+          const result = await verifyPw(pw, localUser.pwHash, localUser.id);
+          if (result.ok) {
+            // Transparent migration: if this user's stored hash is still the
+            // legacy SHA-256, opportunistically re-hash with PBKDF2 + a fresh
+            // random salt and persist. No password change required; the user
+            // just logs in once and is silently upgraded.
+            if (result.needsUpgrade) {
+              try {
+                const v2 = await hashPwV2(pw);
+                if (v2) {
+                  const upgraded = users.map(u =>
+                    u.id === localUser.id ? { ...u, pwHash: v2 } : u
+                  );
+                  // Fire-and-forget — login should proceed even if persist fails.
+                  dbSync("users", upgraded).catch(() => {});
+                }
+              } catch {
+                // Ignore upgrade failures — auth itself already succeeded.
+              }
+            }
             onLogin(localUser as CurrentUser);
             return;
           }

@@ -589,7 +589,9 @@ function AssessmentForm({data,onSave,onClose,user,clients,contacts:_contacts}:As
   </div>);}
 
 interface AssessmentViewerProps {
-  assessment: Assessment;
+  // Widened to AssessmentDraft because the Zod Assessment schema only
+  // declares `id` — every other field reads through the passthrough bucket.
+  assessment: AssessmentDraft;
   onClose: () => void;
   userRole: string | undefined;
 }
