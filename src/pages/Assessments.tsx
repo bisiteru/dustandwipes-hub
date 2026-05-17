@@ -32,7 +32,7 @@ type AssessmentDraft = { id: string } & Record<string, any>;
 
 interface AssessmentPhoto { url: string; caption?: string; name?: string }
 
-interface StatusStyle { bg: string; color: string }
+interface StatusStyle { bg: string; color: string; border: string }
 
 // Narrow an unknown passthrough field to string ("" fallback).
 const asStr = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -108,9 +108,9 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
   });
 
   const statusBadge=(s:unknown):StatusStyle=>{
-    const m:Record<string,StatusStyle>={"Draft":{bg:"#f3f4f6",color:"#6b7280"},"Submitted":{bg:"#dbeafe",color:"#1e40af"},"Reviewed":{bg:"#fef3c7",color:"#92400e"},"Quoted":{bg:"#ede9fe",color:"#5b21b6"},"Converted to Job":{bg:"#dcfce7",color:"#166534"},"Closed":{bg:"#f1f5f9",color:"#475569"},"Lost":{bg:"#fee2e2",color:"#991b1b"}};
+    const m:Record<string,StatusStyle>={"Draft":{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"},"Submitted":{bg:"#dbeafe",color:"#1e40af",border:"#bfdbfe"},"Reviewed":{bg:"#fef3c7",color:"#92400e",border:"#fde68a"},"Quoted":{bg:"#ede9fe",color:"#5b21b6",border:"#ddd6fe"},"Converted to Job":{bg:"#dcfce7",color:"#166534",border:"#bbf7d0"},"Closed":{bg:"#f1f5f9",color:"#475569",border:"#e2e8f0"},"Lost":{bg:"#fee2e2",color:"#991b1b",border:"#fecaca"}};
     const key=asStr(s);
-    return m[key]||{bg:"#f3f4f6",color:"#6b7280"};
+    return m[key]||{bg:"#f3f4f6",color:"#6b7280",border:"#e5e7eb"};
   };
 
   return(<div className="space-y-5">{confirmEl}
