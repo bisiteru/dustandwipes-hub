@@ -17,7 +17,7 @@ import { G, O, RED, BLUE, TODAY, STATUS_COLORS, JOB_STATUSES, inp } from "../lib
 import { monthName, cStatus, dLeft, fmtD } from "../lib/format";
 import { dbSync } from "../lib/supabase";
 import { Card, SBadge, KPI } from "../components/ui/primitives";
-import type { Client, Job, Request_, Inventory, AppUser, Staff, CurrentUser } from "../lib/schemas";
+import type { Client, Job, Request_, Inventory, AppUser, Staff, Task, Imprest, Requisition, Absence, CurrentUser } from "../lib/schemas";
 
 // ── Props ────────────────────────────────────────────────────────────────────
 export interface DashboardProps {
@@ -29,6 +29,11 @@ export interface DashboardProps {
   inventory: Inventory[];
   users: AppUser[];
   staff: Staff[];
+  /** Phase 6: personal workspace data for non-Admin views. */
+  tasks: Task[];
+  imprests: Imprest[];
+  requisitions: Requisition[];
+  absences: Absence[];
   /** Logged-in user — drives which role-specific surfaces render. */
   user: CurrentUser;
   onNav: (page: string) => void;
@@ -53,7 +58,23 @@ interface StatusCount { s: string; count: number; }
 
 const CHART_COLORS = [G, BLUE, O, "#7c3aed", "#ea580c", "#16a34a"];
 
-export function Dashboard({
+export function Dashboard(props: DashboardProps) {
+  // Phase 6: role-based router. Each branch renders its own "My Day" surface
+  // so the Dashboard is a workflow tool, not a generic report.
+  switch (props.user.role) {
+    case "Supervisor":  return <SupervisorDashboard {...props} />;
+    case "Finance":     return <FinanceDashboard {...props} />;
+    case "Technician":  return <TechnicianDashboard {...props} />;
+    case "Admin":
+    default:            return <AdminDashboard {...props} />;
+  }
+}
+
+// ── Admin Dashboard ──────────────────────────────────────────────────────────
+// The org-wide view: KPIs, unassigned-requests inbox, contract alerts,
+// today's jobs, birthdays, jobs-by-status chart. This is the historical
+// Dashboard, post Phase-5c strict-typing + Phase-6 assignment additions.
+function AdminDashboard({
   clients,
   jobs,
   requests,
@@ -504,6 +525,359 @@ export function Dashboard({
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Supervisor Dashboard ─────────────────────────────────────────────────────
+// "My Day" view: service requests assigned to me + my open tasks + jobs I'm
+// supervising this week. Acknowledgement timestamp commit (6/6) will add
+// viewedAt stamping so Admin can tell at a glance who's seen their plate.
+function SupervisorDashboard({ requests, jobs, tasks, staff, users, user, onNav }: DashboardProps) {
+  const me = user.name;
+  const todayStr = TODAY.toISOString().split("T")[0];
+
+  const myRequests = useMemo<Request_[]>(
+    () => requests.filter(r => ((r as any).assignedTo) === me && r.status !== "Converted"),
+    [requests, me],
+  );
+
+  const myOpenTasks = useMemo<Task[]>(
+    () => tasks.filter(t => t.assignee === me && t.status !== "Done" && t.status !== "Cancelled")
+                .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || "")),
+    [tasks, me],
+  );
+
+  const myJobsThisWeek = useMemo<Job[]>(() => {
+    const today = new Date(todayStr);
+    const sunday = new Date(today); sunday.setDate(sunday.getDate() + (7 - today.getDay()) % 7);
+    const sundayStr = sunday.toISOString().slice(0, 10);
+    return jobs.filter(j => j.sup === me && j.date && j.date >= todayStr && j.date <= sundayStr);
+  }, [jobs, me, todayStr]);
+
+  const overdueTasks = myOpenTasks.filter(t => t.dueDate && t.dueDate < todayStr);
+
+  // Re-use the AdminDashboard's birthday slice — supervisors still benefit from
+  // the "Bola's birthday today" reminder; this is identity-agnostic.
+  const allPeople: PersonForBdays[] = [...users, ...staff].map((p) => ({
+    id: String(p.id), name: String(p.name ?? ""), role: String(p.role ?? ""),
+    dob: String(p.dob ?? ""), initial: String(p.initial ?? ""),
+  }));
+  const todayM = TODAY.getMonth() + 1;
+  const todayD = TODAY.getDate();
+  const todayBdays = allPeople.filter(u => {
+    if (!u.dob) return false;
+    const d = new Date(u.dob);
+    return !isNaN(d.getTime()) && d.getMonth() + 1 === todayM && d.getDate() === todayD;
+  });
+
+  return (
+    <div className="space-y-5">
+      {/* Greeting + week summary */}
+      <div>
+        <h2 className="text-base font-bold text-gray-800">Good day, {me.split(" ")[0] || "there"}.</h2>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {myRequests.length} assigned request{myRequests.length === 1 ? "" : "s"}, {myOpenTasks.length} open task{myOpenTasks.length === 1 ? "" : "s"}
+          {overdueTasks.length > 0 && <span className="text-red-600 font-semibold"> · {overdueTasks.length} overdue</span>}
+        </p>
+      </div>
+
+      {todayBdays.length > 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: "#fdf4ff", border: "1px solid #e9d5ff" }}>
+          <Gift size={18} style={{ color: "#9333ea" }} />
+          <p className="text-sm text-purple-700">
+            <strong>Birthday today:</strong> {todayBdays.map(u => u.name).join(", ")}
+          </p>
+        </div>
+      )}
+
+      {/* My assigned service requests */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+            <Inbox size={12} style={{ color: O }} /> Service Requests Assigned to Me
+            <span className="ml-1 px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{ background: O }}>
+              {myRequests.length}
+            </span>
+          </h3>
+          <button onClick={() => onNav("requests")} className="text-xs font-semibold flex items-center gap-1" style={{ color: G }}>
+            Open Requests <ChevronRight size={12} />
+          </button>
+        </div>
+        {myRequests.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No service requests assigned to you right now.</p>
+        ) : (
+          <div className="space-y-2">
+            {myRequests.slice(0, 6).map(r => (
+              <div key={String(r.id)} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{r.clientName || "Unknown"} <span className="ml-2 text-xs text-gray-400 font-normal">{r.svc}</span></p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {r.loc ? `📍 ${r.loc} · ` : ""}{r.prefDate ? `Preferred: ${fmtD(r.prefDate)}` : ""}
+                  </p>
+                </div>
+                <button onClick={() => onNav("requests")} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white" style={{ background: BLUE }}>
+                  Convert →
+                </button>
+              </div>
+            ))}
+            {myRequests.length > 6 && (
+              <p className="text-xs text-gray-400 text-center pt-1">+{myRequests.length - 6} more on the Requests page</p>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* My open tasks */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+            <Briefcase size={12} style={{ color: G }} /> My Open Tasks
+            <span className="ml-1 px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{ background: G }}>
+              {myOpenTasks.length}
+            </span>
+          </h3>
+          <button onClick={() => onNav("tasks")} className="text-xs font-semibold flex items-center gap-1" style={{ color: G }}>
+            All Tasks <ChevronRight size={12} />
+          </button>
+        </div>
+        {myOpenTasks.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">Nothing on your plate — great work or quiet week.</p>
+        ) : (
+          <div className="space-y-2">
+            {myOpenTasks.slice(0, 8).map(t => {
+              const overdue = t.dueDate && t.dueDate < todayStr;
+              return (
+                <div key={String(t.id)} className={`flex items-center justify-between p-3 rounded-xl border ${overdue ? "border-red-200 bg-red-50/40" : "border-gray-100 bg-gray-50/60"}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
+                    <p className="text-xs text-gray-500">
+                      {t.dueDate ? <span className={overdue ? "text-red-600 font-semibold" : ""}>Due {fmtD(t.dueDate)}</span> : "No due date"}
+                      {t.priority && t.priority !== "Normal" ? ` · ${t.priority}` : ""}
+                    </p>
+                  </div>
+                  <SBadge s={t.status || "Pending"} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Jobs I'm supervising this week */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+            <Clock size={12} style={{ color: BLUE }} /> Jobs I'm Supervising This Week
+            <span className="ml-1 px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{ background: BLUE }}>
+              {myJobsThisWeek.length}
+            </span>
+          </h3>
+          <button onClick={() => onNav("jobs")} className="text-xs font-semibold flex items-center gap-1" style={{ color: G }}>
+            Open Jobs <ChevronRight size={12} />
+          </button>
+        </div>
+        {myJobsThisWeek.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No jobs under your supervision this week.</p>
+        ) : (
+          <div className="space-y-2">
+            {myJobsThisWeek.slice(0, 8).map(j => (
+              <div key={String(j.id)} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{j.clientName} <span className="ml-2 text-xs text-gray-400 font-normal">{j.svc}</span></p>
+                  <p className="text-xs text-gray-500">{fmtD(j.date)}{j.techs ? ` · Crew: ${j.techs}` : ""}</p>
+                </div>
+                <SBadge s={j.status} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Finance Dashboard ────────────────────────────────────────────────────────
+// Money-focused: imprest balances, requisitions awaiting approval, absence
+// deductions accumulating, inventory value at risk. This is intentionally a
+// thin first draft per the user's note ("details can be refined later").
+function FinanceDashboard({ imprests, requisitions, absences, inventory, user, onNav }: DashboardProps) {
+  const me = user.name;
+
+  const n = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+  const activeImprests = useMemo(() => imprests.filter(i => (i.status || "Active") === "Active"), [imprests]);
+  const imprestBalance = useMemo(() => activeImprests.reduce((sum, i) => {
+    const issued = n(i.amount);
+    const spent = ((i.expenses as { amount?: unknown }[] | undefined) || []).reduce((s, e) => s + n(e?.amount), 0);
+    return sum + (issued - spent);
+  }, 0), [activeImprests]);
+
+  const pendingReqs = useMemo(() => requisitions.filter(r => (r.status || "Pending") === "Pending"), [requisitions]);
+  const pendingReqsValue = useMemo(() => pendingReqs.reduce((sum, r) => {
+    const items = (r.items as { qty?: unknown; cost?: unknown; rate?: unknown; approvedRate?: unknown }[] | undefined) || [];
+    return sum + items.reduce((s, it) => s + n(it.qty) * (n(it.approvedRate) || n(it.rate) || n(it.cost)), 0);
+  }, 0), [pendingReqs]);
+
+  const deductionsPending = useMemo(() => absences
+    .filter(a => a.status !== "Sent to Finance" && n(a.deductionAmount) > 0)
+    .reduce((sum, a) => sum + n(a.deductionAmount), 0), [absences]);
+
+  const lowStock = useMemo(() => inventory.filter(i => n(i.qty) <= n(i.reorder)).length, [inventory]);
+
+  const fmt = (v: number): string => "₦" + Math.round(v).toLocaleString();
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-base font-bold text-gray-800">Finance dashboard — {me.split(" ")[0] || ""}.</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Imprest, requisitions, payroll deductions, and stock value at a glance.</p>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <KPI icon="" label="Active Imprests" value={activeImprests.length} sub={`${fmt(imprestBalance)} unspent`} bg="#eff6ff" onClick={() => onNav("imprest")} />
+        <KPI icon="" label="Pending Requisitions" value={pendingReqs.length} sub={fmt(pendingReqsValue)} bg="#fff7ed" onClick={() => onNav("requisitions")} />
+        <KPI icon="" label="Deductions Pending" value={fmt(deductionsPending)} sub="To send to payroll" bg="#fef3c7" onClick={() => onNav("absencecover")} />
+        <KPI icon="" label="Low Stock Items" value={lowStock} sub="Reorder threshold hit" bg="#fee2e2" onClick={() => onNav("inventory")} />
+      </div>
+
+      <Card className="p-5">
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Open Items by Category</h3>
+        <div className="space-y-2 text-sm">
+          <button onClick={() => onNav("requisitions")} className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60 hover:bg-gray-50">
+            <span className="font-semibold text-gray-700">Review {pendingReqs.length} pending requisition{pendingReqs.length === 1 ? "" : "s"}</span>
+            <span className="text-gray-500 text-xs">{fmt(pendingReqsValue)} total <ChevronRight size={12} className="inline" /></span>
+          </button>
+          <button onClick={() => onNav("absencecover")} className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60 hover:bg-gray-50">
+            <span className="font-semibold text-gray-700">Process absence deductions</span>
+            <span className="text-gray-500 text-xs">{fmt(deductionsPending)} pending <ChevronRight size={12} className="inline" /></span>
+          </button>
+          <button onClick={() => onNav("imprest")} className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60 hover:bg-gray-50">
+            <span className="font-semibold text-gray-700">Reconcile imprest accounts</span>
+            <span className="text-gray-500 text-xs">{activeImprests.length} active · {fmt(imprestBalance)} <ChevronRight size={12} className="inline" /></span>
+          </button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── Technician Dashboard ─────────────────────────────────────────────────────
+// Field-facing: today's jobs assigned to me (with the actual action — Open Job —
+// to start check-in) and my open tasks. Designed to be readable on a phone
+// after the mobile drawer sweep in Phase 5c.
+function TechnicianDashboard({ jobs, tasks, user, onNav }: DashboardProps) {
+  const me = user.name;
+  const todayStr = TODAY.toISOString().split("T")[0];
+
+  const myJobsToday = useMemo<Job[]>(
+    () => jobs.filter(j => j.date === todayStr && (j.techs || "").includes(me)),
+    [jobs, me, todayStr],
+  );
+
+  const myJobsThisWeek = useMemo<Job[]>(() => {
+    const today = new Date(todayStr);
+    const sunday = new Date(today); sunday.setDate(sunday.getDate() + (7 - today.getDay()) % 7);
+    const sundayStr = sunday.toISOString().slice(0, 10);
+    return jobs.filter(j => (j.techs || "").includes(me) && j.date && j.date > todayStr && j.date <= sundayStr);
+  }, [jobs, me, todayStr]);
+
+  const myOpenTasks = useMemo<Task[]>(
+    () => tasks.filter(t => t.assignee === me && t.status !== "Done" && t.status !== "Cancelled"),
+    [tasks, me],
+  );
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-base font-bold text-gray-800">Good day, {me.split(" ")[0] || "there"}.</h2>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {myJobsToday.length} job{myJobsToday.length === 1 ? "" : "s"} today, {myJobsThisWeek.length} upcoming this week, {myOpenTasks.length} task{myOpenTasks.length === 1 ? "" : "s"}.
+        </p>
+      </div>
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+            <Briefcase size={12} style={{ color: G }} /> Today's Jobs
+            <span className="ml-1 px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{ background: G }}>
+              {myJobsToday.length}
+            </span>
+          </h3>
+          <button onClick={() => onNav("jobs")} className="text-xs font-semibold flex items-center gap-1" style={{ color: G }}>
+            Open Jobs <ChevronRight size={12} />
+          </button>
+        </div>
+        {myJobsToday.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No jobs assigned to you today.</p>
+        ) : (
+          <div className="space-y-2">
+            {myJobsToday.map(j => (
+              <div key={String(j.id)} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{j.clientName} <span className="ml-2 text-xs text-gray-400 font-normal">{j.svc}</span></p>
+                  <p className="text-xs text-gray-500">{j.loc ? `📍 ${j.loc}` : ""}{j.sup ? ` · Sup: ${j.sup}` : ""}</p>
+                </div>
+                <button onClick={() => onNav("jobs")} className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white" style={{ background: G }}>
+                  Open →
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {myJobsThisWeek.length > 0 && (
+        <Card className="p-5">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <Clock size={12} style={{ color: BLUE }} /> Coming Up This Week
+          </h3>
+          <div className="space-y-2">
+            {myJobsThisWeek.slice(0, 6).map(j => (
+              <div key={String(j.id)} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{j.clientName}</p>
+                  <p className="text-xs text-gray-500">{fmtD(j.date)} · {j.svc}</p>
+                </div>
+                <SBadge s={j.status} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+            <Briefcase size={12} style={{ color: O }} /> My Tasks
+            <span className="ml-1 px-2 py-0.5 rounded-full font-bold text-white text-xs" style={{ background: O }}>
+              {myOpenTasks.length}
+            </span>
+          </h3>
+          <button onClick={() => onNav("tasks")} className="text-xs font-semibold flex items-center gap-1" style={{ color: G }}>
+            All Tasks <ChevronRight size={12} />
+          </button>
+        </div>
+        {myOpenTasks.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No outstanding tasks.</p>
+        ) : (
+          <div className="space-y-2">
+            {myOpenTasks.slice(0, 6).map(t => (
+              <div key={String(t.id)} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/60">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{t.title}</p>
+                  <p className="text-xs text-gray-500">{t.dueDate ? `Due ${fmtD(t.dueDate)}` : "No due date"}</p>
+                </div>
+                <SBadge s={t.status || "Pending"} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
