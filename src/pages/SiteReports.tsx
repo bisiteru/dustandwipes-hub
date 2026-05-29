@@ -151,7 +151,10 @@ function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:
   const[view,setView]=useState<SiteReport|null>(null);
   const[confirm,confirmEl]=useConfirm();
   const[selMK,setSelMK]=useState<string>(curMonthKey());
-  const getMK=(r:SiteReport):string|null|undefined=>r.submittedAt;
+  // Use arrivalDate (user-entered local date) as the month key so reports always
+  // land in the correct local month tab. Fall back to submittedAt for legacy rows
+  // that pre-date the arrivalDate field.
+  const getMK=(r:SiteReport):string|null|undefined=>r.arrivalDate||r.submittedAt;
   // Auto-switch to most recent month with data if current month is empty
   useEffect(()=>{if(reports.length>0&&!reports.some(r=>monthOf(r,getMK)===selMK)){const keys=[...new Set(reports.map(r=>monthOf(r,getMK)).filter(Boolean))].sort().reverse();if(keys[0])setSelMK(keys[0] as string);}},[reports]); // eslint-disable-line react-hooks/exhaustive-deps
   const monthReports=reports.filter(r=>monthOf(r,getMK)===selMK);
@@ -229,7 +232,7 @@ function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:
         </div>);
       })}</div>}
     </Card>
-    {showForm&&<SiteReportModal initialMK={selMK} onSave={data=>{const newList=[data,...reports];setReports(newList);dbSync("reports",newList);setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients} contacts={contacts} staff={staff}/>}
+    {showForm&&<SiteReportModal initialMK={selMK} onSave={data=>{const newList=[data,...reports];setReports(newList);dbSync("reports",newList,()=>{alert("Report saved locally but failed to sync — your data is not lost yet. Please stay on this page and try re-submitting, or contact Admin.");});setShowForm(false);}} onClose={()=>setShowForm(false)} user={user} clients={clients} contacts={contacts} staff={staff}/>}
     {view&&<SiteReportViewer report={view} onClose={()=>setView(null)}/>}
   </div>);}
 
@@ -319,8 +322,14 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
   const activeCanNext=isInspection?canNextInspection:canNext;
 
   const submit=async()=>{
-    const reportData:SiteReport={...f,id:String(Date.now()),submittedAt:new Date().toISOString(),
-      signatureTimestamp:new Date().toLocaleString("en-GB")};
+    // Build a local-timezone ISO string (YYYY-MM-DDTHH:mm:ss) so that monthOf()
+    // and curMonthKey() — which both use local Date components — agree on which
+    // month this report belongs to. Using toISOString() (UTC) caused reports
+    // submitted near midnight to appear in the wrong month tab.
+    const _now=new Date();
+    const _localISO=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}T${String(_now.getHours()).padStart(2,"0")}:${String(_now.getMinutes()).padStart(2,"0")}:${String(_now.getSeconds()).padStart(2,"0")}`;
+    const reportData:SiteReport={...f,id:String(Date.now()),submittedAt:_localISO,
+      signatureTimestamp:_now.toLocaleString("en-GB")};
     onSave(reportData);
     // Fire-and-forget: email full report to admin + supervisors via Edge Function
     try{

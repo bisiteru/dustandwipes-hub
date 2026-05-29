@@ -137,7 +137,9 @@ export function ContractsPage({ clients, setClients }: ContractsPageProps) {
                 ? { ...c, ce: renewModal.newCe, tot: renewModal.newTot || c.tot, cs: c.ce }
                 : c);
               setClients(nc);
-              dbSync("clients", nc);
+              dbSync("clients", nc, () => {
+                alert("Contract renewal saved locally but failed to sync — please refresh and try again to ensure it persists.");
+              });
               setRenewModal(null);
             }}
             className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40"

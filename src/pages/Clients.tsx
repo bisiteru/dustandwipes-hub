@@ -80,7 +80,9 @@ export function ClientsPage({
       ];
     }
     setClients(nc);
-    dbSync("clients", nc);
+    dbSync("clients", nc, () => {
+      toast.error("Client saved locally but failed to sync — please refresh and try again");
+    });
     toast.success(d.id ? "Client updated" : "Client added");
     setModal(null);
   };

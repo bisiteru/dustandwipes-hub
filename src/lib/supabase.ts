@@ -206,8 +206,16 @@ export const uploadAssessmentPhoto = async (file: File, assessmentId: string): P
  * NEVER deletes — deletion is handled by dbDelete() explicitly.
  * This prevents race-condition data loss when multiple tabs sync simultaneously.
  * All records pass through Zod validation (Phase 1) before write.
+ *
+ * @param onError  Optional callback invoked with the Error when the sync fails.
+ *                 Use this on user-facing saves to show a toast. Fire-and-forget
+ *                 callers can omit it — the error is always logged to console.
  */
-export const dbSync = async (table: string, data: any[]): Promise<void> => {
+export const dbSync = async (
+  table: string,
+  data: any[],
+  onError?: (e: Error) => void
+): Promise<void> => {
   try {
     if (!data || data.length === 0) return;
     const validated = (SCHEMAS as any)[table]
@@ -233,6 +241,7 @@ export const dbSync = async (table: string, data: any[]): Promise<void> => {
       throw new Error(e);
     }
   } catch (e: any) {
-    console.warn(`[DB] sync ${table}:`, e.message);
+    console.error(`[DB] sync ${table} failed:`, e.message);
+    onError?.(e as Error);
   }
 };

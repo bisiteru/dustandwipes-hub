@@ -199,7 +199,7 @@ function AssessmentsPage({assessments,setAssessments,user,clients,contacts,reque
         const saved=data as Assessment;
         const exists=assessments.some(a=>a.id===saved.id);
         const na: AssessmentDraft[]=exists?assessments.map(a=>a.id===saved.id?saved:a):[saved,...assessments];
-        setAssessments(na);void dbSync("assessments",na);
+        setAssessments(na);dbSync("assessments",na,()=>{alert("Assessment saved locally but failed to sync to the database. Please do not close the app — contact Admin to force a manual sync.");});
         setShowForm(false);setEditData(null);
       }}
       onClose={()=>{setShowForm(false);setEditData(null);}}

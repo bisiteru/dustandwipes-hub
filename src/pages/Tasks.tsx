@@ -185,14 +185,16 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
       ? tasks.map((t) => (t.id === id ? next : t))
       : [next, ...tasks];
     setTasks(updated);
-    dbSync("tasks", updated).catch(() => {});
+    dbSync("tasks", updated, () => {
+      toast.error("Task saved locally but failed to sync — check your connection");
+    });
     toast.success(draft.id ? "Task updated" : "Task created");
     setModal(null);
   };
 
   const advance = (id: string): void => {
-    setTasks((prev) =>
-      prev.map((t) =>
+    setTasks((prev) => {
+      const updated = prev.map((t) =>
         t.id === id
           ? ({
               ...t,
@@ -203,18 +205,22 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
                   : t.completedAt || "",
             } as Task)
           : t,
-      ),
-    );
+      );
+      dbSync("tasks", updated);
+      return updated;
+    });
   };
 
   const completeNow = (id: string): void => {
-    setTasks((prev) =>
-      prev.map((t) =>
+    setTasks((prev) => {
+      const updated = prev.map((t) =>
         t.id === id
           ? ({ ...t, status: "Done", completedAt: new Date().toISOString() } as Task)
           : t,
-      ),
-    );
+      );
+      dbSync("tasks", updated);
+      return updated;
+    });
     toast.success("Task marked done");
   };
 
