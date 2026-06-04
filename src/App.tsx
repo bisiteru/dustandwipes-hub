@@ -178,12 +178,28 @@ export default function App(){
             const merged: AppUser[] = [...dbRows];
             const dbIds = new Set(dbRows.map(r => String(r.id)));
             for (const [id, seed] of seedById) if (!dbIds.has(id)) merged.push(seed);
-            setUsers(merged);
-            // Self-heal: if we added any missing seeds, persist the merged
-            // list back so subsequent boots don't need to merge. Fire-and-
-            // forget — login should not depend on this write succeeding.
-            if (merged.length !== dbRows.length) {
-              dbSync("users", merged).catch(() => {});
+            // Sanitize: technicians use phone-number username login only — if
+            // a pwHash slipped onto a Technician row (e.g. a password got
+            // typed into the Settings edit modal at some point), strip it.
+            // Login.tsx now also ignores pwHash for Technician role, but
+            // cleaning the persisted data prevents the same row from causing
+            // confusion in the Settings UI or any future code path.
+            let sanitizedCount = 0;
+            const sanitized: AppUser[] = merged.map(u => {
+              const isTech = String(u.role || "").toLowerCase() === "technician";
+              if (isTech && u.pwHash) {
+                sanitizedCount++;
+                return { ...u, pwHash: "" } as AppUser;
+              }
+              return u;
+            });
+            setUsers(sanitized);
+            // Self-heal: if we added any missing seeds OR stripped any
+            // technician pwHashes, persist the cleaned list back so
+            // subsequent boots start consistent. Fire-and-forget — login
+            // should not depend on this write succeeding.
+            if (sanitized.length !== dbRows.length || sanitizedCount > 0) {
+              dbSync("users", sanitized).catch(() => {});
             }
           }),
         ]);

@@ -87,7 +87,16 @@ export function LoginScreen({ onLogin, users, clients }: LoginScreenProps) {
           (u.username && u.username === em.trim())
       );
       if (localUser) {
-        if (localUser.pwHash) {
+        // Technicians log in by phone-number username only — no password
+        // required (per Settings copy: "Phone number login for technicians").
+        // If a pwHash was accidentally set on a Technician row (e.g. a
+        // password got typed into the Settings edit modal at some point),
+        // that should NOT prevent login. Role takes precedence over the
+        // presence of a pwHash for this auth lane. The dbLoad merge in
+        // App.tsx also strips these strays from the persisted DB on next
+        // boot, but we belt-and-suspender it here too.
+        const isTech = String(localUser.role || "").toLowerCase() === "technician";
+        if (localUser.pwHash && !isTech) {
           const result = await verifyPw(pw, localUser.pwHash, localUser.id);
           if (result.ok) {
             // Transparent migration: if this user's stored hash is still the
