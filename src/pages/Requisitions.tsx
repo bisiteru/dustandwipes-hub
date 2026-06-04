@@ -110,6 +110,10 @@ function RequisitionsPage({requisitions,setRequisitions,supplyItems,setSupplyIte
   const getMK=(r: Requisition): string =>
     `${r.year||new Date().getFullYear()}-${String((r.month ?? new Date().getMonth())+1).padStart(2,"0")}`;
   useEffect(()=>{
+    // Never auto-switch away from the current month — the user expects to land
+    // on (say) June so a new requisition fills the current period, not the
+    // previous one. Auto-jumping was creating a real misfiling risk.
+    if(selMK===curMonthKey())return;
     if(requisitions.length>0&&!requisitions.some(r=>monthOf(r,getMK)===selMK)){
       const keys=[...new Set(requisitions.map(r=>monthOf(r,getMK)).filter((k): k is string => Boolean(k)))].sort().reverse();
       if(keys[0])setSelMK(keys[0]);

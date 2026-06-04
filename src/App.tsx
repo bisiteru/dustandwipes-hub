@@ -399,7 +399,7 @@ export default function App(){
     {id:"clients",     label:"Clients",          icon:Users,         roles:["Admin","Supervisor"]},
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
-    {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor","Technician"]},
+    {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
     {id:"schedule",    label:"Pest Schedule",    icon:Bug,           roles:["Admin","Supervisor"]},
     {id:"site_reports",label:"Site Reports",     icon:ClipboardList, roles:["Admin","Supervisor"]},
     {id:"inventory",   label:"Inventory",        icon:Package,       roles:["Admin","Supervisor"]},
