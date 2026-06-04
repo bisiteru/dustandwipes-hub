@@ -163,8 +163,28 @@ export default function App(){
               }
             }catch(e:any){console.warn("[DB] load staff:",e?.message);setStaff(SEED_STAFF);}
           })(),
-          dbLoad("users",       u => {
-            if(u && u.length > 0) setUsers(u);
+          dbLoad("users", u => {
+            // Merge DB users with INITIAL_USERS seeds so technician phone-
+            // number accounts survive even if the DB table never persisted
+            // them. Without this, App.tsx silently replaces the seed array
+            // with whatever Supabase has, technicians disappear from the
+            // in-memory users[], and Login.tsx's username-match fallback
+            // (their only auth path) can't find them. See observation #49.
+            const dbRows = (u || []) as AppUser[];
+            const seedById = new Map(
+              (INITIAL_USERS as unknown as AppUser[]).map(s => [String(s.id), s] as const)
+            );
+            // DB wins for any id that exists in both; remaining seeds get added.
+            const merged: AppUser[] = [...dbRows];
+            const dbIds = new Set(dbRows.map(r => String(r.id)));
+            for (const [id, seed] of seedById) if (!dbIds.has(id)) merged.push(seed);
+            setUsers(merged);
+            // Self-heal: if we added any missing seeds, persist the merged
+            // list back so subsequent boots don't need to merge. Fire-and-
+            // forget — login should not depend on this write succeeding.
+            if (merged.length !== dbRows.length) {
+              dbSync("users", merged).catch(() => {});
+            }
           }),
         ]);
         setDbStatus("ok");

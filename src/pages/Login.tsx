@@ -136,13 +136,22 @@ export function LoginScreen({ onLogin, users, clients }: LoginScreenProps) {
         );
         return;
       }
-      // Genuine network outage — allow Admin emergency local access
+      // Genuine network outage. Allow:
+      //   - any Admin (emergency org-level access), OR
+      //   - any user with no pwHash AND a matching username (technicians log in
+      //     by phone-number-only, so they have no Supabase Auth record to even
+      //     attempt — without this branch they're stranded whenever the
+      //     auth endpoint is unreachable).
       const fallback = users.find(
         (u) => u.email === em.trim() || u.username === em.trim()
       );
-      if (fallback && fallback.role === "Admin") {
-        onLogin(fallback as CurrentUser);
-        return;
+      if (fallback) {
+        const isAdmin = fallback.role === "Admin";
+        const isPwlessTechMatch = !fallback.pwHash && !!fallback.username && fallback.username === em.trim();
+        if (isAdmin || isPwlessTechMatch) {
+          onLogin(fallback as CurrentUser);
+          return;
+        }
       }
       setErr("Network error — check your connection and try again.");
     } finally {
