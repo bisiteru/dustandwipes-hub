@@ -28,8 +28,6 @@ export interface DashboardProps {
   setRequests: Dispatch<SetStateAction<Request_[]>>;
   inventory: Inventory[];
   users: AppUser[];
-  /** Phase 6: non-Admin Dashboards stamp lastSeenDashboard on mount. */
-  setUsers: Dispatch<SetStateAction<AppUser[]>>;
   staff: Staff[];
   /** Phase 6: personal workspace data for non-Admin views. */
   tasks: Task[];
@@ -61,14 +59,21 @@ interface StatusCount { s: string; count: number; }
 const CHART_COLORS = [G, BLUE, O, "#7c3aed", "#ea580c", "#16a34a"];
 
 /**
- * Stamp `lastSeenDashboard` on the current user's row in `users[]`.
- * Idempotent within a render — only writes if more than 60s have elapsed
- * since the last stamp (prevents flooding dbSync on every re-render).
+ * Stamp `lastSeenDashboard` on the current user's row.
+ *
+ * Writes a SINGLE-row upsert (`dbSync("users", [me])`) directly rather than
+ * going through setUsers — the App-level `debouncedSync("users", users)`
+ * effect would otherwise POST the entire users table to Supabase on every
+ * dashboard mount (hundreds of row upserts/day at scale for one timestamp).
+ * dbSync uses merge-duplicates, so the one-row POST touches only this user.
+ *
+ * Self-stamp doesn't need to reflect in the stamper's own UI — the Admin
+ * Team-Acknowledgement card reads everyone's lastSeenDashboard from the DB
+ * load on boot. Throttled to once per 60s via the persisted value.
  */
 function useStampLastSeen(
   user: CurrentUser,
   users: AppUser[],
-  setUsers: Dispatch<SetStateAction<AppUser[]>>,
 ): void {
   useEffect(() => {
     if (!user.id) return;
@@ -77,9 +82,8 @@ function useStampLastSeen(
     const last = String((me as any).lastSeenDashboard || "");
     if (last && Date.now() - new Date(last).getTime() < 60_000) return;
     const now = new Date().toISOString();
-    setUsers((prev) =>
-      prev.map((u) => (String(u.id) === String(user.id) ? ({ ...u, lastSeenDashboard: now } as AppUser) : u)),
-    );
+    // Targeted one-row upsert — no full-table sync.
+    dbSync("users", [{ ...me, lastSeenDashboard: now }]).catch(() => {});
   }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
@@ -580,10 +584,10 @@ function AdminDashboard({
 // "My Day" view: service requests assigned to me + my open tasks + jobs I'm
 // supervising this week. Acknowledgement timestamp commit (6/6) will add
 // viewedAt stamping so Admin can tell at a glance who's seen their plate.
-function SupervisorDashboard({ requests, jobs, tasks, staff, users, setUsers, user, onNav }: DashboardProps) {
+function SupervisorDashboard({ requests, jobs, tasks, staff, users, user, onNav }: DashboardProps) {
   const me = user.name;
   const todayStr = TODAY.toISOString().split("T")[0];
-  useStampLastSeen(user, users, setUsers);
+  useStampLastSeen(user, users);
 
   // Filters use sameName() so the user's login name (`me`) matches the
   // assignedTo/assignee/sup strings even when the picker stored a slightly
@@ -757,9 +761,9 @@ function SupervisorDashboard({ requests, jobs, tasks, staff, users, setUsers, us
 // Money-focused: imprest balances, requisitions awaiting approval, absence
 // deductions accumulating, inventory value at risk. This is intentionally a
 // thin first draft per the user's note ("details can be refined later").
-function FinanceDashboard({ imprests, requisitions, absences, inventory, users, setUsers, user, onNav }: DashboardProps) {
+function FinanceDashboard({ imprests, requisitions, absences, inventory, users, user, onNav }: DashboardProps) {
   const me = user.name;
-  useStampLastSeen(user, users, setUsers);
+  useStampLastSeen(user, users);
 
   const n = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
@@ -824,10 +828,10 @@ function FinanceDashboard({ imprests, requisitions, absences, inventory, users, 
 // Field-facing: today's jobs assigned to me (with the actual action — Open Job —
 // to start check-in) and my open tasks. Designed to be readable on a phone
 // after the mobile drawer sweep in Phase 5c.
-function TechnicianDashboard({ jobs, tasks, users, setUsers, user, onNav }: DashboardProps) {
+function TechnicianDashboard({ jobs, tasks, users, user, onNav }: DashboardProps) {
   const me = user.name;
   const todayStr = TODAY.toISOString().split("T")[0];
-  useStampLastSeen(user, users, setUsers);
+  useStampLastSeen(user, users);
 
   // Same name-match leniency as the Supervisor dashboard. j.techs is a
   // comma-separated string of crew names, so we match each comma-part
