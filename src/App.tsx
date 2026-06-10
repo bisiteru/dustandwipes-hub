@@ -254,7 +254,7 @@ export default function App(){
       const truly = toAdd.filter(t => !existing.has(String(t.id)));
       if (truly.length === 0) return ts;
       const updated = [...ts, ...truly];
-      dbSync("tasks", updated);
+      dbSync("tasks", updated, () => Toaster._add?.("Recurring tasks failed to sync — will retry next load", "error"));
       Toaster._add?.(`${truly.length} recurring task${truly.length > 1 ? "s" : ""} materialized for this week`, "info");
       return updated;
     });

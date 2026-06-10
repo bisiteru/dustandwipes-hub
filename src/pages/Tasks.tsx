@@ -192,6 +192,11 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
     setModal(null);
   };
 
+  // Shared onError for task status mutations — a failed sync means the local
+  // status change won't survive a reload (dbLoad would return the pre-change
+  // data), which is exactly the "tasks aren't saving" bug. Surface it.
+  const syncErr = () => toast.error("Status change failed to sync — check your connection and retry");
+
   const advance = (id: string): void => {
     setTasks((prev) => {
       const updated = prev.map((t) =>
@@ -206,7 +211,7 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
             } as Task)
           : t,
       );
-      dbSync("tasks", updated);
+      dbSync("tasks", updated, syncErr);
       return updated;
     });
   };
@@ -218,7 +223,7 @@ export function TasksPage({ tasks, setTasks, taskTemplates, setTaskTemplates, us
           ? ({ ...t, status: "Done", completedAt: new Date().toISOString() } as Task)
           : t,
       );
-      dbSync("tasks", updated);
+      dbSync("tasks", updated, syncErr);
       return updated;
     });
     toast.success("Task marked done");
