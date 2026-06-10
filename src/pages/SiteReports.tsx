@@ -242,22 +242,37 @@ function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:
     {view&&<SiteReportViewer report={view} onClose={()=>setView(null)}/>}
   </div>);}
 
+// Draft persistence (Phase 7): a site visit can span hours as work progresses.
+// The form is auto-saved to localStorage on every change so a supervisor can
+// close the tab, lose signal, or have the browser evict the page — and resume
+// where they left off. Key is namespaced per supervisor so two people on the
+// same shared device don't clobber each other's draft.
+const SR_DRAFT_KEY=(user:{email?:string;name?:string})=>`dw_sr_draft_${user.email||user.name||"anon"}`;
+interface SiteReportDraft{f:SiteReportForm;sec:number;uploadPrefix:string;savedAt:string;}
+
 function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staff=[]}:SiteReportModalProps){
-  const[sec,setSec]=useState(0);
+  const draftKey=SR_DRAFT_KEY(user);
+  // Load any saved draft once on mount.
+  const savedDraft=useRef<SiteReportDraft|null>((()=>{
+    try{const raw=localStorage.getItem(draftKey);return raw?JSON.parse(raw) as SiteReportDraft:null;}catch{return null;}
+  })()).current;
+
+  const[sec,setSec]=useState(savedDraft?.sec??0);
   const[gpsLoading,setGpsLoading]=useState(false);
-  // Per-form upload namespace. Generated once on mount; reused for every
-  // photo so the bucket has a folder per report draft. Becomes the report's
-  // permanent prefix once submitted (the form id is set from this on save).
-  const uploadPrefix = useRef<string>(`r${Date.now()}`).current;
+  // Per-form upload namespace. Restored from the draft if one exists so photos
+  // uploaded before the draft was saved still live under the same folder.
+  const uploadPrefix = useRef<string>(savedDraft?.uploadPrefix||`r${Date.now()}`).current;
   // Counter of photo uploads currently in flight — surfaces a spinner on
   // the upload button so a supervisor knows their tap was registered while
   // the bytes hit Supabase Storage.
   const[uploadingCount,setUploadingCount]=useState(0);
+  // True briefly after a manual save, to flash a "Draft saved" confirmation.
+  const[draftSaved,setDraftSaved]=useState(false);
   // If the user opened the form while viewing a non-current month tab, default
   // the arrival/departure dates to that month's first day so the new report
   // lands under the tab they were looking at instead of jumping to today.
   const defaultDate = defaultDateForMK(initialMK);
-  const[f,setF]=useState<SiteReportForm>({
+  const[f,setF]=useState<SiteReportForm>(savedDraft?.f||{
     supervisorName:user.name, supervisorEmail:user.email||"",
     clientName:"",address:"",
     arrivalDate:defaultDate,arrivalTime:"",
@@ -275,6 +290,27 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
     overallAssessment:"",signatureName:"",signatureTimestamp:"",
     staffChallenges:"",recurringIssues:"",followUpActions:"",supervisorFeedback:"",equipmentCondition:"",
   });
+
+  // Auto-save draft on every form/step change. Skips the very first render so
+  // we don't immediately re-write an unchanged restored draft.
+  const firstRender=useRef(true);
+  useEffect(()=>{
+    if(firstRender.current){firstRender.current=false;return;}
+    try{
+      const draft:SiteReportDraft={f,sec,uploadPrefix,savedAt:new Date().toISOString()};
+      localStorage.setItem(draftKey,JSON.stringify(draft));
+    }catch(e){/* localStorage full or unavailable — non-fatal */}
+  },[f,sec,uploadPrefix,draftKey]);
+
+  const clearDraft=()=>{try{localStorage.removeItem(draftKey);}catch{}};
+  const saveDraftAndClose=()=>{
+    try{
+      const draft:SiteReportDraft={f,sec,uploadPrefix,savedAt:new Date().toISOString()};
+      localStorage.setItem(draftKey,JSON.stringify(draft));
+      setDraftSaved(true);
+      setTimeout(()=>{onClose();},700);
+    }catch{onClose();}
+  };
   const u=<K extends StringKey>(k:K)=>(e:ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>setF(p=>({...p,[k]:e.target.value}));
   const tog=<K extends StringArrayKey>(k:K)=>(v:string)=>setF(p=>{const arr=p[k] as string[];return{...p,[k]:arr.includes(v)?arr.filter(x=>x!==v):[...arr,v]};});
 
@@ -355,6 +391,7 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
     const _localISO=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}T${String(_now.getHours()).padStart(2,"0")}:${String(_now.getMinutes()).padStart(2,"0")}:${String(_now.getSeconds()).padStart(2,"0")}`;
     const reportData:SiteReport={...f,id:String(Date.now()),submittedAt:_localISO,
       signatureTimestamp:_now.toLocaleString("en-GB")};
+    clearDraft(); // report is final — drop the in-progress draft
     onSave(reportData);
     // Fire-and-forget: email full report to admin + supervisors via Edge Function
     try{
@@ -377,6 +414,9 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
           <h2 className="text-base font-bold text-gray-800">Site Visit Report</h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"><X size={16}/></button>
         </div>
+        {savedDraft&&<div className="mb-3 px-3 py-2 rounded-lg text-xs flex items-center gap-2" style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1e40af"}}>
+          ↩ Resumed your saved draft{savedDraft.savedAt?` from ${new Date(savedDraft.savedAt).toLocaleString("en-GB")}`:""}. Submit when complete, or keep editing.
+        </div>}
         {/* Stepper */}
         <div className="flex items-center gap-1">
           {activeSections.map((s,i)=><div key={i} className="flex items-center gap-1 flex-1">
@@ -682,15 +722,22 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
       </div>
 
       {/* Footer nav */}
-      <div className="flex items-center justify-between px-6 py-4 border-t flex-shrink-0 bg-gray-50/50">
+      <div className="flex items-center justify-between px-6 py-4 border-t flex-shrink-0 bg-gray-50/50 gap-2">
         <button onClick={sec===0?onClose:()=>setSec(s=>s-1)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">
           {sec===0?"Cancel":" Back"}
         </button>
-        <span className="text-xs text-gray-400 font-medium">Step {sec+1} of {totalSecs}</span>
-        {sec<totalSecs-1
-          ?<button onClick={()=>setSec(s=>s+1)} disabled={!activeCanNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:G}}>Next </button>
-          :<button onClick={submit} disabled={!activeCanNext[totalSecs-1]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:O}}>Submit Report </button>
-        }
+        <div className="flex items-center gap-2">
+          {/* Save & continue later — persists the draft to localStorage and
+              closes. Resumes automatically next time this supervisor opens a
+              new report. */}
+          <button onClick={saveDraftAndClose} className="px-4 py-2.5 rounded-xl border text-sm font-semibold hover:bg-blue-50 flex items-center gap-1.5" style={{borderColor:BLUE,color:BLUE}}>
+            {draftSaved?"Saved ✓":"Save & Finish Later"}
+          </button>
+          {sec<totalSecs-1
+            ?<button onClick={()=>setSec(s=>s+1)} disabled={!activeCanNext[sec]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:G}}>Next </button>
+            :<button onClick={submit} disabled={!activeCanNext[totalSecs-1]} className="px-6 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-40 flex items-center gap-2" style={{background:O}}>Submit Report </button>
+          }
+        </div>
       </div>
     </div>
   </div>);}
