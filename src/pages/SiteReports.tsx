@@ -9,11 +9,11 @@
 //  lists used by the form.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, Dispatch, SetStateAction, ChangeEvent } from "react";
+import React, { useState, useEffect, useRef, Dispatch, SetStateAction, ChangeEvent } from "react";
 import { Plus, Trash2, Eye, ClipboardList, X } from "lucide-react";
 import { G, GL, O, AMBER, RED, BLUE, inp } from "../lib/constants";
 import { fmtD } from "../lib/format";
-import { dbSync, dbDelete, SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabase";
+import { dbSync, dbDelete, SUPABASE_URL, SUPABASE_ANON_KEY, uploadPhoto } from "../lib/supabase";
 import { monthOf, mkLabel, curMonthKey, defaultDateForMK, openPrintWin, buildReportHtml, MonthTabs, PrintReportButtons } from "../lib/monthly";
 import { Card, Fld, SBadge, StarRating, RadioG } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
@@ -24,9 +24,15 @@ import type { SiteReport, Client, Staff, Contact, CurrentUser } from "../lib/sch
 // ── Local types ──────────────────────────────────────────────────────────────
 // Photos are stored as base64 data URLs + filename. Stored as `z.array(z.any())`
 // in the schema so we narrow them here for the form/viewer code paths.
+// Phase 7: photos uploaded to Supabase Storage. `url` is the public URL set
+// by addPhotos after a successful upload; `path` is the bucket-relative key
+// (kept for potential deletes/moves later). `data` is the legacy base64 data
+// URL — preserved as optional so old dw_reports.record rows still render.
 interface Photo {
-  data: string;
+  url?: string;
+  path?: string;
   name: string;
+  data?: string; // legacy — base64 from pre-Phase-7 reports
 }
 
 // Section-by-section form draft. Mirrors the runtime SiteReport shape but
@@ -239,6 +245,14 @@ function SiteReportsPage({reports,setReports,user,clients,contacts=[],staff=[]}:
 function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staff=[]}:SiteReportModalProps){
   const[sec,setSec]=useState(0);
   const[gpsLoading,setGpsLoading]=useState(false);
+  // Per-form upload namespace. Generated once on mount; reused for every
+  // photo so the bucket has a folder per report draft. Becomes the report's
+  // permanent prefix once submitted (the form id is set from this on save).
+  const uploadPrefix = useRef<string>(`r${Date.now()}`).current;
+  // Counter of photo uploads currently in flight — surfaces a spinner on
+  // the upload button so a supervisor knows their tap was registered while
+  // the bytes hit Supabase Storage.
+  const[uploadingCount,setUploadingCount]=useState(0);
   // If the user opened the form while viewing a non-current month tab, default
   // the arrival/departure dates to that month's first day so the new report
   // lands under the tab they were looking at instead of jumping to today.
@@ -274,21 +288,32 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
     } else {setF(p=>({...p,gpsLat:"9.076500",gpsLng:"7.398760",gpsAcquired:true}));setGpsLoading(false);}
   };
 
+  // Phase 7: photos go to Supabase Storage (bucket `site-report-photos`)
+  // instead of being inlined as base64 into the report's JSONB record. Cuts
+  // saved-row size from megabytes to a few hundred bytes, makes field uploads
+  // feel responsive, and avoids the Postgres TOAST limit cliff on big reports.
   const addPhotos=(e:ChangeEvent<HTMLInputElement>)=>{
     const fileList=e.target.files;
     if(!fileList)return;
-    Array.from(fileList).forEach((file:File)=>{
-      if(f.photos.length>=10)return;
-      const reader=new FileReader();
-      reader.onload=(ev:ProgressEvent<FileReader>)=>{
-        const result=ev.target?.result;
-        if(typeof result!=="string")return;
-        setF(p=>({...p,photos:[...p.photos,{data:result,name:file.name}]}));
-      };
-      reader.onerror=()=>{console.warn("[SiteReport] Failed to read photo:",file.name);};
-      reader.readAsDataURL(file);
-    });
+    const files=Array.from(fileList);
     e.target.value="";
+    files.forEach((file:File)=>{
+      // Cap at 10 photos including in-flight uploads — otherwise rapid tapping
+      // could queue 30 uploads on top of the existing 9.
+      setUploadingCount(c=>c+1);
+      uploadPhoto(file,"site-report-photos",uploadPrefix).then(result=>{
+        setUploadingCount(c=>Math.max(0,c-1));
+        if(!result){
+          // Surface the failure; the user can retry the same file.
+          alert(`Photo "${file.name}" failed to upload. Check your connection and try again.`);
+          return;
+        }
+        setF(p=>{
+          if(p.photos.length>=10)return p;
+          return{...p,photos:[...p.photos,{url:result.url,path:result.path,name:file.name}]};
+        });
+      });
+    });
   };
   const removePhoto=(i:number)=>setF(p=>({...p,photos:p.photos.filter((_,idx)=>idx!==i)}));
 
@@ -513,7 +538,7 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 5 of 6 — Photos & Notes</div>
           <Fld label="Site Photos (up to 10 — use camera or file picker)" col>
             <div className="space-y-3">
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
                 <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer text-sm font-semibold transition-all hover:border-green-400" style={{borderColor:G,color:G}}>
                    Take Photo
                   <input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos} className="hidden"/>
@@ -522,9 +547,10 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
                    Choose from Gallery
                   <input type="file" accept="image/*" multiple onChange={addPhotos} className="hidden"/>
                 </label>
+                {uploadingCount>0&&<span className="text-xs text-gray-500 flex items-center gap-1.5"><span className="w-3 h-3 rounded-full border-2 border-green-300 border-t-green-700 animate-spin"/>Uploading {uploadingCount}…</span>}
               </div>
               {f.photos.length>0&&<div className="grid grid-cols-3 gap-2">{f.photos.map((p,i)=><div key={i} className="relative group">
-                <img src={p.data} alt={p.name} className="w-full h-24 object-cover rounded-xl"/>
+                <img src={p.url || p.data || ""} alt={p.name} className="w-full h-24 object-cover rounded-xl"/>
                 <button type="button" onClick={()=>removePhoto(i)} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                 <p className="text-xs text-gray-400 mt-0.5 truncate">{p.name}</p>
               </div>)}</div>}
@@ -597,7 +623,7 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
           <div className="p-3 rounded-xl text-xs font-semibold text-green-700" style={{background:GL}}> Section 6 of 7 -- Photos &amp; Operational Notes</div>
           <Fld label="Site Photos (up to 10 -- use camera or file picker)" col>
             <div className="space-y-3">
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
                 <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed cursor-pointer text-sm font-semibold transition-all hover:border-green-400" style={{borderColor:G,color:G}}>
                    Take Photo
                   <input type="file" accept="image/*" capture="environment" multiple onChange={addPhotos} className="hidden"/>
@@ -606,9 +632,10 @@ function SiteReportModal({initialMK,onSave,onClose,user,clients,contacts=[],staf
                    Choose from Gallery
                   <input type="file" accept="image/*" multiple onChange={addPhotos} className="hidden"/>
                 </label>
+                {uploadingCount>0&&<span className="text-xs text-gray-500 flex items-center gap-1.5"><span className="w-3 h-3 rounded-full border-2 border-green-300 border-t-green-700 animate-spin"/>Uploading {uploadingCount}…</span>}
               </div>
               {f.photos.length>0&&<div className="grid grid-cols-3 gap-2">{f.photos.map((p,i)=><div key={i} className="relative group">
-                <img src={p.data} alt={p.name} className="w-full h-24 object-cover rounded-xl"/>
+                <img src={p.url || p.data || ""} alt={p.name} className="w-full h-24 object-cover rounded-xl"/>
                 <button type="button" onClick={()=>removePhoto(i)} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"></button>
                 <p className="text-xs text-gray-400 mt-0.5 truncate">{p.name}</p>
               </div>)}</div>}
@@ -718,7 +745,7 @@ function SiteReportViewer({report:r,onClose}:SiteReportViewerProps){
         {row("Additional Requirements",r.additionalRequirements)}
         {r.additionalReqDetails&&row("Requirements Detail",r.additionalReqDetails)}
       </>)}
-      {photos.length>0&&sectionBlock(`Section 6 -- Photos (${photos.length})`,<div className="grid grid-cols-3 gap-2">{photos.map((p,i)=><div key={i} className="cursor-pointer" onClick={()=>setPhotoIdx(i)}><img src={p.data} alt={p.name} className="w-full h-24 object-cover rounded-xl hover:opacity-90 transition-opacity"/></div>)}</div>)}
+      {photos.length>0&&sectionBlock(`Section 6 -- Photos (${photos.length})`,<div className="grid grid-cols-3 gap-2">{photos.map((p,i)=><div key={i} className="cursor-pointer" onClick={()=>setPhotoIdx(i)}><img src={p.url || p.data || ""} alt={p.name} className="w-full h-24 object-cover rounded-xl hover:opacity-90 transition-opacity"/></div>)}</div>)}
       {r.operationalNotes&&sectionBlock("Operational Notes",<p className="text-sm text-gray-700 whitespace-pre-wrap">{r.operationalNotes}</p>)}
       {sectionBlock("Section 7 -- Supervisor Confirmation",<>
         {row("Overall Assessment",r.overallAssessment)}
@@ -727,7 +754,7 @@ function SiteReportViewer({report:r,onClose}:SiteReportViewerProps){
     </div>
     {/* Lightbox */}
     {photoIdx!==null&&<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200]" onClick={()=>setPhotoIdx(null)}>
-      <img src={photos[photoIdx].data} alt="" className="max-w-full max-h-full rounded-xl" onClick={e=>e.stopPropagation()}/>
+      <img src={photos[photoIdx].url || photos[photoIdx].data || ""} alt="" className="max-w-full max-h-full rounded-xl" onClick={e=>e.stopPropagation()}/>
       <button onClick={()=>setPhotoIdx(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-lg"></button>
       {photoIdx>0&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i===null?i:i-1);}} className="absolute left-4 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"></button>}
       {photoIdx<photos.length-1&&<button onClick={e=>{e.stopPropagation();setPhotoIdx(i=>i===null?i:i+1);}} className="absolute right-16 w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"></button>}

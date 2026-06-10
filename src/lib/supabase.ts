@@ -174,16 +174,31 @@ export const dbDelete = async (table: string, id: string | number): Promise<void
   }
 };
 
-// ── Storage: photo upload to Supabase Storage (assessment-photos bucket) ────
+// ── Storage: photo upload to Supabase Storage ──────────────────────────────
+export interface UploadedPhoto { url: string; path: string; }
+
 /**
- * Upload a file (typically an assessment photo) to Supabase Storage.
- * Returns the public URL on success, or null on failure (logged).
+ * Upload a file to a Supabase Storage bucket. Returns the public URL and the
+ * bucket-relative path (for delete/move operations later) on success, or null
+ * on failure. The bucket must exist and be public, and an INSERT policy must
+ * exist for the anon role (see migrations).
+ *
+ * Phase 7: this is the generalized helper. The bucket name is a parameter so
+ * Site Reports, Assessments, and any future photo surface can share the same
+ * upload path without duplicating fetch logic.
  */
-export const uploadAssessmentPhoto = async (file: File, assessmentId: string): Promise<string | null> => {
+export const uploadPhoto = async (
+  file: File,
+  bucket: string,
+  prefix: string,
+): Promise<UploadedPhoto | null> => {
   try {
-    const ext = file.name.split(".").pop();
-    const path = `${assessmentId}/${Date.now()}.${ext}`;
-    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/assessment-photos/${path}`, {
+    const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+    // Random suffix prevents same-millisecond collisions from a multi-file
+    // selection where Date.now() ties.
+    const rand = Math.random().toString(36).slice(2, 8);
+    const path = `${prefix}/${Date.now()}-${rand}.${ext}`;
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
       method: "POST",
       headers: {
         "apikey":        SUPABASE_ANON_KEY,
@@ -194,11 +209,23 @@ export const uploadAssessmentPhoto = async (file: File, assessmentId: string): P
       body: file,
     });
     if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
-    return `${SUPABASE_URL}/storage/v1/object/public/assessment-photos/${path}`;
+    return {
+      url:  `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`,
+      path,
+    };
   } catch (e: any) {
-    console.warn("[Storage] photo upload:", e.message);
+    console.warn(`[Storage] ${bucket} upload:`, e.message);
     return null;
   }
+};
+
+/**
+ * @deprecated Use `uploadPhoto(file, "assessment-photos", assessmentId)`.
+ * Wrapper preserved for callers in pages/Assessments.tsx.
+ */
+export const uploadAssessmentPhoto = async (file: File, assessmentId: string): Promise<string | null> => {
+  const r = await uploadPhoto(file, "assessment-photos", assessmentId);
+  return r ? r.url : null;
 };
 
 /**
