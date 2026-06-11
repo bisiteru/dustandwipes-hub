@@ -56,6 +56,36 @@ type PersonForBdays = {
 // Row shape fed into the recharts BarChart.
 interface StatusCount { s: string; count: number; }
 
+/**
+ * Merge app users + field staff into a single birthday-people list, deduped
+ * so a person who exists in BOTH tables (e.g. a supervisor who logs in AND
+ * has a staff payroll record) renders once, not twice. Dedup key is
+ * normalized name + dob — same name with different dob = different people.
+ * Prefers the entry that actually has a dob, then the AppUser row (richer
+ * `initial`).
+ */
+function mergePeopleForBdays(users: AppUser[], staff: Staff[]): PersonForBdays[] {
+  const norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
+  const byKey = new Map<string, PersonForBdays>();
+  for (const p of [...users, ...staff]) {
+    const person: PersonForBdays = {
+      id: String(p.id),
+      name: String(p.name ?? ""),
+      role: String((p as any).role ?? ""),
+      dob: String(p.dob ?? ""),
+      initial: String((p as any).initial ?? ""),
+    };
+    if (!person.name) continue;
+    const key = `${norm(person.name)}|${norm(person.dob)}`;
+    const existing = byKey.get(key);
+    // Keep the richer record: prefer one with a dob, then one with an initial.
+    if (!existing || (!existing.dob && person.dob) || (!existing.initial && person.initial)) {
+      byKey.set(key, person);
+    }
+  }
+  return [...byKey.values()];
+}
+
 const CHART_COLORS = [G, BLUE, O, "#7c3aed", "#ea580c", "#16a34a"];
 
 /**
@@ -179,13 +209,7 @@ function AdminDashboard({
   ).length;
 
   // Birthdays — merge AppUser + Staff into a common shape and filter by month.
-  const allPeople: PersonForBdays[] = [...users, ...staff].map((p) => ({
-    id: String(p.id),
-    name: String(p.name ?? ""),
-    role: String(p.role ?? ""),
-    dob: String(p.dob ?? ""),
-    initial: String(p.initial ?? ""),
-  }));
+  const allPeople: PersonForBdays[] = mergePeopleForBdays(users, staff);
 
   const todayM = TODAY.getMonth() + 1;
   const todayD = TODAY.getDate();
@@ -615,10 +639,7 @@ function SupervisorDashboard({ requests, jobs, tasks, staff, users, user, onNav 
 
   // Re-use the AdminDashboard's birthday slice — supervisors still benefit from
   // the "Bola's birthday today" reminder; this is identity-agnostic.
-  const allPeople: PersonForBdays[] = [...users, ...staff].map((p) => ({
-    id: String(p.id), name: String(p.name ?? ""), role: String(p.role ?? ""),
-    dob: String(p.dob ?? ""), initial: String(p.initial ?? ""),
-  }));
+  const allPeople: PersonForBdays[] = mergePeopleForBdays(users, staff);
   const todayM = TODAY.getMonth() + 1;
   const todayD = TODAY.getDate();
   const todayBdays = allPeople.filter(u => {
