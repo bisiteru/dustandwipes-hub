@@ -80,7 +80,13 @@ export const sameName = (a: unknown, b: unknown): boolean => {
   const na = normalizeName(a);
   const nb = normalizeName(b);
   if (!na || !nb) return false;
-  return na === nb || na.includes(nb) || nb.includes(na);
+  if (na === nb) return true;
+  // Word-boundary prefix match: one name is the leading whole-word(s) of the
+  // other. "bola" ↔ "bola adebayo" matches; "bola" ↔ "bolanle akin" does NOT
+  // (the trailing space anchor prevents matching a partial first token). This
+  // kills the false-positive class where a bare first name leaked onto the
+  // wrong user via the old bidirectional substring `.includes()`.
+  return (na + " ").startsWith(nb + " ") || (nb + " ").startsWith(na + " ");
 };
 
 /**
