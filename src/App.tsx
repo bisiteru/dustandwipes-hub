@@ -34,6 +34,7 @@ import type {
   Task, TaskTemplate, CurrentUser,
 } from "./lib/schemas";
 import { computeRecurringTasks } from "./lib/task-scheduler";
+import { sameName } from "./lib/format";
 
 // ── UI primitives + composite components (Phase 3) ───────────────────────────
 import { Toaster } from "./components/ui/Toaster";
@@ -393,9 +394,13 @@ export default function App(){
 
   if(!user) return <LoginScreen onLogin={handleLogin} users={users} clients={clients}/>;
 
+  // Open tasks assigned to the logged-in user — drives the "My Tasks" nav
+  // badge so an assignee gets a visible signal that work is waiting, even
+  // before they open the page. sameName tolerates "Bola" ↔ "Bola Adebayo".
+  const myOpenTaskCount=tasks.filter(t=>sameName(t.assignee,user.name)&&t.status!=="Done"&&t.status!=="Cancelled").length;
   const NAV=[
     {id:"dashboard",   label:"Dashboard",       icon:Home,          roles:["Admin","Supervisor","Finance","Technician"]},
-    {id:"tasks",       label:"My Tasks",         icon:ListChecks,    roles:["Admin","Supervisor","Finance","Technician"]},
+    {id:"tasks",       label:"My Tasks",         icon:ListChecks,    roles:["Admin","Supervisor","Finance","Technician"], badge:myOpenTaskCount},
     {id:"clients",     label:"Clients",          icon:Users,         roles:["Admin","Supervisor"]},
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
@@ -432,15 +437,21 @@ export default function App(){
           {sidebar&&<div className="overflow-hidden"><div className="text-white text-sm font-black leading-tight whitespace-nowrap">{APP_NAME}</div><div className="text-xs whitespace-nowrap" style={{color:"#6EAD7E"}}>{APP_SUB}</div></div>}
         </div>
         <nav className="flex-1 py-2 overflow-y-auto overflow-x-hidden">
-          {NAV.map(item=>{const Icon=item.icon;const active=page===item.id;return(
+          {NAV.map(item=>{const Icon=item.icon;const active=page===item.id;const badge=(item as any).badge||0;return(
             <button key={item.id} title={item.label} onClick={()=>{setPage(item.id);
               // Auto-close drawer after navigation on mobile
               if(window.matchMedia("(max-width: 767px)").matches)setSidebar(false);
             }}
-              className={`w-full flex items-center gap-3 px-4 min-h-[44px] py-2.5 transition-all ${sidebar?"":"justify-center"} ${active?"":"hover:bg-white/5 hover:!text-white"}`}
+              className={`w-full flex items-center gap-3 px-4 min-h-[44px] py-2.5 transition-all relative ${sidebar?"":"justify-center"} ${active?"":"hover:bg-white/5 hover:!text-white"}`}
               style={active?{background:"rgba(255,255,255,0.10)",color:"#fff",borderRight:`3px solid ${O}`}:{color:"#6EAD7E"}}>
-              <Icon size={15} className="flex-shrink-0"/>
-              {sidebar&&<span className="text-sm font-medium whitespace-nowrap">{item.label}</span>}
+              <span className="relative flex-shrink-0">
+                <Icon size={15}/>
+                {/* Collapsed rail: dot on the icon. */}
+                {!sidebar&&badge>0&&<span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full text-white flex items-center justify-center font-bold" style={{background:RED,fontSize:"8px"}}>{badge>9?"9+":badge}</span>}
+              </span>
+              {sidebar&&<span className="text-sm font-medium whitespace-nowrap flex-1 text-left">{item.label}</span>}
+              {/* Expanded: count pill at row end. */}
+              {sidebar&&badge>0&&<span className="px-1.5 py-0.5 rounded-full text-white font-bold flex-shrink-0" style={{background:RED,fontSize:"10px"}}>{badge>99?"99+":badge}</span>}
             </button>
           );})}
         </nav>
