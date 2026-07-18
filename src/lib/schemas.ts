@@ -348,6 +348,40 @@ export const TaskTemplateSchema = z.object({
   createdAt: strOpt,
 }).passthrough();
 
+// ── 18. Leads (Phase A — sales pipeline) ────────────────────────────────────
+// The CRM front half. A Lead is a worked sales opportunity: it enters the
+// pipeline (usually spawned from an inbound Service Request), moves through
+// stages, and on Won hands off to the Jobs module for delivery. Distinct from
+// Request_ (raw inbound intake) and Job (client-facing appointment).
+//
+// stageHistory + value are recorded from day one so Phase F AI scoring has a
+// training signal (which lead shapes convert, how long each stage takes).
+export const LeadSchema = z.object({
+  id: idField,
+  contactName: str,
+  contactPhone: strOpt,
+  contactEmail: strOpt,
+  source: strOpt,           // WhatsApp / Phone / Referral / Website / Walk-in / Email
+  svc: strOpt,              // requested service (Cleaning / Pest Control / Both)
+  loc: strOpt,              // site / address
+  stage: strOpt,            // New / Contacted / Quoted / Won / Lost  (default New)
+  value: numOpt,            // estimated deal value (₦)
+  ownerName: strOpt,        // supervisor who owns follow-up
+  nextAction: strOpt,       // free-text next step
+  nextActionDate: strOpt,   // YYYY-MM-DD — drives the follow-up nudge
+  notes: strOpt,
+  clientId: strOpt,         // link to an existing client, if converted/known
+  requestId: strOpt,        // origin Service Request id (provenance, dedup)
+  jobId: strOpt,            // set when Won → a Job is created
+  lostReason: strOpt,       // captured on Lost — feeds future win/loss analysis
+  // Append-only stage transitions: [{ stage, at, by }]. z.array(z.any()) to
+  // stay permissive; the UI writes a known shape.
+  stageHistory: z.array(z.any()).catch([]).optional(),
+  createdAt: strOpt,
+  updatedAt: strOpt,
+  wonAt: strOpt,
+}).passthrough();
+
 // ── Schema registry (table-name → schema) ────────────────────────────────────
 // Used by dbLoad/dbSync to look up the right validator. Keys must match the
 // `table` arguments passed to those functions (i.e. the part after the `dw_`
@@ -370,6 +404,7 @@ export const SCHEMAS = {
   contacts: ContactSchema,
   tasks: TaskSchema,
   tasktemplates: TaskTemplateSchema,
+  leads: LeadSchema,
 } as const;
 
 export type TableName = keyof typeof SCHEMAS;
@@ -394,6 +429,7 @@ export type Assessment   = z.infer<typeof AssessmentSchema>;
 export type Contact      = z.infer<typeof ContactSchema>;
 export type Task         = z.infer<typeof TaskSchema>;
 export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
+export type Lead         = z.infer<typeof LeadSchema>;
 
 /**
  * Role union. Phase 6 added Finance as a first-class role distinct from
