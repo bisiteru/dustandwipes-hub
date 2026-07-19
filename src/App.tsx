@@ -14,6 +14,7 @@ import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
   Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks, Filter,
+  MessageCircle,
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
@@ -65,6 +66,7 @@ const StaffPage        = lazy(() => import("./pages/Staff").then(m => ({ default
 const SettingsPage     = lazy(() => import("./pages/Settings").then(m => ({ default: m.SettingsPage })));
 const TasksPage        = lazy(() => import("./pages/Tasks").then(m => ({ default: m.TasksPage })));
 const PipelinePage     = lazy(() => import("./pages/Pipeline").then(m => ({ default: m.PipelinePage })));
+const InboxPage        = lazy(() => import("./pages/Inbox").then(m => ({ default: m.InboxPage })));
 
 // Lightweight fallback for in-flight chunk loads — matches the boot skeleton
 // so the visual stays calm when the user crosses a page boundary.
@@ -408,6 +410,7 @@ export default function App(){
     {id:"clients",     label:"Clients",          icon:Users,         roles:["Admin","Supervisor"]},
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
     {id:"pipeline",    label:"Sales Pipeline",   icon:Filter,        roles:["Admin","Supervisor","Finance"]},
+    {id:"inbox",       label:"Inbox",            icon:MessageCircle, roles:["Admin","Supervisor","Finance"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
     {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
     {id:"schedule",    label:"Pest Schedule",    icon:Bug,           roles:["Admin","Supervisor"]},
@@ -529,6 +532,7 @@ export default function App(){
           {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
           {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user} requests={requests} jobs={jobs} reports={siteReports} setJobs={setJobs}/></ErrorBoundary>}
+          {page==="inbox"       &&<ErrorBoundary module="Inbox"><InboxPage user={user}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients} leads={leads} setLeads={setLeads}/></ErrorBoundary>}
           {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} users={users} user={user}/></ErrorBoundary>}
           {page==="schedule"    &&<ErrorBoundary module="Pest Schedule"><SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/></ErrorBoundary>}
