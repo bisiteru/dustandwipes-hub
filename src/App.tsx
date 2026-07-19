@@ -13,7 +13,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspens
 import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
-  Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks,
+  Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks, Filter,
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
@@ -31,7 +31,7 @@ import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
 import type {
   Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
   Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
-  Task, TaskTemplate, CurrentUser,
+  Task, TaskTemplate, Lead, CurrentUser,
 } from "./lib/schemas";
 import { computeRecurringTasks } from "./lib/task-scheduler";
 import { sameName } from "./lib/format";
@@ -64,6 +64,7 @@ const AnalyticsPage    = lazy(() => import("./pages/Analytics").then(m => ({ def
 const StaffPage        = lazy(() => import("./pages/Staff").then(m => ({ default: m.StaffPage })));
 const SettingsPage     = lazy(() => import("./pages/Settings").then(m => ({ default: m.SettingsPage })));
 const TasksPage        = lazy(() => import("./pages/Tasks").then(m => ({ default: m.TasksPage })));
+const PipelinePage     = lazy(() => import("./pages/Pipeline").then(m => ({ default: m.PipelinePage })));
 
 // Lightweight fallback for in-flight chunk loads — matches the boot skeleton
 // so the visual stays calm when the user crosses a page boundary.
@@ -104,6 +105,7 @@ export default function App(){
   const[assessments, setAssessments] =useState<Assessment[]>([]);
   const[tasks,       setTasks]       =useState<Task[]>([]);
   const[taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([]);
+  const[leads,       setLeads]       =useState<Lead[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
@@ -146,6 +148,7 @@ export default function App(){
           dbLoad("assessments", setAssessments),
           dbLoad("tasks",       setTasks),
           dbLoad("tasktemplates", setTaskTemplates),
+          dbLoad("leads",       setLeads),
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
@@ -238,6 +241,7 @@ export default function App(){
   useEffect(() => { debouncedSync("assessments", assessments); }, [assessments, debouncedSync]);
   useEffect(() => { debouncedSync("tasks",        tasks);       }, [tasks,       debouncedSync]);
   useEffect(() => { debouncedSync("tasktemplates", taskTemplates); }, [taskTemplates, debouncedSync]);
+  useEffect(() => { debouncedSync("leads",        leads);       }, [leads,       debouncedSync]);
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
 
@@ -282,7 +286,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
@@ -403,6 +407,7 @@ export default function App(){
     {id:"tasks",       label:"My Tasks",         icon:ListChecks,    roles:["Admin","Supervisor","Finance","Technician"], badge:myOpenTaskCount},
     {id:"clients",     label:"Clients",          icon:Users,         roles:["Admin","Supervisor"]},
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
+    {id:"pipeline",    label:"Sales Pipeline",   icon:Filter,        roles:["Admin","Supervisor","Finance"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
     {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
     {id:"schedule",    label:"Pest Schedule",    icon:Bug,           roles:["Admin","Supervisor"]},
@@ -523,6 +528,7 @@ export default function App(){
           {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} setRequests={setRequests} inventory={inventory} users={users} staff={staff} tasks={tasks} imprests={imprests} requisitions={requisitions} absences={absences} user={user} onNav={setPage}/></ErrorBoundary>}
           {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
+          {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients}/></ErrorBoundary>}
           {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} users={users} user={user}/></ErrorBoundary>}
           {page==="schedule"    &&<ErrorBoundary module="Pest Schedule"><SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/></ErrorBoundary>}
