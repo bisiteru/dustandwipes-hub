@@ -382,6 +382,44 @@ export const LeadSchema = z.object({
   wonAt: strOpt,
 }).passthrough();
 
+// ── 19. Workflows (Phase C — automation engine) ─────────────────────────────
+// A Workflow is a trigger→action rule: "when X happens, do Y". The engine
+// (lib/workflow-engine.ts) evaluates active workflows against app data on
+// load — the same idempotent-materializer pattern as the recurring-task
+// scheduler. Low volume, so the jsonb dw_* convention is fine here.
+export const WorkflowSchema = z.object({
+  id: idField,
+  name: str,
+  active: bool.optional(),
+  // lead_created | lead_stage_changed | job_completed | contract_expiring | schedule_due
+  trigger: strOpt,
+  // Trigger tuning: { stage } for lead_stage_changed; { daysBefore } for
+  // contract_expiring / schedule_due. z.record keeps it permissive.
+  triggerConfig: z.record(z.any()).catch({}).optional(),
+  // create_task | send_whatsapp
+  action: strOpt,
+  // Action tuning: { title, assignee, assigneeRole } for create_task;
+  // { message } for send_whatsapp. Templates may use {placeholders}.
+  actionConfig: z.record(z.any()).catch({}).optional(),
+  createdBy: strOpt,
+  createdAt: strOpt,
+}).passthrough();
+
+// ── 20. Workflow runs (Phase C — audit + dedup ledger) ──────────────────────
+// One row per firing. dedupKey is the idempotency anchor: the engine never
+// fires the same workflow twice for the same subject/context.
+export const WorkflowRunSchema = z.object({
+  id: idField,
+  workflowId: strOpt,
+  workflowName: strOpt,
+  dedupKey: str,
+  firedAt: strOpt,
+  subjectType: strOpt,     // lead | job | client | schedule
+  subjectId: strOpt,
+  subjectLabel: strOpt,    // human-readable ("Acme Office")
+  result: strOpt,          // task_created | whatsapp_sent | skipped_no_phone | error
+}).passthrough();
+
 // ── Schema registry (table-name → schema) ────────────────────────────────────
 // Used by dbLoad/dbSync to look up the right validator. Keys must match the
 // `table` arguments passed to those functions (i.e. the part after the `dw_`
@@ -405,6 +443,8 @@ export const SCHEMAS = {
   tasks: TaskSchema,
   tasktemplates: TaskTemplateSchema,
   leads: LeadSchema,
+  workflows: WorkflowSchema,
+  workflowruns: WorkflowRunSchema,
 } as const;
 
 export type TableName = keyof typeof SCHEMAS;
@@ -430,6 +470,8 @@ export type Contact      = z.infer<typeof ContactSchema>;
 export type Task         = z.infer<typeof TaskSchema>;
 export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
 export type Lead         = z.infer<typeof LeadSchema>;
+export type Workflow     = z.infer<typeof WorkflowSchema>;
+export type WorkflowRun  = z.infer<typeof WorkflowRunSchema>;
 
 /**
  * Role union. Phase 6 added Finance as a first-class role distinct from
