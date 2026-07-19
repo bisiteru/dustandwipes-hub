@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useMemo, useState, type Dispatch, type SetStateAction, type DragEvent } from "react";
-import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Phone, MapPin, User as UserIcon } from "lucide-react";
+import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Phone, MapPin, User as UserIcon, ArrowDownToLine } from "lucide-react";
 import { G, O, RED, BLUE, AMBER, inp } from "../lib/constants";
 import { fmt, fmtD } from "../lib/format";
 import { dbSync, dbDelete } from "../lib/supabase";
@@ -16,7 +16,7 @@ import { Card, Fld } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
 import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
-import type { Lead, AppUser, Client, CurrentUser } from "../lib/schemas";
+import type { Lead, AppUser, Client, CurrentUser, Request_ } from "../lib/schemas";
 
 // ── Stage model ──────────────────────────────────────────────────────────────
 // The five sales stages. Won/Lost are terminal; Won triggers the Jobs handoff
@@ -45,9 +45,12 @@ export interface PipelinePageProps {
   users: AppUser[];
   clients: Client[];
   user: CurrentUser;
+  /** Phase A 3/5: pending Service Requests logged before the pipeline
+   *  existed can be pulled onto the board in bulk. Dedup by requestId. */
+  requests?: Request_[];
 }
 
-export function PipelinePage({ leads, setLeads, users, clients, user }: PipelinePageProps) {
+export function PipelinePage({ leads, setLeads, users, clients, user, requests = [] }: PipelinePageProps) {
   const toast = useToast();
   const [confirm, confirmEl] = useConfirm();
   const [modal, setModal] = useState<LeadDraft | null>(null);
@@ -126,6 +129,41 @@ export function PipelinePage({ leads, setLeads, users, clients, user }: Pipeline
     toast.success("Lead deleted");
   });
 
+  // Pending requests that never got a lead (logged before the pipeline
+  // shipped, or via a path that bypassed the auto-spawn). Dedup by requestId.
+  const importable = useMemo<Request_[]>(() => {
+    const linked = new Set(leads.map(l => String(l.requestId || "")).filter(Boolean));
+    return requests.filter(r => (r.status || "Pending") === "Pending" && !linked.has(String(r.id)));
+  }, [requests, leads]);
+
+  const importPending = (): void => {
+    if (importable.length === 0) return;
+    confirm(`Add ${importable.length} pending request${importable.length > 1 ? "s" : ""} to the pipeline as New leads?`, () => {
+      const now = new Date().toISOString();
+      const ts = Date.now();
+      const newLeads: Lead[] = importable.map((r, i) => ({
+        id: `lead${ts}_${i}`,
+        contactName: r.clientName || "Unknown",
+        contactPhone: r.clientPhone || "",
+        contactEmail: "",
+        source: r.src || "Phone",
+        svc: r.svc || "",
+        loc: r.loc || "",
+        stage: "New",
+        value: 0,
+        ownerName: (r as any).assignedTo || "",
+        nextAction: "Contact and qualify",
+        nextActionDate: r.prefDate || "",
+        notes: r.notes || "",
+        requestId: String(r.id),
+        stageHistory: [{ stage: "New", at: now, by: `bulk import (${user.name})` }],
+        createdAt: now,
+      } as Lead));
+      persist([...newLeads, ...leads]);
+      toast.success(`${newLeads.length} lead${newLeads.length > 1 ? "s" : ""} imported from Service Requests`);
+    });
+  };
+
   // ── Drag & drop (native, no dep) ───────────────────────────────────────────
   const onDrop = (e: DragEvent, s: Stage): void => {
     e.preventDefault();
@@ -149,10 +187,19 @@ export function PipelinePage({ leads, setLeads, users, clients, user }: Pipeline
             {totalOpen} open lead{totalOpen === 1 ? "" : "s"} · {fmt(pipelineValue)} in pipeline
           </p>
         </div>
-        <button onClick={() => setModal({ _isNew: true, stage: "New" })}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{ background: G }}>
-          <Plus size={14} /> New Lead
-        </button>
+        <div className="flex items-center gap-2">
+          {importable.length > 0 && (
+            <button onClick={importPending}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border"
+              style={{ borderColor: BLUE, color: BLUE }}>
+              <ArrowDownToLine size={14} /> Import {importable.length} pending request{importable.length > 1 ? "s" : ""}
+            </button>
+          )}
+          <button onClick={() => setModal({ _isNew: true, stage: "New" })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{ background: G }}>
+            <Plus size={14} /> New Lead
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

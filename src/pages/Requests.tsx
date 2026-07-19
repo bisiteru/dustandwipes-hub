@@ -22,9 +22,14 @@ interface RequestsPageProps {
   setRequests: (r: any) => void;
   setJobs: (j: any) => void;
   clients: Row[];
+  /** Phase A: every new inbound request auto-spawns a pipeline Lead so no
+   *  inquiry sits outside the sales funnel. Optional so the page still
+   *  renders if the pipeline module is ever disabled. */
+  leads?: Row[];
+  setLeads?: (updater: (prev: Row[]) => Row[]) => void;
 }
 
-export function RequestsPage({ requests, setRequests, setJobs, clients }: RequestsPageProps) {
+export function RequestsPage({ requests, setRequests, setJobs, clients, leads = [], setLeads }: RequestsPageProps) {
   const [modal, setModal] = useState<Row | null>(null);
   const [confirm, confirmEl] = useConfirm();
   const toast = useToast();
@@ -39,12 +44,44 @@ export function RequestsPage({ requests, setRequests, setJobs, clients }: Reques
   const monthRequests = requests.filter(r => monthOf(r, getMK) === selMK);
   const blank: Row = { clientName: "", clientPhone: "", svc: "", loc: "", prefDate: "", src: "Phone", status: "Pending", notes: "" };
   const save = (data: Row) => {
+    const isNew = !data.id;
+    const reqId = data.id || "sr" + Date.now();
     const nr = data.id
       ? requests.map(r => r.id === data.id ? data : r)
-      : [...requests, { ...data, id: "sr" + Date.now(), created: TODAY.toISOString().split("T")[0] }];
+      : [...requests, { ...data, id: reqId, created: TODAY.toISOString().split("T")[0] }];
     setRequests(nr);
     dbSync("requests", nr);
-    toast.success(data.id ? "Request updated" : "Request logged");
+    // Phase A: a brand-new inbound request enters the sales pipeline as a
+    // Lead automatically — capture and funnel are one motion, nothing waits
+    // outside the board. Dedup by requestId provenance so an edit-resave
+    // can never double-spawn.
+    if (isNew && setLeads && !leads.some(l => l.requestId === reqId)) {
+      const now = new Date().toISOString();
+      const lead: Row = {
+        id: "lead" + Date.now(),
+        contactName: data.clientName || "Unknown",
+        contactPhone: data.clientPhone || "",
+        contactEmail: "",
+        source: data.src || "Phone",
+        svc: data.svc || "",
+        loc: data.loc || "",
+        stage: "New",
+        value: 0,
+        ownerName: (data as any).assignedTo || "",
+        nextAction: "Contact and qualify",
+        nextActionDate: data.prefDate || "",
+        notes: data.notes || "",
+        requestId: reqId,
+        stageHistory: [{ stage: "New", at: now, by: "auto (request intake)" }],
+        createdAt: now,
+      };
+      setLeads(prev => {
+        const next = [lead, ...prev];
+        dbSync("leads", next);
+        return next;
+      });
+    }
+    toast.success(data.id ? "Request updated" : isNew && setLeads ? "Request logged — added to Sales Pipeline" : "Request logged");
     setModal(null);
   };
   const convert = (req: Row) => {
