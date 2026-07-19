@@ -16,7 +16,8 @@ import { Card, Fld } from "../components/ui/primitives";
 import { ModalWrap } from "../components/ui/ModalWrap";
 import { useToast } from "../components/ui/Toaster";
 import { useConfirm } from "../components/ui/useConfirm";
-import type { Lead, AppUser, Client, CurrentUser, Request_ } from "../lib/schemas";
+import type { Lead, AppUser, Client, CurrentUser, Request_, Job, SiteReport } from "../lib/schemas";
+import { Contact360 } from "../components/Contact360";
 
 // ── Stage model ──────────────────────────────────────────────────────────────
 // The five sales stages. Won/Lost are terminal; Won triggers the Jobs handoff
@@ -48,15 +49,20 @@ export interface PipelinePageProps {
   /** Phase A 3/5: pending Service Requests logged before the pipeline
    *  existed can be pulled onto the board in bulk. Dedup by requestId. */
   requests?: Request_[];
+  /** Phase A 4/5: feed the Contact-360 timeline opened from a lead card. */
+  jobs?: Job[];
+  reports?: SiteReport[];
 }
 
-export function PipelinePage({ leads, setLeads, users, clients, user, requests = [] }: PipelinePageProps) {
+export function PipelinePage({ leads, setLeads, users, clients, user, requests = [], jobs = [], reports = [] }: PipelinePageProps) {
   const toast = useToast();
   const [confirm, confirmEl] = useConfirm();
   const [modal, setModal] = useState<LeadDraft | null>(null);
   const [filterOwner, setFilterOwner] = useState<string>("All");
   const [filterSource, setFilterSource] = useState<string>("All");
   const [dragId, setDragId] = useState<string | null>(null);
+  // Contact whose 360° timeline is open; null = closed.
+  const [contact360, setContact360] = useState<string | null>(null);
 
   const ownerPool = useMemo<string[]>(
     () => [...new Set(users.filter(u => u.role === "Supervisor" || u.role === "Admin").map(u => String(u.name || "")).filter(Boolean))].sort(),
@@ -251,7 +257,7 @@ export function PipelinePage({ leads, setLeads, users, clients, user, requests =
                         onDragStart={e => { e.dataTransfer.setData("text/plain", String(l.id)); setDragId(String(l.id)); }}
                         className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-gray-200 transition-colors">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-bold text-gray-800 leading-tight">{l.contactName}</p>
+                          <button onClick={() => setContact360(String(l.contactName || ""))} className="text-sm font-bold text-gray-800 leading-tight hover:underline text-left" title="Open Contact 360°">{l.contactName}</button>
                           {n(l.value) > 0 && <span className="text-xs font-bold flex-shrink-0" style={{ color: G }}>{fmt(n(l.value))}</span>}
                         </div>
                         {l.svc && <p className="text-xs text-gray-500 mt-0.5">{l.svc}</p>}
@@ -317,6 +323,18 @@ export function PipelinePage({ leads, setLeads, users, clients, user, requests =
             <button onClick={() => saveLead(modal)} disabled={!modal.contactName} className="px-6 py-2 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{ background: G }}>{modal.id ? "Save Changes" : "Add Lead"}</button>
           </div>
         </ModalWrap>
+      )}
+
+      {/* Contact 360° — full relationship timeline for the clicked contact */}
+      {contact360 && (
+        <Contact360
+          contactName={contact360}
+          onClose={() => setContact360(null)}
+          leads={leads}
+          requests={requests}
+          jobs={jobs}
+          reports={reports}
+        />
       )}
     </div>
   );

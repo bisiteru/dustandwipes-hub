@@ -528,7 +528,7 @@ export default function App(){
           {page==="dashboard"   &&<ErrorBoundary module="Dashboard"><Dashboard clients={clients} jobs={jobs} requests={requests} setRequests={setRequests} inventory={inventory} users={users} staff={staff} tasks={tasks} imprests={imprests} requisitions={requisitions} absences={absences} user={user} onNav={setPage}/></ErrorBoundary>}
           {page==="clients"     &&<ErrorBoundary module="Clients"><ClientsPage clients={clients} setClients={setClients} userRole={user.role} staff={staff} contacts={contacts}/></ErrorBoundary>}
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
-          {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user} requests={requests}/></ErrorBoundary>}
+          {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user} requests={requests} jobs={jobs} reports={siteReports}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients} leads={leads} setLeads={setLeads}/></ErrorBoundary>}
           {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} users={users} user={user}/></ErrorBoundary>}
           {page==="schedule"    &&<ErrorBoundary module="Pest Schedule"><SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/></ErrorBoundary>}
