@@ -52,9 +52,11 @@ export interface PipelinePageProps {
   /** Phase A 4/5: feed the Contact-360 timeline opened from a lead card. */
   jobs?: Job[];
   reports?: SiteReport[];
+  /** Phase A 5/5: Won → hand off to the Jobs module. */
+  setJobs?: Dispatch<SetStateAction<Job[]>>;
 }
 
-export function PipelinePage({ leads, setLeads, users, clients, user, requests = [], jobs = [], reports = [] }: PipelinePageProps) {
+export function PipelinePage({ leads, setLeads, users, clients, user, requests = [], jobs = [], reports = [], setJobs }: PipelinePageProps) {
   const toast = useToast();
   const [confirm, confirmEl] = useConfirm();
   const [modal, setModal] = useState<LeadDraft | null>(null);
@@ -86,22 +88,64 @@ export function PipelinePage({ leads, setLeads, users, clients, user, requests =
     dbSync("leads", next, () => toast.error("Lead change failed to sync — check your connection"));
   };
 
-  const moveStage = (id: string, dir: -1 | 1): void => {
+  // Shared transition entry point for every stage-change surface (arrow
+  // buttons, drag-drop, modal select). Terminal stages carry side effects:
+  //   Lost → prompt for a reason (win/loss analysis; skippable)
+  //   Won  → hand off to the Jobs module: create a Job seeded from the lead
+  //          and link it back via jobId (dedup — a lead only ever spawns one)
+  const transition = (id: string, newStage: Stage): void => {
+    const target = leads.find(l => String(l.id) === id);
+    if (!target || stageOf(target) === newStage) return;
+
+    let lostReason = "";
+    if (newStage === "Lost") {
+      lostReason = window.prompt("Why was this lead lost? (optional — feeds win/loss analysis)") || "";
+    }
+
+    let spawnedJob: Job | null = null;
+    if (newStage === "Won" && setJobs && !target.jobId) {
+      spawnedJob = {
+        id: "j" + Date.now(),
+        createdAt: new Date().toISOString(),
+        clientName: target.contactName, clientPhone: target.contactPhone || "",
+        loc: target.loc || "", svc: target.svc || "Cleaning",
+        date: target.nextActionDate || "",
+        sup: target.ownerName || "", techs: "", status: "New",
+        notes: target.notes ? `From pipeline: ${target.notes}` : "Won from Sales Pipeline",
+        sourceRequestId: target.requestId || "", checkIn: null, checkOut: null,
+      } as Job;
+    }
+
     const next = leads.map(l => {
       if (String(l.id) !== id) return l;
-      const idx = STAGES.indexOf(stageOf(l));
-      const ni = Math.max(0, Math.min(STAGES.length - 1, idx + dir));
-      const newStage = STAGES[ni];
-      if (newStage === stageOf(l)) return l;
-      return stampStage(l, newStage);
+      const stamped = stampStage(l, newStage);
+      return {
+        ...stamped,
+        ...(lostReason ? { lostReason } : {}),
+        ...(spawnedJob ? { jobId: String(spawnedJob.id) } : {}),
+      } as Lead;
     });
     persist(next);
+
+    if (spawnedJob && setJobs) {
+      setJobs(prev => {
+        const updated = [...prev, spawnedJob as Job];
+        dbSync("jobs", updated, () => toast.error("Job creation failed to sync — check your connection"));
+        return updated;
+      });
+      toast.success(`Won 🎉 — job created${target.ownerName ? ` and assigned to ${target.ownerName}` : ""}`);
+    }
   };
 
-  const setStageDirect = (id: string, newStage: Stage): void => {
-    const next = leads.map(l => (String(l.id) === id && stageOf(l) !== newStage ? stampStage(l, newStage) : l));
-    persist(next);
+  const moveStage = (id: string, dir: -1 | 1): void => {
+    const l = leads.find(x => String(x.id) === id);
+    if (!l) return;
+    const idx = STAGES.indexOf(stageOf(l));
+    const ni = Math.max(0, Math.min(STAGES.length - 1, idx + dir));
+    transition(id, STAGES[ni]);
   };
+
+  const setStageDirect = (id: string, newStage: Stage): void => transition(id, newStage);
 
   // Append a stage transition to history + stamp derived fields.
   const stampStage = (l: Lead, newStage: Stage): Lead => {
