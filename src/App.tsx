@@ -14,7 +14,7 @@ import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
   Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks, Filter,
-  MessageCircle,
+  MessageCircle, Zap,
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
@@ -32,9 +32,12 @@ import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
 import type {
   Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
   Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
-  Task, TaskTemplate, Lead, CurrentUser,
+  Task, TaskTemplate, Lead, Workflow, WorkflowRun, CurrentUser,
 } from "./lib/schemas";
 import { computeRecurringTasks } from "./lib/task-scheduler";
+import { computeWorkflowFirings, fillTemplate } from "./lib/workflow-engine";
+import { upsertConversation, sendMessage } from "./lib/messaging";
+import { mondayOf } from "./pages/Tasks";
 import { sameName } from "./lib/format";
 
 // ── UI primitives + composite components (Phase 3) ───────────────────────────
@@ -67,6 +70,7 @@ const SettingsPage     = lazy(() => import("./pages/Settings").then(m => ({ defa
 const TasksPage        = lazy(() => import("./pages/Tasks").then(m => ({ default: m.TasksPage })));
 const PipelinePage     = lazy(() => import("./pages/Pipeline").then(m => ({ default: m.PipelinePage })));
 const InboxPage        = lazy(() => import("./pages/Inbox").then(m => ({ default: m.InboxPage })));
+const AutomationsPage  = lazy(() => import("./pages/Automations").then(m => ({ default: m.AutomationsPage })));
 
 // Lightweight fallback for in-flight chunk loads — matches the boot skeleton
 // so the visual stays calm when the user crosses a page boundary.
@@ -108,6 +112,8 @@ export default function App(){
   const[tasks,       setTasks]       =useState<Task[]>([]);
   const[taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>([]);
   const[leads,       setLeads]       =useState<Lead[]>([]);
+  const[workflows,   setWorkflows]   =useState<Workflow[]>([]);
+  const[workflowRuns,setWorkflowRuns]=useState<WorkflowRun[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
@@ -151,6 +157,8 @@ export default function App(){
           dbLoad("tasks",       setTasks),
           dbLoad("tasktemplates", setTaskTemplates),
           dbLoad("leads",       setLeads),
+          dbLoad("workflows",   setWorkflows),
+          dbLoad("workflowruns",setWorkflowRuns),
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
@@ -244,6 +252,9 @@ export default function App(){
   useEffect(() => { debouncedSync("tasks",        tasks);       }, [tasks,       debouncedSync]);
   useEffect(() => { debouncedSync("tasktemplates", taskTemplates); }, [taskTemplates, debouncedSync]);
   useEffect(() => { debouncedSync("leads",        leads);       }, [leads,       debouncedSync]);
+  useEffect(() => { debouncedSync("workflows",    workflows);   }, [workflows,   debouncedSync]);
+  // workflowruns intentionally NOT debounced-synced here — the executor effect
+  // writes the ledger explicitly per firing batch to keep dedup authoritative.
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
   useEffect(() => { debouncedSync("users",        users);       }, [users,       debouncedSync]);
 
@@ -267,6 +278,65 @@ export default function App(){
     });
   }, [taskTemplates, tasks]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // -- Workflow automation executor (Phase C) -----------------------------------
+  // Pure evaluation lives in lib/workflow-engine.ts; this effect executes the
+  // firings: create_task appends to tasks, send_whatsapp goes through the
+  // messaging layer, and every firing lands in the workflowruns ledger which
+  // doubles as the idempotency store. The ledger is read through a ref so the
+  // effect doesn't depend on (and re-loop off) its own writes — the dedup keys
+  // make re-evaluation harmless anyway.
+  const workflowRunsRef = useRef<WorkflowRun[]>([]);
+  workflowRunsRef.current = workflowRuns;
+  useEffect(() => {
+    if (!dbLoaded.current || workflows.length === 0) return;
+    const firings = computeWorkflowFirings({
+      workflows, runs: workflowRunsRef.current, leads, jobs, clients, schedules,
+    });
+    if (firings.length === 0) return;
+    (async () => {
+      const done: WorkflowRun[] = [];
+      const newTasks: Task[] = [];
+      const now = new Date();
+      const todayISO = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+      for (const f of firings) {
+        try {
+          if (f.action === "create_task") {
+            const cfg = f.actionConfig as { title?: string; assignee?: string; assigneeRole?: string; priority?: string };
+            newTasks.push({
+              id: `task${now.getTime()}_${done.length}`,
+              title: fillTemplate(String(cfg.title || "Follow up {name}"), f.vars),
+              description: `Automation "${f.run.workflowName}" — ${f.run.subjectLabel}`,
+              assignee: cfg.assignee || f.vars.owner || "",
+              assigneeRole: cfg.assigneeRole || "",
+              priority: cfg.priority || "Normal",
+              status: "Pending",
+              dueDate: todayISO,
+              weekOf: mondayOf(now),
+              createdBy: "system (automation)",
+              createdAt: now.toISOString(),
+              completedAt: "", templateId: "",
+            } as Task);
+            done.push({ ...f.run, result: "task_created" } as WorkflowRun);
+          } else {
+            if (!f.vars.phone) { done.push({ ...f.run, result: "skipped_no_phone" } as WorkflowRun); continue; }
+            const cv = await upsertConversation(f.vars.phone, f.vars.name);
+            if (!cv) { done.push({ ...f.run, result: "error" } as WorkflowRun); continue; }
+            const msg = fillTemplate(String((f.actionConfig as { message?: string }).message || ""), f.vars);
+            const sent = msg ? await sendMessage(cv.id, msg, "Automation") : null;
+            done.push({ ...f.run, result: sent ? "whatsapp_sent" : "error" } as WorkflowRun);
+          }
+        } catch {
+          done.push({ ...f.run, result: "error" } as WorkflowRun);
+        }
+      }
+      if (newTasks.length > 0) {
+        setTasks(ts => { const u = [...ts, ...newTasks]; dbSync("tasks", u); return u; });
+      }
+      setWorkflowRuns(rs => { const u = [...rs, ...done]; dbSync("workflowruns", u); return u; });
+      Toaster._add?.(`${done.length} automation${done.length > 1 ? "s" : ""} fired`, "info");
+    })();
+  }, [workflows, leads, jobs, clients, schedules]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // -- Auto-schedule recurring jobs from contract service frequency -------------
   // Pure logic lives in `lib/scheduler.ts` so it's unit-tested in isolation.
   // This effect is just the React glue: gate on dbLoaded, run the computation,
@@ -288,7 +358,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads, workflows };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
@@ -411,6 +481,7 @@ export default function App(){
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
     {id:"pipeline",    label:"Sales Pipeline",   icon:Filter,        roles:["Admin","Supervisor","Finance"]},
     {id:"inbox",       label:"Inbox",            icon:MessageCircle, roles:["Admin","Supervisor","Finance"]},
+    {id:"automations", label:"Automations",      icon:Zap,           roles:["Admin"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
     {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
     {id:"schedule",    label:"Pest Schedule",    icon:Bug,           roles:["Admin","Supervisor"]},
@@ -533,6 +604,7 @@ export default function App(){
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
           {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user} requests={requests} jobs={jobs} reports={siteReports} setJobs={setJobs}/></ErrorBoundary>}
           {page==="inbox"       &&<ErrorBoundary module="Inbox"><InboxPage user={user}/></ErrorBoundary>}
+          {page==="automations" &&<ErrorBoundary module="Automations"><AutomationsPage workflows={workflows} setWorkflows={setWorkflows} workflowRuns={workflowRuns} users={users} user={user}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients} leads={leads} setLeads={setLeads}/></ErrorBoundary>}
           {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} users={users} user={user}/></ErrorBoundary>}
           {page==="schedule"    &&<ErrorBoundary module="Pest Schedule"><SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} userRole={user.role}/></ErrorBoundary>}
