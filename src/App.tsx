@@ -14,7 +14,7 @@ import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
   Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks, Filter,
-  MessageCircle, Zap, CalendarDays,
+  MessageCircle, Zap, CalendarDays, Receipt,
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
@@ -32,7 +32,7 @@ import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
 import type {
   Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
   Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
-  Task, TaskTemplate, Lead, Workflow, WorkflowRun, Appointment, CurrentUser,
+  Task, TaskTemplate, Lead, Workflow, WorkflowRun, Appointment, Invoice, CurrentUser,
 } from "./lib/schemas";
 import { computeRecurringTasks } from "./lib/task-scheduler";
 import { computeWorkflowFirings, fillTemplate } from "./lib/workflow-engine";
@@ -73,6 +73,7 @@ const InboxPage        = lazy(() => import("./pages/Inbox").then(m => ({ default
 const AutomationsPage  = lazy(() => import("./pages/Automations").then(m => ({ default: m.AutomationsPage })));
 const BookingsPage     = lazy(() => import("./pages/Bookings").then(m => ({ default: m.BookingsPage })));
 const PublicBooking    = lazy(() => import("./pages/PublicBooking").then(m => ({ default: m.PublicBooking })));
+const InvoicesPage     = lazy(() => import("./pages/Invoices").then(m => ({ default: m.InvoicesPage })));
 
 // Lightweight fallback for in-flight chunk loads — matches the boot skeleton
 // so the visual stays calm when the user crosses a page boundary.
@@ -119,6 +120,7 @@ export default function App(){
   const[workflows,   setWorkflows]   =useState<Workflow[]>([]);
   const[workflowRuns,setWorkflowRuns]=useState<WorkflowRun[]>([]);
   const[appointments,setAppointments]=useState<Appointment[]>([]);
+  const[invoices,    setInvoices]    =useState<Invoice[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
@@ -165,6 +167,7 @@ export default function App(){
           dbLoad("workflows",   setWorkflows),
           dbLoad("workflowruns",setWorkflowRuns),
           dbLoad("appointments",setAppointments),
+          dbLoad("invoices",    setInvoices),
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
@@ -260,6 +263,7 @@ export default function App(){
   useEffect(() => { debouncedSync("leads",        leads);       }, [leads,       debouncedSync]);
   useEffect(() => { debouncedSync("workflows",    workflows);   }, [workflows,   debouncedSync]);
   useEffect(() => { debouncedSync("appointments", appointments);}, [appointments,debouncedSync]);
+  useEffect(() => { debouncedSync("invoices",     invoices);    }, [invoices,    debouncedSync]);
   // workflowruns intentionally NOT debounced-synced here — the executor effect
   // writes the ledger explicitly per firing batch to keep dedup authoritative.
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
@@ -365,7 +369,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads, workflows, appointments };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads, workflows, appointments, invoices };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
@@ -495,6 +499,7 @@ export default function App(){
     {id:"pipeline",    label:"Sales Pipeline",   icon:Filter,        roles:["Admin","Supervisor","Finance"]},
     {id:"inbox",       label:"Inbox",            icon:MessageCircle, roles:["Admin","Supervisor","Finance"]},
     {id:"bookings",    label:"Bookings",         icon:CalendarDays,  roles:["Admin","Supervisor","Finance"]},
+    {id:"invoices",    label:"Invoices",         icon:Receipt,       roles:["Admin","Finance"]},
     {id:"automations", label:"Automations",      icon:Zap,           roles:["Admin"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
     {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
@@ -619,6 +624,7 @@ export default function App(){
           {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user} requests={requests} jobs={jobs} reports={siteReports} setJobs={setJobs}/></ErrorBoundary>}
           {page==="inbox"       &&<ErrorBoundary module="Inbox"><InboxPage user={user}/></ErrorBoundary>}
           {page==="bookings"    &&<ErrorBoundary module="Bookings"><BookingsPage appointments={appointments} setAppointments={setAppointments} setJobs={setJobs} users={users} user={user}/></ErrorBoundary>}
+          {page==="invoices"    &&<ErrorBoundary module="Invoices"><InvoicesPage invoices={invoices} setInvoices={setInvoices} jobs={jobs} user={user}/></ErrorBoundary>}
           {page==="automations" &&<ErrorBoundary module="Automations"><AutomationsPage workflows={workflows} setWorkflows={setWorkflows} workflowRuns={workflowRuns} users={users} user={user}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients} leads={leads} setLeads={setLeads}/></ErrorBoundary>}
           {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} users={users} user={user}/></ErrorBoundary>}
