@@ -14,7 +14,7 @@ import {
   Users, FileText, BarChart2, Settings, LogOut, Menu, Bell, Home, Bug,
   AlertTriangle, Search, ClipboardList, Package, Briefcase, Inbox, Gift,
   Wallet, ClipboardCheck, UserCheck, MapPin, WifiOff, ListChecks, Filter,
-  MessageCircle, Zap,
+  MessageCircle, Zap, CalendarDays,
 } from "lucide-react";
 
 // ── lib/ extractions (Phase 2-5) ─────────────────────────────────────────────
@@ -32,7 +32,7 @@ import { INITIAL_USERS, SEED_STAFF, INITIAL_SUPPLY_MASTER } from "./lib/seeds";
 import type {
   Client, Job, Staff, AppUser, Request_, SiteReport, Imprest, Inventory,
   Requisition, SupplyItem, Schedule, Absence, Cover, Assessment, Contact,
-  Task, TaskTemplate, Lead, Workflow, WorkflowRun, CurrentUser,
+  Task, TaskTemplate, Lead, Workflow, WorkflowRun, Appointment, CurrentUser,
 } from "./lib/schemas";
 import { computeRecurringTasks } from "./lib/task-scheduler";
 import { computeWorkflowFirings, fillTemplate } from "./lib/workflow-engine";
@@ -71,6 +71,8 @@ const TasksPage        = lazy(() => import("./pages/Tasks").then(m => ({ default
 const PipelinePage     = lazy(() => import("./pages/Pipeline").then(m => ({ default: m.PipelinePage })));
 const InboxPage        = lazy(() => import("./pages/Inbox").then(m => ({ default: m.InboxPage })));
 const AutomationsPage  = lazy(() => import("./pages/Automations").then(m => ({ default: m.AutomationsPage })));
+const BookingsPage     = lazy(() => import("./pages/Bookings").then(m => ({ default: m.BookingsPage })));
+const PublicBooking    = lazy(() => import("./pages/PublicBooking").then(m => ({ default: m.PublicBooking })));
 
 // Lightweight fallback for in-flight chunk loads — matches the boot skeleton
 // so the visual stays calm when the user crosses a page boundary.
@@ -82,6 +84,8 @@ const PageFallback = () => (
 );
 
 export default function App(){
+  // Public booking lives at #book — detected once, no login/data-load needed.
+  const isPublicBooking = typeof window !== "undefined" && window.location.hash.replace(/^#\/?/, "") === "book";
   const[page,        setPage]        =useState("dashboard");
   // Sidebar state: on desktop = expanded/collapsed (rail); on mobile = open/closed (drawer).
   // Default collapsed on phones so the page gets full width on first paint.
@@ -114,6 +118,7 @@ export default function App(){
   const[leads,       setLeads]       =useState<Lead[]>([]);
   const[workflows,   setWorkflows]   =useState<Workflow[]>([]);
   const[workflowRuns,setWorkflowRuns]=useState<WorkflowRun[]>([]);
+  const[appointments,setAppointments]=useState<Appointment[]>([]);
   const[showNotif,   setShowNotif]   =useState(false);
   const[showSearch,  setShowSearch]  =useState(false);
   const[isOnline,    setIsOnline]    =useState<boolean>(()=>navigator.onLine);
@@ -159,6 +164,7 @@ export default function App(){
           dbLoad("leads",       setLeads),
           dbLoad("workflows",   setWorkflows),
           dbLoad("workflowruns",setWorkflowRuns),
+          dbLoad("appointments",setAppointments),
           dbLoad("imprests",    setImprests),
           (async()=>{
             const url=`${SUPABASE_URL}/rest/v1/${T("staff")}?select=id,record&order=updated_at.desc`;
@@ -253,6 +259,7 @@ export default function App(){
   useEffect(() => { debouncedSync("tasktemplates", taskTemplates); }, [taskTemplates, debouncedSync]);
   useEffect(() => { debouncedSync("leads",        leads);       }, [leads,       debouncedSync]);
   useEffect(() => { debouncedSync("workflows",    workflows);   }, [workflows,   debouncedSync]);
+  useEffect(() => { debouncedSync("appointments", appointments);}, [appointments,debouncedSync]);
   // workflowruns intentionally NOT debounced-synced here — the executor effect
   // writes the ledger explicitly per firing batch to keep dedup authoritative.
   useEffect(() => { debouncedSync("staff",        staff);       }, [staff,       debouncedSync]);
@@ -358,7 +365,7 @@ export default function App(){
 
   // -- Flush pending syncs when tab loses visibility (user switches away / closes) --
   const latestStateRef = useRef({});
-  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads, workflows };
+  latestStateRef.current = { reports: siteReports, imprests, clients, jobs, requests, schedules, inventory, supplyitems: supplyItems, requisitions, absences, covers, staff, users, assessments, tasks, tasktemplates: taskTemplates, leads, workflows, appointments };
   useEffect(() => {
     const flush = () => {
       if (!dbLoaded.current) return;
@@ -436,6 +443,12 @@ export default function App(){
 
   const handleLogin=(u:any)=>{setUser(u);setPage("dashboard");setSentryUser(u);};
 
+  // ── Public booking route ───────────────────────────────────────────────────
+  // Reached at #book — no login, no data load. Customers self-book here; the
+  // visit lands as a Requested appointment + a New pipeline lead. Checked
+  // before every auth/loading gate so a prospect never sees the login wall.
+  if(isPublicBooking) return <Suspense fallback={<PageFallback/>}><PublicBooking/></Suspense>;
+
   // Show loading screen FIRST so users[] is fully populated from DB before login renders.
   // This ensures the local-hash fallback has access to pwHash stored in Supabase.
   if(dbLoading) return(
@@ -481,6 +494,7 @@ export default function App(){
     {id:"contracts",   label:"Contracts",        icon:FileText,      roles:["Admin","Supervisor"]},
     {id:"pipeline",    label:"Sales Pipeline",   icon:Filter,        roles:["Admin","Supervisor","Finance"]},
     {id:"inbox",       label:"Inbox",            icon:MessageCircle, roles:["Admin","Supervisor","Finance"]},
+    {id:"bookings",    label:"Bookings",         icon:CalendarDays,  roles:["Admin","Supervisor","Finance"]},
     {id:"automations", label:"Automations",      icon:Zap,           roles:["Admin"]},
     {id:"requests",    label:"Service Requests", icon:Inbox,         roles:["Admin","Supervisor","Finance"]},
     {id:"jobs",        label:"Jobs",             icon:Briefcase,     roles:["Admin","Supervisor"]},
@@ -604,6 +618,7 @@ export default function App(){
           {page==="contracts"   &&<ErrorBoundary module="Contracts"><ContractsPage clients={clients} setClients={setClients}/></ErrorBoundary>}
           {page==="pipeline"    &&<ErrorBoundary module="Sales Pipeline"><PipelinePage leads={leads} setLeads={setLeads} users={users} clients={clients} user={user} requests={requests} jobs={jobs} reports={siteReports} setJobs={setJobs}/></ErrorBoundary>}
           {page==="inbox"       &&<ErrorBoundary module="Inbox"><InboxPage user={user}/></ErrorBoundary>}
+          {page==="bookings"    &&<ErrorBoundary module="Bookings"><BookingsPage appointments={appointments} setAppointments={setAppointments} setJobs={setJobs} users={users} user={user}/></ErrorBoundary>}
           {page==="automations" &&<ErrorBoundary module="Automations"><AutomationsPage workflows={workflows} setWorkflows={setWorkflows} workflowRuns={workflowRuns} users={users} user={user}/></ErrorBoundary>}
           {page==="requests"    &&<ErrorBoundary module="Service Requests"><RequestsPage requests={requests} setRequests={setRequests} setJobs={setJobs} clients={clients} leads={leads} setLeads={setLeads}/></ErrorBoundary>}
           {page==="jobs"        &&<ErrorBoundary module="Jobs"><JobsPage jobs={jobs} setJobs={setJobs} clients={clients} contacts={contacts} staff={staff} users={users} user={user}/></ErrorBoundary>}
