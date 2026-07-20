@@ -420,6 +420,53 @@ export const WorkflowRunSchema = z.object({
   result: strOpt,          // task_created | whatsapp_sent | skipped_no_phone | error
 }).passthrough();
 
+// ── 21. Appointments (Phase D — booking + calendar) ─────────────────────────
+// A booked visit slot. Distinct from a Job: an Appointment is the calendar
+// commitment (who/when/where); confirming it spawns the Job that carries
+// delivery (GPS check-in, site report). Public bookings arrive as Requested;
+// staff confirm → Confirmed + Job.
+export const AppointmentSchema = z.object({
+  id: idField,
+  contactName: str,
+  contactPhone: strOpt,
+  svc: strOpt,
+  loc: strOpt,
+  date: strOpt,             // YYYY-MM-DD
+  time: strOpt,             // HH:mm slot start
+  durationMins: numOpt,     // default 120
+  status: strOpt,           // Requested / Confirmed / Completed / Cancelled
+  assignedTo: strOpt,       // supervisor
+  jobId: strOpt,            // set on confirm
+  leadId: strOpt,           // provenance if booked from pipeline
+  source: strOpt,           // public / internal / whatsapp
+  notes: strOpt,
+  createdAt: strOpt,
+}).passthrough();
+
+// ── 22. Invoices (Phase D — payments) ───────────────────────────────────────
+// Client-facing bill, usually raised from a completed Job. Paystack refs
+// recorded on payment; the edge functions are env-gated so invoices work
+// as documents before any payment gateway exists.
+export const InvoiceSchema = z.object({
+  id: idField,
+  invoiceNo: strOpt,        // human number DW-2026-0001
+  clientName: str,
+  contactPhone: strOpt,
+  contactEmail: strOpt,
+  jobId: strOpt,
+  items: z.array(z.any()).catch([]).optional(),  // { desc, qty, rate }
+  subtotal: numOpt,
+  vat: numOpt,
+  total: numOpt,
+  status: strOpt,           // Draft / Sent / Paid / Overdue / Cancelled
+  dueDate: strOpt,
+  paidAt: strOpt,
+  paystackRef: strOpt,
+  notes: strOpt,
+  createdBy: strOpt,
+  createdAt: strOpt,
+}).passthrough();
+
 // ── Schema registry (table-name → schema) ────────────────────────────────────
 // Used by dbLoad/dbSync to look up the right validator. Keys must match the
 // `table` arguments passed to those functions (i.e. the part after the `dw_`
@@ -445,6 +492,8 @@ export const SCHEMAS = {
   leads: LeadSchema,
   workflows: WorkflowSchema,
   workflowruns: WorkflowRunSchema,
+  appointments: AppointmentSchema,
+  invoices: InvoiceSchema,
 } as const;
 
 export type TableName = keyof typeof SCHEMAS;
@@ -472,6 +521,8 @@ export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
 export type Lead         = z.infer<typeof LeadSchema>;
 export type Workflow     = z.infer<typeof WorkflowSchema>;
 export type WorkflowRun  = z.infer<typeof WorkflowRunSchema>;
+export type Appointment  = z.infer<typeof AppointmentSchema>;
+export type Invoice      = z.infer<typeof InvoiceSchema>;
 
 /**
  * Role union. Phase 6 added Finance as a first-class role distinct from
